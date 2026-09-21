@@ -3,10 +3,11 @@
 //       D1 全局不缺砖、D2 前缀可行（含 margin）、tailSafe 末段、拾取摊开、bot 通关率
 import { CFG } from '../assets/scripts/config.ts';
 import { genLevel, genLevelV3, levelStats, prefixBalance, zonesOf } from '../assets/scripts/LevelGen.ts';
-import { cfgForLevel } from '../assets/scripts/LevelCurve.ts';
-import { createProgress, starsFor } from '../assets/scripts/Progression.ts';
+import { cfgForLevel, itemsFor } from '../assets/scripts/LevelCurve.ts';
+import { createProgress, starsFor, parFor } from '../assets/scripts/Progression.ts';
 import { genLevelV3 as jsGenLevelV3, botRun } from '../docs/qoder/bridge-rules.mjs';
-import { cfgForLevel as jsCfgForLevel } from '../docs/qoder/levels.mjs';
+import { cfgForLevel as jsCfgForLevel, itemsFor as jsItemsFor } from '../docs/qoder/levels.mjs';
+import { parFor as jsParFor, starsFor as jsStarsFor } from '../docs/qoder/progression.mjs';
 
 let failed = 0;
 const check = (name: string, cond: boolean, detail = '') => {
@@ -94,7 +95,50 @@ mem.set('shortcut_run_progress_v1', '{bad json');
 const p3 = createProgress(store);
 check('prog-dirty-recover', p3.state().level === 1);
 
-// 7. 输出
+// 6b. PAR 星级线漂移锁：TS parFor/starsFor 与母本 progression.mjs 逐关一致（L1-L60 含 loop 补偿段）
+//     历史 bug：PAR 模 10 查表但每 loop 长度 +20m => L11+ 三星恒不可达，母本已用 parFor 修掉
+for (let lv = 1; lv <= 60; lv++) {
+  const okPar = Math.abs(parFor(lv) - jsParFor(lv)) < 1e-9 && parFor(lv) < jsParFor(lv) + 1;
+  check(`par-drift L${lv}`, okPar, `ts=${parFor(lv)} 母本=${jsParFor(lv)}`);
+}
+check('starsFor-parity', starsFor(1, 16.5, 5) === jsStarsFor(1, 16.5, 5)
+  && starsFor(11, 19.0, 0) === jsStarsFor(11, 19.0, 0)
+  && starsFor(21, 22.0, 3) === jsStarsFor(21, 22.0, 3),
+  'L1/L11/L21 三星边界对母本');
+
+// 7. v4 道具断言（母本 bridge-rules v4 / levels.mjs itemsFor）
+{
+  // 分带：L1-2 无道具；L3 起 +N 门；L4 起 ×2 门；L6 起鞋；与母本 itemsFor 逐级一致
+  check('items-band', itemsFor(1) === null && itemsFor(2) === null && !!itemsFor(3), 'L1-2 null / L3 有');
+  let bandsMatch = true;
+  for (let lv = 1; lv <= 40; lv++) {
+    if (JSON.stringify(itemsFor(lv)) !== JSON.stringify(jsItemsFor(lv))) { bandsMatch = false; break; }
+  }
+  check('items-band-parity', bandsMatch, 'itemsFor L1-L40 对母本');
+  // 开启态 parity：带道具的 genLevelV3 与母本逐 seed 位级一致（§21 同口径）
+  let itemsParity = true;
+  for (const lv of [3, 4, 6, 9, 13, 23]) {
+    const cfg = cfgForLevel(lv, CFG);
+    const plan = itemsFor(lv);
+    for (let s = 1; s <= 25; s++) {
+      const seed = lv * 1000 + s;
+      const mine = JSON.stringify(genLevelV3(seed, cfg, { items: plan ?? undefined }));
+      const theirs = JSON.stringify(jsGenLevelV3(seed, cfg, { items: plan ?? undefined }));
+      if (mine !== theirs) { itemsParity = false; break; }
+    }
+    if (!itemsParity) break;
+  }
+  check('items-on-parity', itemsParity, 'TS vs 母本（150 局）');
+  // 关闭态形状：连 gates 键都不出现（保 §14 parity 锚），鞋不计入供需（纯增益）
+  const off = genLevelV3(3001, cfgForLevel(3, CFG));
+  check('items-off-shape', !('gates' in off), 'off 态无 gates 键');
+  const cfg6 = cfgForLevel(6, CFG);
+  const offBal = prefixBalance(genLevelV3(6001, cfg6), cfg6);
+  const onBal = prefixBalance(genLevelV3(6001, cfg6, { items: itemsFor(6) ?? undefined }), cfg6);
+  check('items-no-supply-change', JSON.stringify(offBal) === JSON.stringify(onBal), '道具不改供需');
+}
+
+// 8. 输出
 const demo = genLevelV3(1, CFG);
 console.log(`v3 demo: gaps=${demo.gaps.length} pickups=${demo.pickups.length} stats=${JSON.stringify(levelStats(demo, CFG))}`);
 console.log(`bot win rate: ${(rate * 100).toFixed(0)}% (${wins}/${BOT_SEEDS})`);

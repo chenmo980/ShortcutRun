@@ -103,6 +103,26 @@ s = await page.evaluate(() => window.__game.getState());
 check('win-state', s.state === 'win' && s.z >= s.gateZ - 1, `z=${s.z.toFixed(1)} gateZ=${s.gateZ.toFixed(1)}`);
 await page.screenshot({ path: `${SHOTS}/05-win.png` });
 
+// 6b. v4 道具门功能：L3 有 +5 门（itemsFor 分带），直行过门自动加砖
+await page.evaluate(() => window.__game.restart(3));
+await sleep(400);
+await page.evaluate(() => window.__game.setBricks(60));
+const bricksBeforeGate = (await page.evaluate(() => window.__game.getState())).bricks;
+await page.mouse.move(450, 300);
+await page.mouse.down();
+await page.mouse.up();
+await page.waitForFunction(() => window.__game.getState().gateList.some((g) => g.used), null, { timeout: 30000 });
+s = await page.evaluate(() => window.__game.getState());
+check('item-gate-add', s.gateList.some((g) => g.used && g.type === 'add') && s.bricks > bricksBeforeGate,
+  `gates=${JSON.stringify(s.gateList)} bricks=${bricksBeforeGate}->${s.bricks}`);
+
+// 6c. v4 道具分带：L7（重启即读关卡静态数据，不必开跑）应有鞋形拾取（L6 起）+ 两扇门（L4 起加 ×2）
+await page.evaluate(() => window.__game.restart(7));
+await sleep(400);
+s = await page.evaluate(() => window.__game.getState());
+check('items-band-l7', s.pickupList.some((p) => p.kind === 'shoe') && s.gateList.length >= 2,
+  `shoes=${s.pickupList.filter((p) => p.kind === 'shoe').length} gates=${s.gateList.length}`);
+
 // 9. 主题换肤：按 T 切换，theme 字段变化且游戏不崩
 const themeBefore = (await page.evaluate(() => window.__game.getState())).theme;
 await page.keyboard.press('t');
@@ -114,15 +134,18 @@ await page.screenshot({ path: `${SHOTS}/07-theme-${themeAfter}.png` });
 // 10. 无页面错误
 check('no-page-error', errors.length === 0, errors.slice(0, 3).join(' | '));
 
-// 8. 像素级验证（替代肉眼）：画面有内容、色彩丰富、玩家（蓝色）出现在镜头中央区域
+// 8. 像素级验证（替代肉眼）：画面有内容、色彩丰富、角色可见。
+// 玩家检测用 marker 色替代硬编码颜色：把角色临时染成品红再数像素，
+// 任意主题（day 白角色 / city 蓝角色）都成立，不受光照着色影响
 await page.evaluate(() => window.__game.restart(1));
 await sleep(400);
 await page.mouse.move(450, 300);
 await page.mouse.down();
 await page.mouse.up();
 await sleep(600);
-const st0 = await page.evaluate(() => window.__game.getState());
 const vis = await page.evaluate(() => {
+  const orig = window.__game.getState().playerColor;
+  window.__game.setPlayerColor(0xff00ff); // 品红 marker
   window.__game.renderOnce(); // 同一任务内渲染后立刻读，避免 WebGL 缓冲被清
   const c = window.__game.canvas();
   const off = document.createElement('canvas');
@@ -133,18 +156,19 @@ const vis = await page.evaluate(() => {
   const sky = window.__game.getState().sky;
   const sr = (sky >> 16) & 255, sg = (sky >> 8) & 255, sb = sky & 255;
   const colors = new Set();
-  let nonBg = 0, blue = 0;
+  let nonBg = 0, marker = 0;
   for (let i = 0; i < d.length; i += 4) {
     const r = d[i], g = d[i + 1], b = d[i + 2];
     colors.add((r >> 4) + ',' + (g >> 4) + ',' + (b >> 4));
     if (Math.abs(r - sr) > 25 || Math.abs(g - sg) > 25 || Math.abs(b - sb) > 30) nonBg++;
-    if (b > 150 && b - r > 40 && g > 100) blue++; // 玩家蓝
+    if (r > 150 && b > 150 && g < 100) marker++; // 品红（暗面也按通道比例判定）
   }
-  return { colors: colors.size, nonBgRatio: nonBg / (200 * 140), bluePx: blue, theme: window.__game.getState().theme };
+  window.__game.setPlayerColor(orig); // 还原主题色
+  return { colors: colors.size, nonBgRatio: nonBg / (200 * 140), markerPx: marker, theme: window.__game.getState().theme };
 });
 check('scene-rendered', vis.colors >= 8 && vis.nonBgRatio > 0.15 && vis.nonBgRatio < 0.98,
   `colors=${vis.colors} nonBg=${(vis.nonBgRatio * 100).toFixed(0)}% theme=${vis.theme}`);
-check('player-visible', vis.bluePx > 50, `bluePx=${vis.bluePx}`);
+check('player-visible', vis.markerPx > 50, `markerPx=${vis.markerPx}`);
 await page.screenshot({ path: `${SHOTS}/06-pixel-check.png` });
 
 await browser.close();

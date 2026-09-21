@@ -9,7 +9,7 @@ import {
 } from 'cc';
 import { CFG, Cfg } from './config';
 import { genLevelV3, LevelDef } from './LevelGen';
-import { cfgForLevel } from './LevelCurve';
+import { cfgForLevel, itemsFor } from './LevelCurve';
 import { createProgress, ProgressStore } from './Progression';
 import { cycleTheme, currentTheme } from './Theme';
 import { applyTheme } from './BoxFactory';
@@ -50,8 +50,10 @@ export class GameApp extends Component {
   private state: State = 'ready';
   private levelNum = 1;
   private attempt = 1;
+  private curSeed = 1;
   private bricks = 0;
   private speed = 0;
+  private shoeT = 0; // v4 加速鞋剩余时间（秒），<=0 未加速
   private targetX = 0;
   private fallVel = 0;
   private dragging = false;
@@ -97,8 +99,10 @@ export class GameApp extends Component {
     const cur = this.prog.current((lv) => cfgForLevel(lv, CFG));
     this.levelNum = cur.level;
     this.attempt = Math.floor(cur.seed % 1000);
+    this.curSeed = cur.seed;
     this.cfg = cur.cfg;
-    this.levelDef = genLevelV3(cur.seed, this.cfg);
+    // v4 道具：itemsFor 分带（L1-2 无道具），关闭时输出与 v3 逐字节一致
+    this.levelDef = genLevelV3(cur.seed, this.cfg, { items: itemsFor(cur.level) ?? undefined });
     console.log(
       `[ShortcutRun] 第 ${this.levelNum} 关 (attempt ${this.attempt}) 断崖=${this.levelDef.gaps.length} ` +
       `拾取=${this.levelDef.pickups.length} 终点z=${this.levelDef.gateZ.toFixed(1)} 门需求=${this.cfg.gateCost}`
@@ -118,6 +122,7 @@ export class GameApp extends Component {
     this.state = 'ready';
     this.bricks = 0;
     this.speed = this.cfg.runSpeed;
+    this.shoeT = 0;
     this.targetX = 0;
     this.fallVel = 0;
     this.heldLeft = false;
@@ -241,7 +246,10 @@ export class GameApp extends Component {
     let x = p.x, y = p.y, z = p.z;
 
     if (this.state === 'run') {
-      this.speed = Math.min(this.cfg.maxSpeed, this.cfg.runSpeed + this.bricks * this.cfg.speedPerBrick);
+      if (this.shoeT > 0) this.shoeT -= dt;
+      // 提速鞋：终速 ×1.35（可短暂超 maxSpeed，提速感优先；母本 botRun 同口径）
+      this.speed = Math.min(this.cfg.maxSpeed, this.cfg.runSpeed + this.bricks * this.cfg.speedPerBrick)
+        * (this.shoeT > 0 ? 1.35 : 1);
       z += this.speed * dt;
       const k = 1 - Math.exp(-this.cfg.steerSpeed * dt);
       x += (this.targetX - x) * k;
@@ -259,6 +267,7 @@ export class GameApp extends Component {
     if (this.state === 'run') {
       this.checkPickups(x, prevZ, z);
       this.checkGaps(prevZ, z);
+      this.checkGates(prevZ, z);
       this.checkGate(z);
     }
     this.track.syncStack(this.bricks);
@@ -273,9 +282,30 @@ export class GameApp extends Component {
       const hitZ = z >= p.def.z - 0.7 && prevZ <= p.def.z + 0.7;
       if (hitZ && Math.abs(x - p.def.x) < 0.95) {
         this.track.takePickup(p);
-        this.bricks += this.cfg.brickCluster;
+        if (p.def.kind === 'shoe') {
+          // v4 加速鞋：不产砖，speed ×1.35 持续 3.5s（母本 botRun 同口径）
+          this.shoeT = 3.5;
+        } else {
+          this.bricks += this.cfg.brickCluster;
+        }
         this.ui?.setBricks(this.bricks);
         this.audio?.play('pickup');
+      }
+    }
+  }
+
+  // v4 道具门：扫掠判定过门（不扣砖），+N 加砖 / ×N 乘砖（母本 botRun 同口径）
+  private checkGates(prevZ: number, z: number): void {
+    if (!this.levelDef.gates) return;
+    for (const g of this.levelDef.gates) {
+      if (g.used) continue;
+      if (z >= g.z && prevZ < g.z) {
+        g.used = true;
+        if (g.type === 'add') this.bricks += g.v;
+        else this.bricks *= g.v;
+        this.ui?.setBricks(this.bricks);
+        this.audio?.play('pickup');
+        console.log(`[ShortcutRun] 道具门 ${g.type === 'add' ? '+' + g.v : '×' + g.v}，现有 ${this.bricks} 砖`);
       }
     }
   }
@@ -330,6 +360,11 @@ export class GameApp extends Component {
     this.track.openGate();
     this.audio?.play('win');
     const timeSec = this.elapsed - this.runT0;
+    this.pushTelemetry({
+      level: this.levelNum, seed: this.curSeed, outcome: 'win',
+      t: +timeSec.toFixed(2), bricksLeft: this.bricks,
+      failZ: null, pickupsTotal: this.levelDef.pickups.length,
+    });
     const r = this.prog.win(timeSec, this.bricks);
     const best = this.prog.state().best[this.levelNum];
     this.ui?.setResult(true, r.stars, timeSec, this.bricks, `${best.stars}★ ${best.time}s`);
@@ -345,6 +380,11 @@ export class GameApp extends Component {
   private lose(reason = '失败'): void {
     if (this.state === 'lose') return;
     this.state = 'lose';
+    this.pushTelemetry({
+      level: this.levelNum, seed: this.curSeed, outcome: 'lose',
+      t: +(this.elapsed - this.runT0).toFixed(2), bricksLeft: this.bricks,
+      failZ: +this.player.position.z.toFixed(1), pickupsTotal: this.levelDef.pickups.length,
+    });
     this.prog.lose();
     this.audio?.play('lose');
     const best = this.prog.state().best[this.levelNum];
@@ -352,5 +392,17 @@ export class GameApp extends Component {
     this.ui?.showHint(reason);
     console.log(`[ShortcutRun] LOSE: ${reason}. 2.5 秒后换图重试第 ${this.levelNum} 关`);
     this.scheduleOnce(() => this.startLevel(), 2.5);
+  }
+
+  // G1 遥测（Q6 schema：docs/qoder/g1-tuning.md），与浏览器版 sr_telemetry_v1 键名对齐
+  private pushTelemetry(ev: Record<string, unknown>): void {
+    try {
+      const raw = sys.localStorage.getItem('sr_telemetry_v1');
+      const arr = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(arr)) return;
+      arr.push({ ...ev, ts: Date.now() });
+      if (arr.length > 500) arr.splice(0, arr.length - 500); // 封顶防无限膨胀
+      sys.localStorage.setItem('sr_telemetry_v1', JSON.stringify(arr));
+    } catch (e) { /* 遥测失败不影响游戏 */ }
   }
 }

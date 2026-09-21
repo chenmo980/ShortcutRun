@@ -26,6 +26,7 @@ export interface ItemGateDef {
   z: number;
   type: 'add' | 'mul';
   v: number;
+  used?: boolean;   // 运行时状态:是否已触发
 }
 
 export interface LevelDef {

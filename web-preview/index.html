@@ -83,10 +83,13 @@ let levelNum = 1, attempt = 1, runT0 = 0;
 
 // ===== 关卡推进（移植自 docs/qoder/progression.mjs 母本，localStorage 持久化） =====
 const SR_KEY = 'shortcut_run_progress_v1';
-const PAR = [16.5, 18.5, 20.0, 20.0, 21.0, 20.5, 21.5, 23.0, 22.5, 23.5];
+const PAR = [16.5, 19.0, 19.5, 18.5, 19.5, 18.5, 19.5, 20.5, 20.5, 21.5];
+const PAR_LOOP_SHIFT = 2.5; // 实测每 loop 胜局用时 +2.5~2.6s；L11+ 不补偿则三星恒不可达
+function parFor(level) {
+  return PAR[(level - 1) % PAR.length] + Math.floor((level - 1) / PAR.length) * PAR_LOOP_SHIFT;
+}
 function starsFor(level, t, bricksLeft) {
-  const par = PAR[(level - 1) % PAR.length];
-  return 1 + (bricksLeft >= 3 ? 1 : 0) + (t <= par ? 1 : 0);
+  return 1 + (bricksLeft >= 3 ? 1 : 0) + (t <= parFor(level) ? 1 : 0);
 }
 const prog = (() => {
   const fresh = () => ({ v: 1, level: 1, attempt: 1, wins: 0, best: {} });
@@ -881,6 +884,7 @@ window.__game = {
   }),
   setBricks: (n) => { bricks = n; setBricksUI(n); },
   setTheme: (k) => { if (THEMES[k]) { themeKey = k; applyTheme(); } },
+  setPlayerColor: (hex) => { MAT.player.color.setHex(hex); }, // QA 用：像素检测 marker 色
   restart: (lv) => {
     prog.reset();
     for (let i = 1; i < (lv || 1); i++) prog.win(999, 0); // 快进到指定关（QA 用）

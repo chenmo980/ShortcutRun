@@ -21,6 +21,7 @@
 - [x] Q5 主题规范落地：theme.mjs 断言锁 + PROPOSALS 修复色并入 Theme.ts（day/city/candy 三盘全过对比度+色盲规范）
 - [x] Q6 G1 数据回调方案（Qoder 交付 docs/qoder/g1-tuning.md）
 - [x] v4 道具系统移植（Qoder）：±N 增减门 + 速度鞋，默认关闭（字节锚不变），母本 §19-§21 全锁
+- [x] T8 PAR 星线换表同步（2026-09-22）：Progression.ts + web-preview 内联改走 parFor(level)（loop 补偿 +2.5s/loop，修 L11+ 三星恒不可达）；smoke 新增 PAR 漂移锁 L1-L60；§17 转绿
 
 ## 时间预期（说实话）
 

@@ -76,10 +76,36 @@ export class TrackBuilder extends Component {
 
   private buildPickups(): void {
     this.pickups = this.level.pickups.map((def) => {
+      // v4 加速鞋：两块小盒拼鞋形（鞋底 + 鞋帮），颜色随主题 shoe 键
+      if (def.kind === 'shoe') {
+        const g = new Node('Shoe');
+        g.parent = this.node;
+        g.setPosition(new Vec3(def.x, 0.05, def.z));
+        g.setRotationFromEuler(new Vec3(0, 34, 0));
+        this.box('shoe', new Vec3(0.5, 0.14, 0.26), new Vec3(0, 0.07, 0), g);
+        this.box('shoe', new Vec3(0.3, 0.2, 0.24), new Vec3(-0.08, 0.24, 0), g);
+        return { node: g, def, taken: false };
+      }
       const s = this.cfg.brickUnit;
       const node = this.box('brick', new Vec3(s, s, s), new Vec3(def.x, s / 2 + 0.05, def.z), this.node);
       return { node, def, taken: false };
     });
+  }
+
+  // v4 道具拱门：横跨跑道的横梁（+N 蓝 / ×2 红）+ 门柱。灰盒阶段用颜色编码门类型
+  private buildItems(): void {
+    if (!this.level.gates) return;
+    const halfW = this.cfg.trackHalfWidth + 0.35;
+    for (const g of this.level.gates) {
+      this.buildItemGate(g, halfW);
+    }
+  }
+
+  private buildItemGate(g: ItemGateDef, halfW: number): void {
+    const kind: BoxKind = g.type === 'add' ? 'gateAdd' : 'gateMul';
+    this.box('pillar', new Vec3(0.4, 2.4, 0.4), new Vec3(-halfW, 1.2, g.z), this.node);
+    this.box('pillar', new Vec3(0.4, 2.4, 0.4), new Vec3(halfW, 1.2, g.z), this.node);
+    this.box(kind, new Vec3(halfW * 2 + 0.4, 0.7, 0.35), new Vec3(0, 2.55, g.z), this.node);
   }
 
   takePickup(p: RuntimePickup): void {

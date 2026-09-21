@@ -16,12 +16,16 @@ export interface ProgressState {
 
 const FRESH = (): ProgressState => ({ v: 1, level: 1, attempt: 1, wins: 0, best: {} });
 
-// 三星线（秒）：≈ 人形 bot 通关均时的快档（约前 1/3），L11+ 循环复用
-const PAR = [16.5, 18.5, 20.0, 20.0, 21.0, 20.5, 21.5, 23.0, 22.5, 23.5];
+// 三星线(秒):母本 progression.mjs g1-tuning §6 换表(on 态实测 P25)
+// L11+ 曾因 PAR 模 10 查表但每 loop 长度 +20m 而恒达 0 => parFor 加 loop 补偿修掉
+const PAR = [16.5, 19.0, 19.5, 18.5, 19.5, 18.5, 19.5, 20.5, 20.5, 21.5];
+const PAR_LOOP_SHIFT = 2.5; // 实测每 loop 胜局用时 +2.5~2.6s
+export function parFor(level: number): number {
+  return PAR[(level - 1) % PAR.length] + Math.floor((level - 1) / PAR.length) * PAR_LOOP_SHIFT;
+}
 
 export function starsFor(level: number, timeSec: number, bricksLeft: number): number {
-  const par = PAR[(level - 1) % PAR.length];
-  return 1 + (bricksLeft >= 3 ? 1 : 0) + (timeSec <= par ? 1 : 0);
+  return 1 + (bricksLeft >= 3 ? 1 : 0) + (timeSec <= parFor(level) ? 1 : 0);
 }
 
 export interface ProgressStore {

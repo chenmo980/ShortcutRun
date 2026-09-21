@@ -10,12 +10,17 @@ export const STORAGE_KEY = 'shortcut_run_progress_v1';
 
 const FRESH = () => ({ v: 1, level: 1, attempt: 1, wins: 0, best: {} });
 
-// 三星线（秒）：≈ 人形 bot 通关均时的快档（约前 1/3），L11+ 循环复用
-const PAR = [16.5, 18.5, 20.0, 20.0, 21.0, 20.5, 21.5, 23.0, 22.5, 23.5];
+// 三星线（秒）：≈ 人形 bot 胜局用时前 1/3（items-on 实测 P25，g1-tuning §6，2026-09-22 校准）。
+// loop 补偿：关卡每 loop +20m（cfgForLevel），旧版模 10 查表使 L11+ 达线率 0-4%、L21+ 恒 0。
+const PAR = [16.5, 19.0, 19.5, 18.5, 19.5, 18.5, 19.5, 20.5, 20.5, 21.5];
+const PAR_LOOP_SHIFT = 2.5; // 实测每 loop 胜局用时 +2.5~2.6s
+
+export function parFor(level) {
+  return PAR[(level - 1) % PAR.length] + Math.floor((level - 1) / PAR.length) * PAR_LOOP_SHIFT;
+}
 
 export function starsFor(level, timeSec, bricksLeft) {
-  const par = PAR[(level - 1) % PAR.length];
-  return 1 + (bricksLeft >= 3 ? 1 : 0) + (timeSec <= par ? 1 : 0);
+  return 1 + (bricksLeft >= 3 ? 1 : 0) + (timeSec <= parFor(level) ? 1 : 0);
 }
 
 export function createProgress(store) {
