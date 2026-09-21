@@ -13,12 +13,13 @@
 - [x] HUD：GameUI.ts + SETUP.md 4.5 装配步骤（2026-09-21，待试玩验证）
 - [x] AI-TEAM.md v2 最小协作方案
 - [x] 本地 git 仓库初始化 + 首次提交
+- [x] 远程仓库：origin=chenmo980/ShortcutRun（用户 PAT 推送），backup=lark980-web/ShortcutRun（2026-09-21）
+- [x] 扫掠检测修复：断崖/拾取按帧位移区间判定，防低端机帧抖动穿透（2026-09-21）
+- [x] docs/compliance.md 上架合规清单（软著/版号/主体/流量主时间线）
 
 ## 阻塞
 
-- [ ] 推送到 GitHub（chenmo980/ShortcutRun）：**MCP 令牌无写权限**。解法二选一：
-  - 给 opencode 的 github MCP 配上你有写权限的账号 token；或
-  - 本地 `gh auth login` 后用 git push（远程已配为 origin）
+- [ ] 本地 `git push` 默认走 chenmo980-hue 凭证会 403；当前靠一次性 PAT URL 推送。建议在 Windows 凭据管理器更新 github.com 凭证
 
 ## 待办（G1 通过后按序）
 

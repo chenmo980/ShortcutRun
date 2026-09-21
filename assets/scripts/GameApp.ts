@@ -4,7 +4,7 @@
 const { ccclass, property } = _decorator;
 import {
   _decorator, Component, Node, Prefab, Vec3, Camera, input, Input,
-  EventTouch, EventMouse, EventKeyboard, KeyCode, director, tween,
+  EventTouch, EventMouse, EventKeyboard, KeyCode, director,
 } from 'cc';
 import { CFG, Cfg } from './config';
 import { genLevel, LevelDef } from './LevelGen';
@@ -183,6 +183,7 @@ export class GameApp extends Component {
     this.clampTarget();
 
     const p = this.player.position;
+    const prevZ = p.z; // 扫掠检测用：低端机帧抖动时一帧可能移动数米，必须按区间判定
     let x = p.x, y = p.y, z = p.z;
 
     if (this.state === 'run') {
@@ -202,17 +203,19 @@ export class GameApp extends Component {
     this.player.eulerAngles = new Vec3(this.state === 'fall' ? -0.9 : 0.05, 0, -tilt);
 
     if (this.state === 'run') {
-      this.checkPickups(x, z);
-      this.checkGaps(z);
+      this.checkPickups(x, prevZ, z);
+      this.checkGaps(prevZ, z);
       this.checkGate(z);
     }
     this.track.syncStack(this.bricks);
   }
 
-  private checkPickups(x: number, z: number): void {
+  // 拾取判定：本帧位移区间 [prevZ, z] 与拾取点区间相交即吃到（防高帧移动量穿透）
+  private checkPickups(x: number, prevZ: number, z: number): void {
     for (const p of this.pickups) {
       if (p.taken) continue;
-      if (Math.abs(z - p.def.z) < 0.7 && Math.abs(x - p.def.x) < 0.95) {
+      const hitZ = z >= p.def.z - 0.7 && prevZ <= p.def.z + 0.7;
+      if (hitZ && Math.abs(x - p.def.x) < 0.95) {
         this.track.takePickup(p);
         this.bricks += this.cfg.brickCluster;
         this.ui?.setBricks(this.bricks);
@@ -220,10 +223,11 @@ export class GameApp extends Component {
     }
   }
 
-  private checkGaps(z: number): void {
+  // 断崖判定：本帧是否进入断崖区（扫掠，防穿透）。砖够拍桥，砖够掉落
+  private checkGaps(prevZ: number, z: number): void {
     for (const g of this.level.gaps) {
       if (g.bridged) continue;
-      if (z >= g.zStart && z < g.zEnd + 0.5) {
+      if (z >= g.zStart && prevZ < g.zEnd + 0.5) {
         if (this.bricks >= g.cost) {
           this.bricks -= g.cost;
           g.bridged = true;
