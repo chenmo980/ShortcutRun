@@ -4,7 +4,14 @@
 
 ## 进行中
 
-- [ ] **G1 手感门禁（浏览器版）**：双击 `web-preview/index.html` 试玩，反馈手感（速度/转向/难度）——Cocos 装配问题搁置，先用浏览器版过 G1
+- [ ] **G1 手感门禁**：Cocos 双击 `assets/scenes/game.scene` 按 ▶ 即玩（或浏览器版 `web-preview/index.html`），反馈手感，裁决玩法去向
+
+## 协作格局（2026-09-21 用户确认 v2，详见 docs/AI-HANDOFF.md）
+
+- 只做一款游戏：桥版（Shortcut Run 复刻）；画路径版停止
+- step-5（我）：Cocos/微信侧全部代码 + 集成 + 构建上架 + main 唯一写手
+- Qoder：cc-free 规则母本 + 关卡生成规范 + 数值平衡 + headless 验证，产出投 `docs/qoder/`，我审查后移植
+- Qoder 本轮任务：Q1 确认边界 / Q2 规则母本包 / Q3 数值平衡表 / Q4 关卡不变量测试
 
 ## 已完成
 

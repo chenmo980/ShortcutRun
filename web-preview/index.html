@@ -173,7 +173,8 @@ addEventListener('pointerdown', (e) => {
 });
 addEventListener('pointermove', (e) => {
   if (!dragging) return;
-  targetX += (e.clientX - dragLastX) * CFG.steerPerPixel;
+  // Three.js 右手系 + 相机看向 +Z ⇒ 屏幕右 = 世界 -X（与 Cocos 左手系相反，须取反）
+  targetX -= (e.clientX - dragLastX) * CFG.steerPerPixel;
   dragLastX = e.clientX;
   clampTarget();
 });
@@ -281,8 +282,8 @@ function loop() {
   stepAnims(dt);
 
   if (state === 'run' || state === 'fall') {
-    if (heldLeft) targetX -= CFG.keySteerSpeed * dt;
-    if (heldRight) targetX += CFG.keySteerSpeed * dt;
+    if (heldLeft) targetX += CFG.keySteerSpeed * dt;   // 屏幕左 = 世界 +X（手性修正）
+    if (heldRight) targetX -= CFG.keySteerSpeed * dt;
     clampTarget();
 
     const prevZ = player.position.z;

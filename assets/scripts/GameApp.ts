@@ -17,7 +17,7 @@ type State = 'ready' | 'run' | 'fall' | 'win' | 'lose';
 
 @ccclass('GameApp')
 export class GameApp extends Component {
-  @property({ type: Prefab, tooltip: '灰盒预制体：层级里建 Box → 拖到 assets 生成 prefab → 拖到这里' })
+  @property({ type: Prefab, tooltip: '可选：拖入 prefab 则用 prefab 渲染（换皮用）；不拖则用内置程序化灰盒（零装配）' })
   boxPrefab: Prefab | null = null;
 
   @property({ tooltip: '关卡种子：换一个数字就是一张新图' })
@@ -47,8 +47,7 @@ export class GameApp extends Component {
 
   onLoad(): void {
     if (!this.boxPrefab) {
-      console.error('[ShortcutRun] boxPrefab 未拖入！请按 SETUP.md 第 3 步操作');
-      return;
+      console.log('[ShortcutRun] 未指定 prefab，使用内置程序化灰盒（零装配模式）');
     }
     this.cfg = {
       ...CFG,

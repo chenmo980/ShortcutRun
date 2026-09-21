@@ -54,7 +54,8 @@ await page.keyboard.down('d');
 await sleep(1000);
 await page.keyboard.up('d');
 s = await page.evaluate(() => window.__game.getState());
-check('steer-input', s.x > 0.2, `x=${s.x.toFixed(2)}`);
+// 手性修正（Qoder 2026-09-21）：Three.js 屏幕右 = 世界 -X，右拖/按 D 应得 x < 0
+check('steer-input', s.x < -0.2, `x=${s.x.toFixed(2)}`);
 
 // 4. 铺桥路径：砖够 → 自动拍桥，状态保持 run
 await page.evaluate(() => window.__game.setBricks(60));
