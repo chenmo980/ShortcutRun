@@ -25,6 +25,13 @@ export class TrackBuilder extends Component {
 
   private gateWalls: Node[] = [];
   private stackNodes: Node[] = [];
+  // 程序化角色骨骼（与浏览器版 rig 一致）
+  private rigBody: Node | null = null;
+  private rigHead: Node | null = null;
+  private rigArmL: Node | null = null;
+  private rigArmR: Node | null = null;
+  private rigLegL: Node | null = null;
+  private rigLegR: Node | null = null;
 
   private box(kind: BoxKind, scale: Vec3, pos: Vec3, parent: Node): Node {
     if (this.boxPrefab) {
@@ -108,9 +115,29 @@ export class TrackBuilder extends Component {
   }
 
   buildPlayer(cfg: Cfg): Node {
-    const player = new Node('Player');
-    player.parent = this.node;
-    this.box('player', new Vec3(0.7, 1.5, 0.7), new Vec3(0, 0.75, 0), player).name = 'Body';
+    // 幂等：原地重开时复用同一个 Player 节点（相机跟随目标不用换）
+    let player = this.node.getChildByName('Player');
+    if (player) {
+      player.removeAllChildren();
+    } else {
+      player = new Node('Player');
+      player.parent = this.node;
+    }
+    this.rigBody = this.box('player', new Vec3(0.55, 0.62, 0.35), new Vec3(0, 0.98, 0), player);
+    this.rigBody.name = 'Body';
+    this.rigHead = this.box('skin', new Vec3(0.42, 0.42, 0.42), new Vec3(0, 1.5, 0), player);
+    this.rigHead.name = 'Head';
+
+    // 四肢用“枢轴节点”实现：枢轴在肩/髋，肢体挂在枢轴下，转枢轴就是摆手/蹬腿
+    this.rigArmL = new Node('ArmL'); this.rigArmL.parent = player; this.rigArmL.setPosition(new Vec3(-0.37, 1.22, 0));
+    this.rigArmR = new Node('ArmR'); this.rigArmR.parent = player; this.rigArmR.setPosition(new Vec3(0.37, 1.22, 0));
+    this.box('limb', new Vec3(0.16, 0.58, 0.16), new Vec3(0, -0.29, 0), this.rigArmL);
+    this.box('limb', new Vec3(0.16, 0.58, 0.16), new Vec3(0, -0.29, 0), this.rigArmR);
+
+    this.rigLegL = new Node('LegL'); this.rigLegL.parent = player; this.rigLegL.setPosition(new Vec3(-0.15, 0.68, 0));
+    this.rigLegR = new Node('LegR'); this.rigLegR.parent = player; this.rigLegR.setPosition(new Vec3(0.15, 0.68, 0));
+    this.box('limb', new Vec3(0.2, 0.68, 0.2), new Vec3(0, -0.34, 0), this.rigLegL);
+    this.box('limb', new Vec3(0.2, 0.68, 0.2), new Vec3(0, -0.34, 0), this.rigLegR);
 
     // 身后拖的砖块堆：携带量的可视化，最多显示 12 块
     for (let i = 0; i < 12; i++) {
@@ -120,6 +147,37 @@ export class TrackBuilder extends Component {
       this.stackNodes.push(brick);
     }
     return player;
+  }
+
+  // 程序化跑步/掉落/庆祝动画（与浏览器版 animateRig 一致，零动画资产）
+  syncRig(state: string, speed: number, t: number): void {
+    const setRx = (n: Node | null, rx: number) => { if (n) n.eulerAngles = new Vec3(rx, 0, 0); };
+    if (state === 'run') {
+      const freq = 5 + speed * 0.9;
+      const sw = Math.sin(t * freq);
+      setRx(this.rigLegL, sw * 0.75);
+      setRx(this.rigLegR, -sw * 0.75);
+      setRx(this.rigArmL, -sw * 0.55);
+      setRx(this.rigArmR, sw * 0.55);
+      const bob = Math.abs(Math.sin(t * freq)) * 0.05;
+      if (this.rigBody) this.rigBody.setPosition(new Vec3(0, 0.98 + bob, 0));
+      if (this.rigHead) this.rigHead.setPosition(new Vec3(0, 1.5 + bob, 0));
+    } else if (state === 'fall') {
+      const ft = t * 18;
+      setRx(this.rigLegL, Math.sin(ft) * 1.1);
+      setRx(this.rigLegR, Math.sin(ft + 2) * 1.1);
+      setRx(this.rigArmL, -2.6 + Math.sin(ft * 1.3) * 0.4);
+      setRx(this.rigArmR, -2.6 + Math.sin(ft * 1.1) * 0.4);
+    } else if (state === 'win') {
+      setRx(this.rigLegL, 0); setRx(this.rigLegR, 0);
+      setRx(this.rigArmL, -2.9); setRx(this.rigArmR, -2.9);
+    } else {
+      const sw = Math.sin(t * 2.2) * 0.12;
+      setRx(this.rigArmL, sw); setRx(this.rigArmR, sw);
+      setRx(this.rigLegL, 0); setRx(this.rigLegR, 0);
+      if (this.rigBody) this.rigBody.setPosition(new Vec3(0, 0.98, 0));
+      if (this.rigHead) this.rigHead.setPosition(new Vec3(0, 1.5, 0));
+    }
   }
 
   syncStack(count: number): void {

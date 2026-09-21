@@ -5,7 +5,7 @@
 const { ccclass } = _decorator;
 import { _decorator, Node, Vec3, Mesh, MeshRenderer, Material, utils, primitives, Color } from 'cc';
 
-export type BoxKind = 'road' | 'ground' | 'brick' | 'bridge' | 'player' | 'gate' | 'pillar';
+export type BoxKind = 'road' | 'ground' | 'brick' | 'bridge' | 'player' | 'limb' | 'skin' | 'gate' | 'pillar';
 
 export const COLORS: Record<BoxKind, Color> = {
   road: new Color(154, 162, 171, 255),
@@ -13,6 +13,8 @@ export const COLORS: Record<BoxKind, Color> = {
   brick: new Color(255, 213, 79, 255),
   bridge: new Color(176, 137, 104, 255),
   player: new Color(79, 195, 247, 255),
+  limb: new Color(33, 150, 243, 255),
+  skin: new Color(255, 224, 178, 255),
   gate: new Color(239, 83, 80, 255),
   pillar: new Color(84, 110, 122, 255),
 };

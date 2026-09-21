@@ -1,10 +1,11 @@
 // 关卡程序化生成：给定种子确定性产出跑道/断崖/砖块拾取/终点门
 // 纯逻辑模块，不依赖 cc，可用 node tools/smoke.ts 直接测试
 //
-// genLevel = v1（parity 基线，与 docs/qoder/bridge-rules.mjs 逐 seed 一致）
-// genLevelV2 = Qoder 评审修复版：兜底补砖改补进「最早缺砖区间」，保证前缀可行
-//   - D1：v1 有 2.75% 关卡全局砖不足（数学上不可能通关）
-//   - D2：v1 有 16.4% 关卡存在前缀死局（走到第 i 崖时累计余砖 < 0）
+// 母本：docs/qoder/bridge-rules.mjs（Qoder 维护，cc-free 唯一规则源）
+// 本文件是 TS 移植版，必须与母本位级一致（smoke.ts parity 断言）
+// - genLevel   = v1 基线（opts.tailSafe 供 v3 使用）
+// - genLevelV2 = v2.1：repairPrefixSupply(margin=0) + spaceOutPickups
+// - genLevelV3 = 生产版：tailSafe（D1 几何根治）+ margin/k 双目标供给修复
 import type { Cfg } from './config';
 
 export interface GapDef {
@@ -38,7 +39,9 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-export function genLevel(seed: number, cfg: Cfg): LevelDef {
+// opts.tailSafe=true：D1 根治——把最后一个断崖钳到 length-14 之前，末段恒 >=8m
+export function genLevel(seed: number, cfg: Cfg, opts: { tailSafe?: boolean } = {}): LevelDef {
+  const tailSafe = opts.tailSafe === true;
   const rnd = mulberry32(seed);
   const halfW = cfg.trackHalfWidth - 0.8; // 拾取物不贴边
 
@@ -46,7 +49,12 @@ export function genLevel(seed: number, cfg: Cfg): LevelDef {
   const gaps: GapDef[] = [];
   let z = 8; // 起步安全跑道
   while (z < cfg.levelLength - 14) {
-    const width = cfg.gapWidthMin + rnd() * (cfg.gapWidthMax - cfg.gapWidthMin);
+    let width = cfg.gapWidthMin + rnd() * (cfg.gapWidthMax - cfg.gapWidthMin);
+    if (tailSafe) {
+      const room = cfg.levelLength - 14 - z;
+      if (room < cfg.gapWidthMin) break;
+      width = Math.min(width, room);
+    }
     gaps.push({ zStart: z, zEnd: z + width, cost: Math.ceil(width) });
     z = z + width + cfg.gapIntervalMin + rnd() * (cfg.gapIntervalMax - cfg.gapIntervalMin);
   }
@@ -88,9 +96,7 @@ export function levelStats(level: LevelDef, cfg: Cfg) {
   return { obtainable, need, ok: obtainable >= need };
 }
 
-// ================= v2 修复（移植自 docs/qoder/bridge-rules.mjs，母本优先） =================
-
-// 可跑区间（注意：末段到 gateZ，与 genLevel 里排版用的 runZones 略有差异）
+// 可跑区间（末段到 gateZ，与 genLevel 排版用的 runZones 略有差异）
 export function zonesOf(level: LevelDef): Array<[number, number]> {
   const zones: Array<[number, number]> = [];
   let prev = 0;
@@ -100,7 +106,7 @@ export function zonesOf(level: LevelDef): Array<[number, number]> {
 }
 
 // 前缀供需：玩家顺序前进，走到第 i 个断崖时只花得起前 i 段吃到的砖。
-// surplus 任一项 < 0 = 该关卡对顺序玩家存在死局（D2）。
+// surplus 任一项 < 0 = 对顺序玩家存在死局（D2）。
 export function prefixBalance(level: LevelDef, cfg: Cfg) {
   const zones = zonesOf(level);
   const perZone = zones.map(([z0, z1]) =>
@@ -117,23 +123,37 @@ export function prefixBalance(level: LevelDef, cfg: Cfg) {
   return { perZone, surplus, feasible: surplus.every((s) => s >= 0), minSurplus, minAt: surplus.indexOf(minSurplus) };
 }
 
-function chooseZoneToFix(zones: Array<[number, number]>, badGapIdx: number): number {
+function chooseZoneToFix(zones: Array<[number, number]>, _level: LevelDef, badGapIdx: number): number {
+  // 优先补「紧挨着死断崖之前」且长度足够的区间；往前找
   for (let i = badGapIdx; i >= 0; i--) {
     if (zones[i][1] - zones[i][0] >= 6) return i;
   }
   return -1;
 }
 
-// v2：兜底补砖改为「补进最早缺砖的可跑区间」，保证前缀可行（D1/D2 双修）
-export function genLevelV2(seed: number, cfg: Cfg): LevelDef {
-  const level = genLevel(seed, cfg);
+// 供给修复：每个前缀点 i 同时满足
+//   ① surplus_i >= margin（绝对容错，块）
+//   ② 累计供给 >= k × 累计需求（乘法溢出；k=1 时即①的特例）
+// 依据：失误人形 bot 归因实测——漏吃 25% 时纯加法 margin 在 L7 胜率 0%，瓶颈唯一是供给量
+function repairPrefixSupply(level: LevelDef, cfg: Cfg, seed: number, margin: number, k = 1): void {
   const zones = zonesOf(level);
   let guard = 0;
   while (guard++ < 500) {
-    const { surplus } = prefixBalance(level, cfg);
-    const bad = surplus.findIndex((s) => s < 0);
+    const { surplus, perZone } = prefixBalance(level, cfg);
+    // 累计需求：demand[i] = 过完第 i 个断崖所需总砖；末位含终点门
+    const demand: number[] = [];
+    let d = 0;
+    for (const g of level.gaps) { d += g.cost; demand.push(d); }
+    demand.push(d + level.gateCost);
+    const supply: number[] = []; // 累计供给（块）
+    let acc = 0;
+    for (let i = 0; i < perZone.length; i++) { acc += perZone[i]; supply.push(acc); }
+    let bad = -1;
+    for (let i = 0; i < surplus.length; i++) {
+      if (surplus[i] < margin || supply[i] < k * demand[i] - 1e-9) { bad = i; break; }
+    }
     if (bad === -1) break;
-    const zoneIdx = chooseZoneToFix(zones, bad);
+    const zoneIdx = chooseZoneToFix(zones, level, bad);
     if (zoneIdx < 0) break;
     const [z0, z1] = zones[zoneIdx];
     const rnd = mulberry32(seed * 7919 + guard); // 修复用独立子种子，保持确定性
@@ -142,5 +162,50 @@ export function genLevelV2(seed: number, cfg: Cfg): LevelDef {
       z: z0 + 2 + rnd() * Math.max(1, z1 - z0 - 4),
     });
   }
+}
+
+// 同区间内拾取沿 z 摊开：先保持首个不动逐个前推；撞区间尾则从尾部回推。
+// 确定性、纯几何，不增删拾取所以不影响供需
+export function spaceOutPickups(level: LevelDef, zones: Array<[number, number]>, minGap = 4): void {
+  for (const [z0, z1] of zones) {
+    const inZone = level.pickups
+      .filter((p) => p.z >= z0 && p.z < z1)
+      .sort((a, b) => a.z - b.z);
+    if (inZone.length < 2) continue;
+    const lo = z0 + 1, hi = z1 - 1;
+    if (hi - lo < minGap * (inZone.length - 1)) {
+      for (let i = 0; i < inZone.length; i++) {
+        inZone[i].z = lo + ((hi - lo) * i) / (inZone.length - 1); // 区间容不下标准间距：均匀摊
+      }
+      continue;
+    }
+    for (let i = 1; i < inZone.length; i++) {
+      inZone[i].z = Math.max(inZone[i].z, inZone[i - 1].z + minGap);
+    }
+    if (inZone[inZone.length - 1].z > hi) {
+      inZone[inZone.length - 1].z = hi;
+      for (let i = inZone.length - 2; i >= 0; i--) {
+        inZone[i].z = Math.min(inZone[i].z, inZone[i + 1].z - minGap);
+      }
+    }
+  }
+}
+
+// v2.1：margin=0 前缀可行 + 拾取摊开
+export function genLevelV2(seed: number, cfg: Cfg): LevelDef {
+  const level = genLevel(seed, cfg);
+  const zones = zonesOf(level);
+  repairPrefixSupply(level, cfg, seed, 0);
+  spaceOutPickups(level, zones);
+  return level;
+}
+
+// v3 生产版：tailSafe + margin/k 双目标供给修复 + 拾取摊开
+export function genLevelV3(seed: number, cfg: Cfg, opts: { margin?: number; ratio?: number } = {}): LevelDef {
+  const margin = opts.margin ?? cfg.supplyMargin ?? 2;
+  const k = opts.ratio ?? cfg.supplyRatio ?? 1;
+  const level = genLevel(seed, cfg, { tailSafe: true });
+  repairPrefixSupply(level, cfg, seed, margin, k);
+  spaceOutPickups(level, zonesOf(level));
   return level;
 }

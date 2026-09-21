@@ -1,13 +1,15 @@
-// 游戏主控：状态机 + 输入 + 核心规则
-// 规则：自动前进 → 吃砖块 → 到断崖砖够就自动铺桥、砖够就掉下去 → 终点门验砖
-// 挂法：场景根节点建空节点挂本脚本，拖入灰盒 prefab，按 ▶ 即玩
+// 游戏主控：状态机 + 输入 + 核心规则 + 关卡循环
+// 规则：自动前进 → 吃砖块 → 到断崖砖够就自动铺桥、砖不够就掉下去 → 终点门验砖
+// 关卡循环：胜利 → 下一关（新地图）；失败 → 本关重试（新地图同难度）；原地重建，不重载场景
+// 挂法：打开 assets/scenes/game.scene，按 ▶ 即玩（零装配）
 const { ccclass, property } = _decorator;
 import {
   _decorator, Component, Node, Prefab, Vec3, Camera, input, Input,
-  EventTouch, EventKeyboard, KeyCode, director,
+  EventTouch, EventKeyboard, KeyCode,
 } from 'cc';
 import { CFG, Cfg } from './config';
-import { genLevelV2, LevelDef } from './LevelGen';
+import { genLevelV3, LevelDef } from './LevelGen';
+import { cfgForLevel } from './LevelCurve';
 import { TrackBuilder, RuntimePickup } from './TrackBuilder';
 import { CameraFollow } from './CameraFollow';
 import { GameUI } from './GameUI';
@@ -20,15 +22,19 @@ export class GameApp extends Component {
   @property({ type: Prefab, tooltip: '可选：拖入 prefab 则用 prefab 渲染（换皮用）；不拖则用内置程序化灰盒（零装配）' })
   boxPrefab: Prefab | null = null;
 
-  @property({ tooltip: '关卡种子：换一个数字就是一张新图' })
+  @property({ tooltip: '关卡种子基数：实际种子 = 关卡号×1000 + 尝试次数' })
   seed = 1;
 
+  @property({ tooltip: '开启后按 L1-L10 难度曲线生成关卡（LevelCurve.ts）' })
+  useCurve = true;
+
+  // 以下三项仅 useCurve=false 时生效（手动调参用）
   @property runSpeed = CFG.runSpeed;
   @property levelLength = CFG.levelLength;
   @property gateCost = CFG.gateCost;
 
   private cfg!: Cfg;
-  private level!: LevelDef;
+  private levelDef!: LevelDef;
   private track!: TrackBuilder;
   private player!: Node;
   private camFollow!: CameraFollow;
@@ -36,6 +42,8 @@ export class GameApp extends Component {
   private ui: GameUI | null = null;
 
   private state: State = 'ready';
+  private levelNum = 1;
+  private attempt = 1;
   private bricks = 0;
   private speed = 0;
   private targetX = 0;
@@ -44,49 +52,61 @@ export class GameApp extends Component {
   private dragLastX = 0;
   private heldLeft = false;
   private heldRight = false;
+  private elapsed = 0;
 
   onLoad(): void {
     if (!this.boxPrefab) {
       console.log('[ShortcutRun] 未指定 prefab，使用内置程序化灰盒（零装配模式）');
     }
-    this.cfg = {
-      ...CFG,
-      runSpeed: this.runSpeed,
-      levelLength: this.levelLength,
-      gateCost: this.gateCost,
-    };
-    this.level = genLevelV2(this.seed, this.cfg);
-    console.log(
-      `[ShortcutRun] 关卡 seed=${this.seed} 断崖=${this.level.gaps.length} ` +
-      `拾取=${this.level.pickups.length} 终点z=${this.level.gateZ.toFixed(1)} 门需求=${this.cfg.gateCost}`
-    );
 
     const trackNode = new Node('Track');
     trackNode.parent = this.node;
     this.track = trackNode.addComponent(TrackBuilder)!;
     this.track.boxPrefab = this.boxPrefab;
-    this.track.build(this.level, this.cfg);
-    this.pickups = this.track.pickups;
-
-    this.player = this.track.buildPlayer(this.cfg);
-    this.player.eulerAngles = new Vec3(0.05, 0, 0);
 
     const camNode = this.findOrCreateCamera();
     this.camFollow = camNode.addComponent(CameraFollow)!;
+
+    // HUD 可选：场景里有挂了 GameUI 的 Canvas 就接上，否则只打日志
+    const canvasNode = this.node.scene.getChildByName('Canvas');
+    this.ui = canvasNode ? canvasNode.getComponent(GameUI) : null;
+
+    this.bindInput();
+    this.startLevel();
+  }
+
+  // 开局/重开：生成关卡、搭场景、复位状态（原地重建，不重载场景）
+  private startLevel(): void {
+    this.cfg = this.useCurve
+      ? cfgForLevel(this.levelNum, CFG)
+      : { ...CFG, runSpeed: this.runSpeed, levelLength: this.levelLength, gateCost: this.gateCost };
+    this.levelDef = genLevelV3(this.levelNum * 1000 + this.attempt, this.cfg);
+    console.log(
+      `[ShortcutRun] 第 ${this.levelNum} 关 (attempt ${this.attempt}) 断崖=${this.levelDef.gaps.length} ` +
+      `拾取=${this.levelDef.pickups.length} 终点z=${this.levelDef.gateZ.toFixed(1)} 门需求=${this.cfg.gateCost}`
+    );
+
+    this.track.build(this.levelDef, this.cfg);
+    this.pickups = this.track.pickups;
+    this.player = this.track.buildPlayer(this.cfg);
+    this.player.setPosition(new Vec3(0, 0, 0));
+    this.player.eulerAngles = new Vec3(0, 0, 0);
     this.camFollow.target = this.player;
     this.camFollow.offsetY = this.cfg.camOffsetY;
     this.camFollow.offsetZ = this.cfg.camOffsetZ;
     this.camFollow.xFactor = this.cfg.camXFactor;
     this.camFollow.lerp = this.cfg.camLerp;
 
-    this.bindInput();
+    this.state = 'ready';
+    this.bricks = 0;
     this.speed = this.cfg.runSpeed;
-
-    // HUD 可选：场景里有挂了 GameUI 的 Canvas 就接上，否则只打日志
-    const canvasNode = this.node.scene.getChildByName('Canvas');
-    this.ui = canvasNode ? canvasNode.getComponent(GameUI) : null;
+    this.targetX = 0;
+    this.fallVel = 0;
+    this.heldLeft = false;
+    this.heldRight = false;
+    this.dragging = false;
     this.ui?.setBricks(0);
-    this.ui?.showHint(`点击开始 · 终点需 ${this.cfg.gateCost} 砖`);
+    this.ui?.showHint(`第 ${this.levelNum} 关 · 点击开始（终点需 ${this.cfg.gateCost} 砖）`);
   }
 
   private findOrCreateCamera(): Node {
@@ -100,9 +120,9 @@ export class GameApp extends Component {
   }
 
   // ---------------- 输入 ----------------
-
   // 注意：Cocos 在 PC 预览时会把鼠标映射为触摸事件，所以只绑 TOUCH_*。
   // 同时绑 MOUSE_* 会让桌面预览转向灵敏度翻倍（Qoder 评审发现，2026-09-21 已修）。
+
   private bindInput(): void {
     input.on(Input.EventType.TOUCH_START, this.onTouchStart, this);
     input.on(Input.EventType.TOUCH_MOVE, this.onTouchMove, this);
@@ -113,7 +133,7 @@ export class GameApp extends Component {
     input.on(Input.EventType.KEY_UP, this.onKeyUp, this);
   }
 
-  // 场景 reload 时旧实例不会自动解绑全局 input 监听，必须手动 off，否则新旧两个实例同时响应
+  // 场景重载时旧实例不会自动解绑全局 input 监听，必须手动 off
   onDestroy(): void {
     input.off(Input.EventType.TOUCH_START, this.onTouchStart, this);
     input.off(Input.EventType.TOUCH_MOVE, this.onTouchMove, this);
@@ -174,7 +194,11 @@ export class GameApp extends Component {
   // ---------------- 主循环 ----------------
 
   update(dt: number): void {
-    if (this.state === 'ready' || this.state === 'win' || this.state === 'lose') return;
+    this.elapsed += dt;
+    if (this.state === 'ready' || this.state === 'win' || this.state === 'lose') {
+      this.track.syncRig(this.state, 0, this.elapsed);
+      return;
+    }
 
     if (this.heldLeft) this.targetX -= this.cfg.keySteerSpeed * dt;
     if (this.heldRight) this.targetX += this.cfg.keySteerSpeed * dt;
@@ -193,12 +217,12 @@ export class GameApp extends Component {
     } else if (this.state === 'fall') {
       this.fallVel += 22 * dt;
       y -= this.fallVel * dt;
-      if (y < -8) { this.lose(); return; }
+      if (y < -8) { this.lose('掉落！'); return; }
     }
 
-    this.player.setPosition(new Vec3(x, y, z));
+    this.player.setPosition(new Vec3(x, y, z)); // rig 根节点在脚底
     const tilt = clamp((this.targetX - x) * 0.25, -0.35, 0.35);
-    this.player.eulerAngles = new Vec3(this.state === 'fall' ? -0.9 : 0.05, 0, -tilt);
+    this.player.eulerAngles = new Vec3(this.state === 'fall' ? -0.9 : 0.04, 0, -tilt);
 
     if (this.state === 'run') {
       this.checkPickups(x, prevZ, z);
@@ -206,6 +230,7 @@ export class GameApp extends Component {
       this.checkGate(z);
     }
     this.track.syncStack(this.bricks);
+    this.track.syncRig(this.state, this.speed, this.elapsed);
   }
 
   // 拾取判定：本帧位移区间 [prevZ, z] 与拾取点区间相交即吃到（防高帧移动量穿透）
@@ -221,9 +246,9 @@ export class GameApp extends Component {
     }
   }
 
-  // 断崖判定：本帧是否进入断崖区（扫掠，防穿透）。砖够拍桥，砖够掉落
+  // 断崖判定：本帧是否进入断崖区（扫掠，防穿透）。砖够拍桥，砖不够掉落
   private checkGaps(prevZ: number, z: number): void {
-    for (const g of this.level.gaps) {
+    for (const g of this.levelDef.gaps) {
       if (g.bridged) continue;
       if (z >= g.zStart && prevZ < g.zEnd + 0.5) {
         if (this.bricks >= g.cost) {
@@ -241,14 +266,14 @@ export class GameApp extends Component {
   }
 
   private enterFall(): void {
-    console.log(`[ShortcutRun] 砖不够 ${this.bricks}/${this.level.gateCost}，掉落！`);
+    console.log('[ShortcutRun] 砖不够，掉落！');
     this.ui?.showHint('掉落！');
     this.state = 'fall';
     this.fallVel = 1;
   }
 
   private checkGate(z: number): void {
-    if (z >= this.level.gateZ - 0.5) {
+    if (z >= this.levelDef.gateZ - 0.5) {
       if (this.bricks >= this.cfg.gateCost) this.win();
       else this.lose(`终点砖不够 ${this.bricks}/${this.cfg.gateCost}`);
     }
@@ -260,33 +285,30 @@ export class GameApp extends Component {
     if (this.state === 'ready') {
       this.state = 'run';
       this.ui?.hideHint();
-      console.log('[ShortcutRun] GO! 拖动鼠标 / A D 转向');
+      console.log('[ShortcutRun] GO!');
     }
   }
 
   private win(): void {
     this.state = 'win';
     this.track.openGate();
-    this.ui?.showHint('胜利！');
+    this.ui?.showHint(`第 ${this.levelNum} 关通过！`);
     const p = this.player.position;
     tweenPos(this.player, 0.25, new Vec3(p.x, p.y + 0.7, p.z), () => {
       tweenPos(this.player, 0.25, new Vec3(p.x, p.y, p.z));
     });
-    console.log('[ShortcutRun] WIN! 1.6 秒后重开');
-    this.reload(1.6);
+    console.log(`[ShortcutRun] WIN 第 ${this.levelNum} 关！1.6 秒后进入第 ${this.levelNum + 1} 关`);
+    this.levelNum += 1;
+    this.attempt = 1;
+    this.scheduleOnce(() => this.startLevel(), 1.6);
   }
 
   private lose(reason = '失败'): void {
     if (this.state === 'lose') return;
     this.state = 'lose';
-    this.ui?.showHint(reason);
-    console.log(`[ShortcutRun] LOSE: ${reason}. 1.6 秒后重开`);
-    this.reload(1.6);
-  }
-
-  private reload(delay: number): void {
-    this.scheduleOnce(() => {
-      director.loadScene(director.getScene()!.name);
-    }, delay);
+    this.ui?.showHint(`${reason} · 重试`);
+    console.log(`[ShortcutRun] LOSE: ${reason}. 1.6 秒后重试第 ${this.levelNum} 关`);
+    this.attempt += 1;
+    this.scheduleOnce(() => this.startLevel(), 1.6);
   }
 }

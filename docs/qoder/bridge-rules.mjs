@@ -25,14 +25,22 @@ export function mulberry32(seed) {
 }
 
 // —— 与 assets/scripts/LevelGen.ts 逐行为对齐的母本实现（parity 基线）——
-export function genLevel(seed, cfg = DEFAULT_CFG) {
+// opts.tailSafe=true：D1 根治——把最后一个断崖钳回 length-14 之前，末段恒 >=8m。
+// 默认 false 保持与现网 TS 位级一致，仅供 genLevelV3 内部使用。
+export function genLevel(seed, cfg = DEFAULT_CFG, opts = {}) {
+  const tailSafe = opts.tailSafe === true;
   const rnd = mulberry32(seed);
   const halfW = cfg.trackHalfWidth - 0.8;
 
   const gaps = [];
   let z = 8;
   while (z < cfg.levelLength - 14) {
-    const width = cfg.gapWidthMin + rnd() * (cfg.gapWidthMax - cfg.gapWidthMin);
+    let width = cfg.gapWidthMin + rnd() * (cfg.gapWidthMax - cfg.gapWidthMin);
+    if (tailSafe) {
+      const room = cfg.levelLength - 14 - z;
+      if (room < cfg.gapWidthMin) break;
+      width = Math.min(width, room);
+    }
     gaps.push({ zStart: z, zEnd: z + width, cost: Math.ceil(width) });
     z = z + width + cfg.gapIntervalMin + rnd() * (cfg.gapIntervalMax - cfg.gapIntervalMin);
   }
@@ -102,10 +110,43 @@ export function prefixBalance(level, cfg = DEFAULT_CFG) {
 export function genLevelV2(seed, cfg = DEFAULT_CFG) {
   const level = genLevel(seed, cfg);
   const zones = zonesOf(level);
+  repairPrefixSupply(level, cfg, seed, 0);
+  spaceOutPickups(level, zones); // v2.1：同区间两拾取 z 间距 >=4m，消除"二选一"贪心死角
+  return level;
+}
+
+// —— v3：D1 几何根治（tailSafe）+ 按难度带的供给修复（margin + 倍率 k）——
+// 修复目标（每个前缀点 i 同时满足）：
+//   ① 余量 surplus_i >= margin（绝对容错，块）
+//   ② 累计供给 >= k × 累计需求（乘法溢出；k=1 时即①的特例）
+// 依据：失误人形 bot 归因实测（sim.mjs §11）——漏吃 25% 时纯加法 margin 下 L7 胜率 0%，
+// 反应/横移/瞄准全绿；瓶颈唯一是供给量。真人有效拾取率≈65~75%，故 k 带 1.35~2.0。
+export function genLevelV3(seed, cfg = DEFAULT_CFG, opts = {}) {
+  const margin = opts.margin ?? cfg.supplyMargin ?? 2;
+  const k = opts.supplyRatio ?? cfg.supplyRatio ?? 1;
+  const level = genLevel(seed, cfg, { tailSafe: true });
+  repairPrefixSupply(level, cfg, seed, margin, k);
+  spaceOutPickups(level, zonesOf(level));
+  return level;
+}
+
+function repairPrefixSupply(level, cfg, seed, margin, k = 1) {
+  const zones = zonesOf(level);
   let guard = 0;
   while (guard++ < 500) {
-    const { surplus } = prefixBalance(level, cfg);
-    const bad = surplus.findIndex((s) => s < 0);
+    const { surplus, perZone } = prefixBalance(level, cfg);
+    // 累计需求：demand[i]=过完第 i 个断崖所需总砖；末位含终点门
+    const demand = [];
+    let d = 0;
+    for (const g of level.gaps) { d += g.cost; demand.push(d); }
+    demand.push(d + level.gateCost);
+    const supply = []; // 累计供给（块）
+    let acc = 0;
+    for (let i = 0; i < perZone.length; i++) { acc += perZone[i]; supply.push(acc); }
+    let bad = -1;
+    for (let i = 0; i < surplus.length; i++) {
+      if (surplus[i] < margin || supply[i] < k * demand[i] - 1e-9) { bad = i; break; }
+    }
     if (bad === -1) break;
     // 在第 bad 个断崖之前的区间里补一组砖（挑余量最负点之前的可跑区间）
     const zoneIdx = chooseZoneToFix(zones, level, bad);
@@ -117,7 +158,33 @@ export function genLevelV2(seed, cfg = DEFAULT_CFG) {
       z: z0 + 2 + rnd() * Math.max(1, z1 - z0 - 4),
     });
   }
-  return level;
+}
+
+// 同区间内拾取沿 z 摊开：先保持首个不动逐个前推；撞区间尾则从尾部回推。
+// 确定性、纯几何，不增删拾取所以不影响供需
+export function spaceOutPickups(level, zones, minGap = 4) {
+  for (const [z0, z1] of zones) {
+    const inZone = level.pickups
+      .filter((p) => p.z >= z0 && p.z < z1)
+      .sort((a, b) => a.z - b.z);
+    if (inZone.length < 2) continue;
+    const lo = z0 + 1, hi = z1 - 1;
+    if (hi - lo < minGap * (inZone.length - 1)) {
+      for (let i = 0; i < inZone.length; i++) {
+        inZone[i].z = lo + ((hi - lo) * i) / (inZone.length - 1); // 区间容不下标准间距：均匀摊
+      }
+      continue;
+    }
+    for (let i = 1; i < inZone.length; i++) {
+      inZone[i].z = Math.max(inZone[i].z, inZone[i - 1].z + minGap);
+    }
+    if (inZone[inZone.length - 1].z > hi) {
+      inZone[inZone.length - 1].z = hi;
+      for (let i = inZone.length - 2; i >= 0; i--) {
+        inZone[i].z = Math.min(inZone[i].z, inZone[i + 1].z - minGap);
+      }
+    }
+  }
 }
 
 function chooseZoneToFix(zones, level, badGapIdx) {
@@ -129,26 +196,45 @@ function chooseZoneToFix(zones, level, badGapIdx) {
   return -1;
 }
 
+// 「平均玩家」标准参数（QA 口径，sim/step-5 smoke 共用）：
+// 25% 吃到仍漏 + 180ms 反应间隔 + 35cm 瞄准偏差 + 6.5m/s 横移（贪心是 9）
+export const HUMAN_AVG = { pMiss: 0.25, reactSec: 0.18, jitter: 0.35, lateralMax: 6.5 };
+
 // —— bot 模拟器（QA 门禁）：按 GameApp 运行时规则逐步推进，贪心吃砖 ——
 // 规则镜像：速度=min(maxSpeed, runSpeed+bricks*speedPerBrick)；
 // 拾取扫掠 [prevZ,z]∋p.z±0.7 且 |x-p.x|<0.95；断崖扫掠进区即 扣砖铺桥/否则掉落；门 z>=gateZ-0.5 验砖
+// opts 全缺省 = 零失误贪心（既有断言口径）；传 reactSec/pMiss/jitter 变"失误人形 bot"：
+//   reactSec 目标重算间隔（>0 时不再逐帧完美规划）、pMiss 每次吃到时漏吃概率、
+//   jitter 瞄准横偏（±米）、look 前瞻距离。seed 保证确定，漏吃用 missed[] 标记防重复掷骰。
 export function botRun(level, cfg = DEFAULT_CFG, opts = {}) {
   const lateralMax = opts.lateralMax ?? 9; // 人手横移极限（m/s），保守值
   const dt = opts.dt ?? 1 / 60;
+  const reactSec = opts.reactSec ?? 0;
+  const pMiss = opts.pMiss ?? 0;
+  const jitter = opts.jitter ?? 0;
+  const look = opts.look ?? 12;
+  const rnd = pMiss || jitter ? mulberry32(opts.seed ?? 1) : null;
   const taken = level.pickups.map(() => false);
+  const missed = level.pickups.map(() => false);
   const bridged = level.gaps.map(() => false);
   let x = 0, z = 0, bricks = 0, t = 0;
+  let target = 0, lastPlan = -Infinity;
   const maxT = opts.maxT ?? 60;
   while (t < maxT) {
     const speed = Math.min(cfg.maxSpeed, cfg.runSpeed + bricks * cfg.speedPerBrick);
     const prevZ = z;
     z += speed * dt;
-    // 目标横位 = 前方 12m 内最近未吃拾取的 x（没有就回中）
-    let target = 0, bestZ = Infinity;
-    for (let i = 0; i < level.pickups.length; i++) {
-      const p = level.pickups[i];
-      if (taken[i] || p.z < z - 0.7 || p.z > z + 12) continue;
-      if (p.z < bestZ) { bestZ = p.z; target = p.x; }
+    // 目标横位：贪心=前方 look 内最近未吃拾取；人形=每 reactSec 才重算一次
+    if (reactSec <= 0 || t - lastPlan >= reactSec) {
+      target = 0;
+      let bestZ = Infinity;
+      for (let i = 0; i < level.pickups.length; i++) {
+        const p = level.pickups[i];
+        if (taken[i] || missed[i] || p.z < z - 0.7 || p.z > z + look) continue;
+        if (p.z < bestZ) { bestZ = p.z; target = p.x; }
+      }
+      if (rnd && jitter) target += (rnd() * 2 - 1) * jitter;
+      lastPlan = t;
     }
     const dx = target - x;
     const lim = lateralMax * dt;
@@ -158,10 +244,11 @@ export function botRun(level, cfg = DEFAULT_CFG, opts = {}) {
     t += dt;
 
     for (let i = 0; i < level.pickups.length; i++) {
-      if (taken[i]) continue;
+      if (taken[i] || missed[i]) continue;
       const p = level.pickups[i];
       if (z >= p.z - 0.7 && prevZ <= p.z + 0.7 && Math.abs(x - p.x) < 0.95) {
-        taken[i] = true; bricks += cfg.brickCluster;
+        if (rnd && rnd() < pMiss) missed[i] = true;
+        else { taken[i] = true; bricks += cfg.brickCluster; }
       }
     }
     for (let i = 0; i < level.gaps.length; i++) {
