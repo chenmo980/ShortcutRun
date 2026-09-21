@@ -17,10 +17,20 @@
 - [x] T4 Cocos GameUI 扩展：结算行（星级/用时/最佳）+ 关卡徽章
 - [x] T5 音效管线：AudioMgr.ts 骨架（素材即插即用）+ docs/audio-assets.md 采购清单
 - [x] T6 微信构建预演：docs/wechat-build.md（竖屏/包体预算/真机清单/已知坑）
-- [x] T7 全量回归：smoke + verify-web 11/11 + sim 25 项全绿（bridge 测试改确定性事件等待）
-- [x] Q5 主题规范落地：theme.mjs 断言锁 + PROPOSALS 修复色并入 Theme.ts（day/city/candy 三盘全过对比度+色盲规范）
-- [x] Q6 G1 数据回调方案（Qoder 交付 docs/qoder/g1-tuning.md）
+- [x] T7 全量回归：smoke + verify-web 11/11 + sim 25 项全绿
+- [x] Q5 主题规范落地：theme.mjs 断言锁 + PROPOSALS 修复色已并入 Theme.ts（day/city/candy 三盘全过对比度+色盲规范）
+- [x] Q6 G1 数据回调方案：docs/qoder/g1-tuning.md（Qoder 交付）
 - [x] v4 道具系统移植（Qoder）：±N 增减门 + 速度鞋，默认关闭（字节锚不变），母本 §19-§21 全锁
+
+## 第二批：G1 反馈批量改进（2026-09-22，用户四类全中后）
+
+- [x] J1 爽感反馈：吃砖浮动 +N / 铺桥震屏+轻微减速 / 速度 FOV 冲刺(45→53) / 掉落震屏（双版本）
+- [x] J2 视觉信息量：道路白边线 / 断崖前黄黑警示条纹 / 主题两侧建筑群 26 栋（双版本）
+- [x] J3 难度可读性：开始界面显示本关目标（终点需 X 砖 · 3★ ≤Xs 且余砖≥3）
+- [x] J4 操作手感：铺桥瞬间减速 ×0.55（落桥停顿感）、FOV 随速度冲刺
+- [x] J5 Cocos 同步：CameraFollow 震屏+FOV / TrackBuilder 边线警示建筑 / Theme building 色键
+- [x] J6 三套件全绿（verify-web 升至 13 项，含 Qoder 加的道具门断言）
+- [ ] **失败慢动作**（浏览器版已有 slow-mo；Cocos 版待接 director.timeScale）
 - [x] T8 PAR 星线换表同步（2026-09-22）：Progression.ts + web-preview 内联改走 parFor(level)（loop 补偿 +2.5s/loop，修 L11+ 三星恒不可达）；smoke 新增 PAR 漂移锁 L1-L60；§17 转绿
 
 ## 时间预期（说实话）

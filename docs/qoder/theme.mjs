@@ -78,13 +78,15 @@ const PAIRS = [
 
 export const ROLE_KEYS = ['sky', 'ground', 'road', 'brick', 'bridge', 'player', 'limb', 'skin', 'gate', 'pillar'];
 
-export function verifyTheme(t) {
+export function verifyTheme(t, opts = {}) {
+  const night = opts.night === true || t.night === true;
   const bad = [];
   for (const k of ROLE_KEYS) {
     if (!(typeof t[k] === 'number' && t[k] >= 0 && t[k] <= 0xffffff)) bad.push(`缺键/坏值 ${k}`);
   }
   if (bad.length) return bad;
   for (const [a, b, cMin, hueAlt, cvdMin] of PAIRS) {
+    if (night && a === 'gate' && b === 'sky') continue; // 夜盘门对暗天不要求明度序
     const x = t[a], y = t[b];
     let ok = contrast(x, y) >= cMin;
     if (!ok && hueAlt) ok = hueGap(x, y) >= hueAlt[0] && Math.min(satOf(x), satOf(y)) >= hueAlt[1];
@@ -92,8 +94,10 @@ export function verifyTheme(t) {
     if (!ok) bad.push(`${a}vs${b}(c=${contrast(x, y).toFixed(2)} cvd=${cvdWorst(x, y).toFixed(2)} hue=${hueGap(x, y).toFixed(0)})`);
   }
   const L = relLum;
-  if (!(L(t.sky) >= 0.38)) bad.push(`天空亮度${L(t.sky).toFixed(2)}<0.38`);
-  if (!(Math.abs(L(t.sky) - L(t.road)) >= 0.15)) bad.push('天路明暗序');
+  if (!night) {
+    if (!(L(t.sky) >= 0.38)) bad.push(`天空亮度${L(t.sky).toFixed(2)}<0.38`);
+    if (!(Math.abs(L(t.sky) - L(t.road)) >= 0.15)) bad.push('天路明暗序');
+  }
   if (!(satOf(t.brick) >= 0.5 && L(t.brick) >= 0.1 && L(t.brick) <= 0.9)) bad.push('砖饱和/明度带');
   if (!(satOf(t.gate) >= 0.5 && L(t.gate) <= 0.65)) bad.push('门饱和/明度带');
   if (!(satOf(t.road) <= 0.55)) bad.push('路面高饱和抢戏');
