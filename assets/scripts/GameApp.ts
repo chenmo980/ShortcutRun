@@ -13,6 +13,7 @@ import { cfgForLevel } from './LevelCurve';
 import { createProgress, ProgressStore } from './Progression';
 import { cycleTheme, currentTheme } from './Theme';
 import { applyTheme } from './BoxFactory';
+import { AudioMgr } from './AudioMgr';
 import { TrackBuilder, RuntimePickup } from './TrackBuilder';
 import { CameraFollow } from './CameraFollow';
 import { GameUI } from './GameUI';
@@ -44,6 +45,7 @@ export class GameApp extends Component {
   private pickups: RuntimePickup[] = [];
   private ui: GameUI | null = null;
   private prog!: ReturnType<typeof createProgress>;
+  private audio: AudioMgr | null = null;
 
   private state: State = 'ready';
   private levelNum = 1;
@@ -75,6 +77,9 @@ export class GameApp extends Component {
     // HUD 可选：场景里有挂了 GameUI 的 Canvas 就接上，否则只打日志
     const canvasNode = this.node.scene.getChildByName('Canvas');
     this.ui = canvasNode ? canvasNode.getComponent(GameUI) : null;
+
+    // 音效可选：场景里有 AudioMgr 且素材已放即响，否则静默跳过
+    this.audio = this.node.scene.getComponentInChildren(AudioMgr);
 
     // 关卡推进（母本 progression.mjs，跨重启存活，脏数据自愈）
     const store: ProgressStore = {
@@ -119,9 +124,12 @@ export class GameApp extends Component {
     this.heldRight = false;
     this.dragging = false;
     this.ui?.setBricks(0);
+    this.ui?.setLevel(cur.level);
+    this.ui?.hideResult();
     const best = this.prog.state().best[cur.level];
-    const bestTxt = best ? `（最佳 ${best.stars}★ ${best.time}s）` : '';
-    this.ui?.showHint(`第 ${cur.level} 关 · 点击开始（终点需 ${this.cfg.gateCost} 砖）${bestTxt}`);
+    const bestTxt = best ? `${best.stars}★ ${best.time}s` : '暂无';
+    this.ui?.showHint(`第 ${cur.level} 关 · 点击开始（终点需 ${this.cfg.gateCost} 砖）`);
+    console.log(`[ShortcutRun] 第 ${cur.level} 关本关最佳：${bestTxt}`);
   }
 
   private findOrCreateCamera(): Node {
@@ -267,6 +275,7 @@ export class GameApp extends Component {
         this.track.takePickup(p);
         this.bricks += this.cfg.brickCluster;
         this.ui?.setBricks(this.bricks);
+        this.audio?.play('pickup');
       }
     }
   }
@@ -281,6 +290,7 @@ export class GameApp extends Component {
           g.bridged = true;
           this.track.bridge(g);
           this.ui?.setBricks(this.bricks);
+          this.audio?.play('bridge');
           console.log(`[ShortcutRun] 铺桥 -${g.cost} 砖，剩余 ${this.bricks}`);
         } else {
           this.enterFall();
@@ -318,23 +328,29 @@ export class GameApp extends Component {
   private win(): void {
     this.state = 'win';
     this.track.openGate();
+    this.audio?.play('win');
     const timeSec = this.elapsed - this.runT0;
     const r = this.prog.win(timeSec, this.bricks);
-    this.ui?.showHint(`第 ${this.levelNum} 关通过！${'★'.repeat(r.stars)}`);
+    const best = this.prog.state().best[this.levelNum];
+    this.ui?.setResult(true, r.stars, timeSec, this.bricks, `${best.stars}★ ${best.time}s`);
+    this.ui?.showHint(`第 ${this.levelNum} 关通过！`);
     const p = this.player.position;
     tweenPos(this.player, 0.25, new Vec3(p.x, p.y + 0.7, p.z), () => {
       tweenPos(this.player, 0.25, new Vec3(p.x, p.y, p.z));
     });
-    console.log(`[ShortcutRun] WIN 第 ${this.levelNum} 关 ${timeSec.toFixed(1)}s 余砖 ${this.bricks} ${r.stars}星！1.6 秒后进入第 ${r.nextLevel} 关`);
-    this.scheduleOnce(() => this.startLevel(), 1.6);
+    console.log(`[ShortcutRun] WIN 第 ${this.levelNum} 关 ${timeSec.toFixed(1)}s 余砖 ${this.bricks} ${r.stars}星！（进度已存档）`);
+    this.scheduleOnce(() => this.startLevel(), 2.5);
   }
 
   private lose(reason = '失败'): void {
     if (this.state === 'lose') return;
     this.state = 'lose';
     this.prog.lose();
-    this.ui?.showHint(`${reason} · 重试`);
-    console.log(`[ShortcutRun] LOSE: ${reason}. 1.6 秒后重试第 ${this.levelNum} 关`);
-    this.scheduleOnce(() => this.startLevel(), 1.6);
+    this.audio?.play('lose');
+    const best = this.prog.state().best[this.levelNum];
+    this.ui?.setResult(false, 0, 0, 0, best ? `${best.stars}★ ${best.time}s` : '暂无');
+    this.ui?.showHint(reason);
+    console.log(`[ShortcutRun] LOSE: ${reason}. 2.5 秒后换图重试第 ${this.levelNum} 关`);
+    this.scheduleOnce(() => this.startLevel(), 2.5);
   }
 }

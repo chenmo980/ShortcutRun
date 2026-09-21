@@ -4,22 +4,67 @@
 <meta charset="utf-8">
 <title>ShortcutRun 灰模 · 浏览器试玩版</title>
 <style>
-  html, body { margin: 0; padding: 0; overflow: hidden; background: #87a5c8; font-family: "Microsoft YaHei", sans-serif; }
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #87a5c8; font-family: "Microsoft YaHei", "PingFang SC", sans-serif; }
   #app { width: 100vw; height: 100vh; }
   .hud { position: fixed; left: 50%; transform: translateX(-50%); color: #fff; text-shadow: 0 2px 6px rgba(0,0,0,.5); user-select: none; pointer-events: none; }
-  #brick { top: 18px; font-size: 28px; font-weight: bold; }
-  #hint { top: 44%; font-size: 34px; font-weight: bold; text-align: center; }
-  #progbar { position: fixed; left: 50%; top: 58px; transform: translateX(-50%); width: 320px; height: 10px; background: rgba(0,0,0,.25); border-radius: 5px; overflow: hidden; }
-  #progfill { height: 100%; width: 0%; background: #ffc107; border-radius: 5px; transition: width .1s linear; }
+  #brick { top: 18px; font-size: 26px; font-weight: bold; display: flex; align-items: center; gap: 8px; }
+  .brickIcon { width: 18px; height: 18px; background: #ffc107; border-radius: 3px; box-shadow: inset 0 -3px 0 rgba(0,0,0,.15); display: inline-block; }
+  #hint { top: 40%; font-size: 32px; font-weight: bold; text-align: center; }
+  #progbar { position: fixed; left: 50%; top: 60px; transform: translateX(-50%); width: 340px; height: 12px; background: rgba(0,0,0,.3); border-radius: 6px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+  #progfill { height: 100%; width: 0%; background: linear-gradient(90deg, #ffd54f, #ff8f00); border-radius: 6px; transition: width .12s linear; }
+  #levelBadge { position: fixed; left: 16px; top: 14px; color: #fff; font-size: 20px; font-weight: bold; text-shadow: 0 2px 6px rgba(0,0,0,.5); background: rgba(0,0,0,.25); padding: 4px 14px; border-radius: 20px; user-select: none; pointer-events: none; }
+  /* 覆盖层：开始界面 / 结算面板 */
+  .overlay { position: fixed; inset: 0; background: rgba(15, 25, 40, .55); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 10; cursor: pointer; }
+  .panel { background: rgba(255,255,255,.96); border-radius: 20px; padding: 40px 56px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,.35); min-width: 340px; animation: pop .25s ease-out; }
+  @keyframes pop { from { transform: scale(.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  .title { font-size: 46px; font-weight: 900; color: #263238; letter-spacing: 2px; }
+  .subtitle { font-size: 14px; color: #78909c; margin-top: 6px; }
+  .bestline { font-size: 16px; color: #455a64; margin-top: 18px; }
+  .btn { margin-top: 26px; font-size: 22px; font-weight: bold; color: #fff; background: linear-gradient(180deg, #66bb6a, #43a047); border: none; border-radius: 14px; padding: 14px 52px; cursor: pointer; box-shadow: 0 6px 0 #2e7d32, 0 8px 16px rgba(0,0,0,.25); transition: transform .08s ease; }
+  .btn:hover { filter: brightness(1.06); }
+  .btn:active { transform: translateY(4px); box-shadow: 0 2px 0 #2e7d32; }
+  .help { margin-top: 22px; font-size: 13px; color: #90a4ae; line-height: 1.8; }
+  .rtitle { font-size: 38px; font-weight: 900; color: #263238; }
+  .rtitle.fail { color: #c62828; }
+  .stars { font-size: 52px; letter-spacing: 8px; margin-top: 10px; color: #ffc107; text-shadow: 0 3px 8px rgba(255,143,0,.4); }
+  .stars span { display: inline-block; animation: starPop .4s cubic-bezier(.2,1.6,.4,1) backwards; }
+  .stars span:nth-child(2) { animation-delay: .15s; }
+  .stars span:nth-child(3) { animation-delay: .3s; }
+  @keyframes starPop { from { transform: scale(0) rotate(-60deg); opacity: 0; } to { transform: scale(1) rotate(0); opacity: 1; } }
+  .rstats { margin-top: 16px; font-size: 16px; color: #455a64; line-height: 1.9; }
+  /* 道具拾取/过门的飘字反馈 */
+  #floaterHost { position: fixed; left: 50%; top: 30%; transform: translateX(-50%); pointer-events: none; z-index: 5; }
+  .floater { position: absolute; left: 0; transform: translateX(-50%); font-size: 30px; font-weight: 900; text-shadow: 0 2px 6px rgba(0,0,0,.4); animation: floatUp .9s ease-out forwards; white-space: nowrap; }
+  @keyframes floatUp { from { transform: translate(-50%, 0) scale(.6); opacity: 0; } 20% { opacity: 1; transform: translate(-50%, -10px) scale(1.15); } to { transform: translate(-50%, -70px) scale(1); opacity: 0; } }
   #title { position: fixed; left: 14px; top: 12px; color: #fff; font-size: 14px; opacity: .85; text-shadow: 0 1px 4px rgba(0,0,0,.5); user-select: none; pointer-events: none; }
 </style>
 </head>
 <body>
 <div id="app"></div>
-<div id="title">ShortcutRun 灰模 · 拖动 / A D 转向 · T 换肤 · M 音效</div>
-<div id="brick" class="hud">砖块 0</div>
+<div id="levelBadge">第 1 关</div>
+<div id="brick" class="hud"><span class="brickIcon"></span><span id="brickText">砖块 0</span></div>
 <div id="progbar"><div id="progfill"></div></div>
-<div id="hint" class="hud">点击开始 · 终点需 14 砖</div>
+<div id="hint" class="hud" style="display:none"></div>
+<div id="floaterHost"></div>
+
+<div id="startScreen" class="overlay">
+  <div class="panel">
+    <div class="title">铺路飞人</div>
+    <div class="subtitle">Shortcut Run 玩法复刻 · 灰模试玩 v0.2</div>
+    <div class="bestline" id="startBest">最高进度：第 1 关</div>
+    <button class="btn" id="startBtn">开始游戏</button>
+    <div class="help">拖动鼠标 / A D 转向 · 吃砖铺路过断崖<br>T 换肤 · M 音效开关</div>
+  </div>
+</div>
+
+<div id="resultScreen" class="overlay" style="display:none">
+  <div class="panel">
+    <div class="rtitle" id="resultTitle"></div>
+    <div class="stars" id="resultStars"></div>
+    <div class="rstats" id="resultStats"></div>
+    <button class="btn" id="resultBtn"></button>
+  </div>
+</div>
 <script src="three.min.js"></script>
 <script>
 // ============ 配置（与 Cocos 版 config.ts 一致） ============
@@ -186,7 +231,46 @@ function genLevelV3(seed, cfg, opts = {}) {
   const level = genLevel(seed, cfg, { tailSafe: true });
   repairPrefixSupply(level, cfg, seed, margin, k);
   spaceOutPickups(level, zonesOf(level));
+  // v4 道具开关（移植自母本/TS 版，§14/§21 parity 锚）：opts.items 显式传入，或
+  // cfg.enableItems 走 ITEMS_DEFAULT。**默认关闭 = 输出与 v3 逐字节一致**；
+  // 开启时仅追加 level.gates 与 kind:'shoe' 拾取（供需数学按 !kind 过滤 = 纯增益）
+  const items = opts.items ?? (cfg.enableItems ? ITEMS_DEFAULT : null);
+  if (items) placeItems(level, cfg, seed, items);
   return level;
+}
+const ITEMS_DEFAULT = { addGates: 1, mulGates: 1, shoes: 1 };
+// 道具布置（独立子种子 mulberry32(seed*104729+7)，确定性）：门放可跑区间内、
+// 避开断崖与彼此；鞋作为 kind:'shoe' 拾取追加。放不下的名额直接放弃（计数 <= 计划）。
+function placeItems(level, cfg, seed, plan) {
+  const rnd = mulberry32(seed * 104729 + 7);
+  const zones = zonesOf(level);
+  const gates = [];
+  const putGate = (type, v, from, to) => {
+    for (let tries = 0; tries < 40; tries++) {
+      const z = from + rnd() * (to - from);
+      const onTrack = zones.some(([z0, z1]) => z > z0 + 1.5 && z < z1 - 1.5);
+      const clear = gates.every((g) => Math.abs(g.z - z) >= 6);
+      if (onTrack && clear) {
+        gates.push({ z: +z.toFixed(2), type, v });
+        return;
+      }
+    }
+  };
+  const gateZ = level.gateZ;
+  for (let i = 0; i < (plan.addGates ?? 0); i++) putGate('add', plan.addValue ?? 5, gateZ * 0.45, gateZ * 0.8);
+  for (let i = 0; i < (plan.mulGates ?? 0); i++) putGate('mul', plan.mulValue ?? 2, gateZ * 0.55, gateZ * 0.85);
+  gates.sort((a, b) => a.z - b.z);
+  level.gates = gates;
+  const shoeZones = zones.filter(([z0, z1]) => z1 - z0 >= 6);
+  for (let i = 0; i < (plan.shoes ?? 0); i++) {
+    if (!shoeZones.length) break;
+    const [z0, z1] = shoeZones[Math.floor(rnd() * shoeZones.length)];
+    level.pickups.push({
+      x: +((rnd() * 2 - 1) * (cfg.trackHalfWidth - 0.8)).toFixed(2),
+      z: +(z0 + 2 + rnd() * Math.max(1, z1 - z0 - 4)).toFixed(2),
+      kind: 'shoe',
+    });
+  }
 }
 
 // ===== 关卡进阶曲线（移植自 docs/qoder/levels.mjs） =====
@@ -224,6 +308,20 @@ function cfgForLevel(level) {
     supplyRatio: Math.max(1.5, ratioFor(level) - loop * 0.1),
   };
 }
+// v4 道具分带（移植自 docs/qoder/levels.mjs itemsFor）：L1-2 教学关无道具；
+// L3 起 +N 门；L4 起 ×2 门；L6 起加速鞋；loop 微增封顶。null = 本关无道具
+function itemsFor(level) {
+  const l = ((Math.max(1, level) - 1) % 10) + 1;
+  const loop = Math.floor((Math.max(1, level) - 1) / 10);
+  if (l <= 2) return null;
+  return {
+    addGates: 1 + Math.min(loop, 1),
+    mulGates: (l >= 4 ? 1 : 0) + (loop >= 2 ? 1 : 0),
+    shoes: (l >= 6 ? 1 : 0) + Math.min(loop, 2),
+    addValue: 5,
+    mulValue: 2,
+  };
+}
 
 // ============ 三维场景 ============
 const app = document.getElementById('app');
@@ -245,11 +343,14 @@ scene.add(sun);
 
 const BOX = new THREE.BoxGeometry(1, 1, 1);
 // ============ 主题系统（换肤 = 换色表，与 Cocos 版 Theme.ts 一致） ============
+// 色表过 Qoder Q5 规范（docs/qoder/theme.mjs，sim.mjs §20 机验）：
+// day=原版 Voodoo 配方（默认）；city=player 深蓝化修复；candy=修复表（紫砖/可可桥/白角色）
 const THEMES = {
-  city: { name: '城市', sky: 0x8fb3d9, ground: 0x7d8a99, road: 0x3d444d, brick: 0xffc107, bridge: 0x8d6e63, player: 0x4fc3f7, limb: 0x2196f3, skin: 0xffe0b2, gate: 0xe53935, pillar: 0x455a64 },
-  candy: { name: '糖果', sky: 0xffd9e8, ground: 0xb8e6c1, road: 0xff8fab, brick: 0xfff176, bridge: 0xce93d8, player: 0x64b5f6, limb: 0x42a5f5, skin: 0xffe0b2, gate: 0xff7043, pillar: 0xab47bc },
+  day: { name: '白天（原版）', sky: 0xaee6ff, ground: 0x43a047, road: 0x6d4c41, brick: 0x4dd0ff, bridge: 0xc98d4f, player: 0xffffff, limb: 0x90a4ae, skin: 0xffe0b2, gate: 0xff3b30, pillar: 0x263238, shoe: 0xffee58 },
+  city: { name: '城市', sky: 0x8fb3d9, ground: 0x7d8a99, road: 0x3d444d, brick: 0xffc107, bridge: 0x8d6e63, player: 0x0288d1, limb: 0x2196f3, skin: 0xffe0b2, gate: 0xe53935, pillar: 0x455a64, shoe: 0xffee58 },
+  candy: { name: '糖果', sky: 0xffe4ef, ground: 0x66bb6a, road: 0xd8b8ca, brick: 0xab27d3, bridge: 0x4e342e, player: 0xffffff, limb: 0xbdbdbd, skin: 0xffe0b2, gate: 0xc51162, pillar: 0x6a1b9a, shoe: 0x006064 },
 };
-let themeKey = 'city';
+let themeKey = 'day';
 const MAT = {
   road:   new THREE.MeshLambertMaterial(),
   ground: new THREE.MeshLambertMaterial(),
@@ -260,12 +361,18 @@ const MAT = {
   skin:   new THREE.MeshLambertMaterial(),
   gate:   new THREE.MeshLambertMaterial(),
   pillar: new THREE.MeshLambertMaterial(),
+  shoe:   new THREE.MeshLambertMaterial(),
+};
+// 道具门语义色（+N 蓝底 / ×2 红底，照原版，不随主题变）
+const ITEM_MAT = {
+  add: new THREE.MeshLambertMaterial({ color: 0x1976d2 }),
+  mul: new THREE.MeshLambertMaterial({ color: 0xd32f2f }),
 };
 function applyTheme() {
   const t = THEMES[themeKey];
   scene.background.setHex(t.sky);
   scene.fog.color.setHex(t.sky);
-  for (const k of Object.keys(MAT)) MAT[k].color.setHex(t[k]);
+  for (const k of Object.keys(MAT)) { if (t[k]) MAT[k].color.setHex(t[k]); }
 }
 function cycleTheme() {
   const keys = Object.keys(THEMES);
@@ -362,6 +469,7 @@ function animateRig() {
 let level, state = 'ready', bricks = 0, speed = cfg.runSpeed;
 let playerX = 0, targetX = 0, playerY = 0, fallVel = 0;
 let pickups = [], gateWalls = [], stackMeshes = [], anims = [];
+let curSeed = 1, shoeT = 0, itemMeshes = []; // v4：本局种子 / 加速鞋剩余时间 / 道具专属网格（plane 等，需显式清理）
 let camInited = false;
 for (let i = 0; i < 12; i++) {
   const s = cfg.brickUnit * 0.85;
@@ -373,8 +481,11 @@ for (let i = 0; i < 12; i++) {
 function buildLevel(cur) {
   levelNum = cur.level;
   cfg = cur.cfg;
-  level = genLevelV3(cur.seed, cfg);
-  // 清掉上一局动态物体（保留 player / stack / 灯光）
+  curSeed = cur.seed;
+  level = genLevelV3(cur.seed, cfg, { items: itemsFor(cur.level) ?? undefined });
+  // 清掉上一局动态物体（保留 player / stack / 灯光）；道具专属网格先显式清
+  for (const m of itemMeshes) scene.remove(m);
+  itemMeshes = [];
   for (let i = scene.children.length - 1; i >= 0; i--) {
     const o = scene.children[i];
     if (o.geometry === BOX && o !== player && !stackMeshes.includes(o)) scene.remove(o);
@@ -388,19 +499,46 @@ function buildLevel(cur) {
   let z = 0;
   for (const g of level.gaps) { road(z, g.zStart, w); z = g.zEnd; }
   road(z, level.gateZ, w);
-  // 拾取
+  // 拾取（kind:'shoe' 渲染成小鞋，其余为砖簇）
   for (const p of level.pickups) {
-    const s = cfg.brickUnit;
-    const m = box(MAT.brick, s, s, s, p.x, s / 2 + 0.05, p.z);
-    pickups.push({ mesh: m, def: p, taken: false });
+    if (p.kind === 'shoe') {
+      const g = new THREE.Group();
+      const sole = new THREE.Mesh(BOX, MAT.shoe);
+      sole.scale.set(0.5, 0.14, 0.26); sole.position.set(0, 0.07, 0); g.add(sole);
+      const top = new THREE.Mesh(BOX, MAT.shoe);
+      top.scale.set(0.3, 0.2, 0.24); top.position.set(-0.08, 0.24, 0); g.add(top);
+      g.position.set(p.x, 0.05, p.z);
+      g.rotation.y = 0.6;
+      scene.add(g);
+      itemMeshes.push(g);
+      pickups.push({ mesh: g, def: p, taken: false });
+    } else {
+      const s = cfg.brickUnit;
+      const m = box(MAT.brick, s, s, s, p.x, s / 2 + 0.05, p.z);
+      pickups.push({ mesh: m, def: p, taken: false });
+    }
   }
   // 终点门
   const wallW = (cfg.trackHalfWidth * 2) / 3;
   for (let i = -1; i <= 1; i++) gateWalls.push(box(MAT.gate, wallW, 1.4, 0.4, i * wallW, 0.7, level.gateZ));
   for (const sx of [-1, 1]) box(MAT.pillar, 0.5, 2.8, 0.5, sx * (cfg.trackHalfWidth + 0.35), 1.4, level.gateZ);
+  // v4 道具拱门：横跨跑道的横梁 + 白色大字（+N 蓝底 / ×2 红底，照原版）
+  if (level.gates) {
+    for (const g of level.gates) {
+      const pw = cfg.trackHalfWidth + 0.35;
+      box(MAT.pillar, 0.4, 2.4, 0.4, -pw, 1.2, g.z);
+      box(MAT.pillar, 0.4, 2.4, 0.4, pw, 1.2, g.z);
+      box(ITEM_MAT[g.type], pw * 2 + 0.4, 0.7, 0.35, 0, 2.55, g.z);
+      const txt = textPlane(g.type === 'add' ? `+${g.v}` : `×${g.v}`, 1.6, 0.62);
+      txt.position.set(0, 2.55, g.z - 0.2);
+      txt.rotation.y = Math.PI; // 平面默认朝 +Z，玩家从 -Z 侧看来需翻转
+      scene.add(txt);
+      itemMeshes.push(txt);
+    }
+  }
 
   // 玩家与状态复位（原地重建必须显式重置，否则从旧位置起步）
-  state = 'ready'; bricks = 0; speed = cfg.runSpeed;
+  state = 'ready'; bricks = 0; speed = cfg.runSpeed; shoeT = 0;
   playerX = 0; targetX = 0; playerY = 0; fallVel = 0;
   heldLeft = false; heldRight = false; dragging = false;
   player.position.set(0, 0, 0);
@@ -408,15 +546,27 @@ function buildLevel(cur) {
   for (const m of stackMeshes) m.visible = false;
   camInited = false;
   setBricksUI(0);
-  const b = prog.state().best[cur.level];
-  const bestTxt = b ? `（最佳 ${b.stars}★ ${b.time}s）` : '';
-  showHint(`第 ${cur.level} 关 · 点击开始（终点需 ${cfg.gateCost} 砖）${bestTxt}`);
+  setProgressUI(0, level.gateZ);
+  resultScreen.style.display = 'none';
+  showStart();
   console.log(`[ShortcutRun] 第 ${cur.level} 关 (seed ${cur.seed}) 断崖=${level.gaps.length} 拾取=${level.pickups.length} 终点z=${level.gateZ.toFixed(1)} 门需求=${cfg.gateCost}`);
 }
 function road(z0, z1, w) {
   const len = z1 - z0;
   if (len <= 0.1) return;
   box(MAT.road, w, 0.4, len, 0, -0.2, (z0 + z1) / 2);
+}
+// 道具门大字：canvas 贴图（白字透明底，叠在彩色横梁上），零字体资产
+function textPlane(txt, w, h) {
+  const cv = document.createElement('canvas');
+  cv.width = 128; cv.height = 56;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 44px Arial';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(txt, 64, 30);
+  const tex = new THREE.CanvasTexture(cv);
+  return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true }));
 }
 
 // ============ 输入 ============
@@ -449,13 +599,74 @@ addEventListener('keyup', (e) => {
 function clampTarget() { const m = cfg.trackHalfWidth - 0.45; targetX = Math.max(-m, Math.min(m, targetX)); }
 
 // ============ HUD ============
-const brickEl = document.getElementById('brick');
+const brickEl = document.getElementById('brickText');
 const hintEl = document.getElementById('hint');
 const progFill = document.getElementById('progfill');
+const badgeEl = document.getElementById('levelBadge');
+const startScreen = document.getElementById('startScreen');
+const startBest = document.getElementById('startBest');
+const resultScreen = document.getElementById('resultScreen');
+const resultTitle = document.getElementById('resultTitle');
+const resultStars = document.getElementById('resultStars');
+const resultStats = document.getElementById('resultStats');
+const resultBtn = document.getElementById('resultBtn');
 function setBricksUI(n) { brickEl.textContent = '砖块 ' + n; }
 function setProgressUI(z, gateZ) { progFill.style.width = Math.max(0, Math.min(100, (z / gateZ) * 100)).toFixed(1) + '%'; }
 function showHint(t) { hintEl.textContent = t; hintEl.style.display = 'block'; }
 function hideHint() { hintEl.style.display = 'none'; }
+// 道具飘字反馈（+N 砖 / ×2 砖 / 加速）
+const floaterHost = document.getElementById('floaterHost');
+function floatText(txt, color) {
+  const el = document.createElement('div');
+  el.className = 'floater';
+  el.textContent = txt;
+  el.style.color = color || '#fff';
+  el.style.top = (Math.random() * 24 - 12) + 'px';
+  floaterHost.appendChild(el);
+  setTimeout(() => el.remove(), 900);
+}
+
+// ===== G1 遥测（Q6 schema：docs/qoder/g1-tuning.md；汇总脚本由 Qoder 提供） =====
+const TELEMETRY_KEY = 'sr_telemetry_v1';
+function pushEvent(ev) {
+  try {
+    const arr = JSON.parse(localStorage.getItem(TELEMETRY_KEY) || '[]');
+    if (!Array.isArray(arr)) return;
+    arr.push({ ...ev, ts: Date.now() });
+    if (arr.length > 500) arr.splice(0, arr.length - 500); // 封顶防无限膨胀
+    localStorage.setItem(TELEMETRY_KEY, JSON.stringify(arr));
+  } catch (e) { /* 遥测失败不影响游戏 */ }
+}
+
+// 开始界面：显示关卡与历史最佳
+function showStart() {
+  const st = prog.state();
+  const b = st.best[st.level];
+  startBest.textContent = b
+    ? `最高进度：第 ${st.level} 关 · 本关最佳 ${b.stars}★ ${b.time}s`
+    : `最高进度：第 ${st.level} 关`;
+  badgeEl.textContent = `第 ${st.level} 关`;
+  hintEl.style.display = 'none';
+  startScreen.style.display = 'flex';
+}
+function startGame() {
+  ensureAudio();
+  startScreen.style.display = 'none';
+  startRun();
+}
+// 结算面板：胜/负共用，按钮动作由调用方注入
+function showResult(win, title, stars, statsHtml, btnText, onBtn) {
+  resultTitle.textContent = title;
+  resultTitle.className = 'rtitle' + (win ? '' : ' fail');
+  resultStars.innerHTML = win
+    ? [0, 1, 2].map((i) => `<span>${i < stars ? '★' : '☆'}</span>`).join('')
+    : '';
+  resultStats.innerHTML = statsHtml;
+  resultBtn.textContent = btnText;
+  resultBtn.onclick = (e) => { e.stopPropagation(); onBtn(); };
+  resultScreen.onclick = onBtn;
+  resultScreen.style.display = 'flex';
+}
 
 // ============ 动画（极简 tween） ============
 function tweenTo(obj, prop, to, dur, onDone) { anims.push({ obj, prop, from: obj[prop], to, t: 0, dur, onDone }); }
@@ -482,22 +693,32 @@ function win() {
   state = 'win';
   const t = Math.max(0, elapsed - runT0);
   const r = prog.win(t, bricks);
-  showHint(`第 ${levelNum} 关通过！${'★'.repeat(r.stars)}`);
   sfx.win();
+  pushEvent({ level: levelNum, seed: curSeed, outcome: 'win', t: +t.toFixed(2), bricksLeft: bricks, failZ: null, pickupsTotal: level.pickups.length });
   for (const w of gateWalls) tweenTo(w.position, 'y', -2.2, 0.4);
   const y0 = player.position.y;
   tweenTo(player.position, 'y', y0 + 0.7, 0.25, () => tweenTo(player.position, 'y', y0, 0.25));
-  console.log(`[ShortcutRun] WIN 第 ${levelNum} 关 ${t.toFixed(1)}s 余砖 ${bricks} ${r.stars}星！1.6 秒后进入第 ${r.nextLevel} 关（进度已存档）`);
-  setTimeout(syncLevel, 1600);
+  const b = prog.state().best[levelNum];
+  showResult(true, `第 ${levelNum} 关通过！`, r.stars,
+    `用时 ${t.toFixed(1)}s · 余砖 ${bricks}<br>本关最佳 ${b.stars}★ ${b.time}s`,
+    '下一关', () => { resultScreen.style.display = 'none'; syncLevel(); });
+  console.log(`[ShortcutRun] WIN 第 ${levelNum} 关 ${t.toFixed(1)}s 余砖 ${bricks} ${r.stars}星！（进度已存档）`);
 }
 function lose(reason) {
   if (state === 'lose') return;
   state = 'lose';
-  showHint(`${reason} · 重试`);
+  showHint(reason);
   sfx.lose();
+  pushEvent({ level: levelNum, seed: curSeed, outcome: 'lose', t: +(elapsed - runT0).toFixed(2), bricksLeft: bricks, failZ: +player.position.z.toFixed(1), pickupsTotal: level.pickups.length });
   prog.lose(); // 同关换图：attempt++（母本 progression.mjs 规则）
-  console.log(`[ShortcutRun] LOSE: ${reason}. 1.6 秒后换图重试第 ${levelNum} 关`);
-  setTimeout(syncLevel, 1600);
+  const b = prog.state().best[levelNum];
+  setTimeout(() => {
+    if (state !== 'lose') return; // 期间被 restart 等打断则不弹
+    showResult(false, '挑战失败', 0,
+      `${reason}<br>本关最佳 ${b ? b.stars + '★ ' + b.time + 's' : '暂无'}`,
+      '换图重试', () => { resultScreen.style.display = 'none'; syncLevel(); });
+  }, 700); // 等掉落动画演完再弹面板
+  console.log(`[ShortcutRun] LOSE: ${reason}. 换图重试第 ${levelNum} 关`);
 }
 function checkPickups(x, prevZ, z) {
   for (const p of pickups) {
@@ -506,10 +727,31 @@ function checkPickups(x, prevZ, z) {
       if (hitZ && Math.abs(x - p.def.x) < 0.95) {
         p.taken = true;
         p.mesh.visible = false;
-        bricks += cfg.brickCluster;
+        if (p.def.kind === 'shoe') {
+          // v4 加速鞋：不产砖，speed ×1.35 持续 3.5s（母本 botRun 同口径）
+          shoeT = 3.5;
+          floatText('加速 ×1.35！', '#ffee58');
+        } else {
+          bricks += cfg.brickCluster;
+        }
         setBricksUI(bricks);
         sfx.pickup();
       }
+  }
+}
+// v4 道具门：扫掠判定过门（不扣砖），+N 加砖 / ×N 乘砖（母本 botRun 同口径）
+function checkGates(prevZ, z) {
+  if (!level.gates) return;
+  for (const g of level.gates) {
+    if (g.used) continue;
+    if (z >= g.z && prevZ < g.z) {
+      g.used = true;
+      if (g.type === 'add') { bricks += g.v; floatText(`+${g.v} 砖`, '#64b5f6'); }
+      else { bricks *= g.v; floatText(`×${g.v} 砖`, '#ff8a80'); }
+      setBricksUI(bricks);
+      sfx.pickup();
+      console.log(`[ShortcutRun] 道具门 ${g.type === 'add' ? '+' + g.v : '×' + g.v}，现有 ${bricks} 砖`);
+    }
   }
 }
 function checkGaps(prevZ, z) {
@@ -557,7 +799,9 @@ function loop() {
     let z = prevZ, x = player.position.x;
 
     if (state === 'run') {
-      speed = Math.min(cfg.maxSpeed, cfg.runSpeed + bricks * cfg.speedPerBrick);
+      if (shoeT > 0) shoeT -= dt;
+      // 提速鞋：终速 ×1.35（可短暂超 maxSpeed，提速感优先）
+      speed = Math.min(cfg.maxSpeed, cfg.runSpeed + bricks * cfg.speedPerBrick) * (shoeT > 0 ? 1.35 : 1);
       z += speed * dt;
       const k = 1 - Math.exp(-cfg.steerSpeed * dt);
       x += (targetX - x) * k;
@@ -576,6 +820,7 @@ function loop() {
     if (state === 'run') {
       checkPickups(x, prevZ, z);
       checkGaps(prevZ, z);
+      checkGates(prevZ, z);
       checkGate(z);
     }
     // 砖堆跟随
@@ -616,6 +861,10 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
+// 开始界面：按钮或任意位置点击均可开始
+document.getElementById('startBtn').addEventListener('click', (e) => { e.stopPropagation(); startGame(); });
+startScreen.addEventListener('click', startGame);
+
 syncLevel(); // 跨重启续档：从存档的 (level, attempt) 进场
 loop();
 
@@ -625,10 +874,13 @@ window.__game = {
     state, bricks, x: player.position.x, y: player.position.y, z: player.position.z, speed,
     pickups: pickups.length, gaps: level.gaps.length, gateZ: level.gateZ,
     level: levelNum, theme: themeKey, themeName: THEMES[themeKey].name, sky: THEMES[themeKey].sky,
-    pickupList: pickups.map((p) => ({ x: p.def.x, z: p.def.z, taken: p.taken })),
+    playerColor: THEMES[themeKey].player, shoeT,
+    pickupList: pickups.map((p) => ({ x: p.def.x, z: p.def.z, taken: p.taken, kind: p.def.kind || 'brick' })),
     gapList: level.gaps.map((g) => ({ zStart: g.zStart, zEnd: g.zEnd, cost: g.cost, bridged: !!g.bridged })),
+    gateList: (level.gates || []).map((g) => ({ z: g.z, type: g.type, v: g.v, used: !!g.used })),
   }),
   setBricks: (n) => { bricks = n; setBricksUI(n); },
+  setTheme: (k) => { if (THEMES[k]) { themeKey = k; applyTheme(); } },
   restart: (lv) => {
     prog.reset();
     for (let i = 1; i < (lv || 1); i++) prog.win(999, 0); // 快进到指定关（QA 用）

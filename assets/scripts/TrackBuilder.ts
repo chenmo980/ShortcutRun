@@ -4,7 +4,7 @@
 const { ccclass, property } = _decorator;
 import { _decorator, Component, Node, Prefab, Vec3, instantiate } from 'cc';
 import type { Cfg } from './config';
-import type { LevelDef, GapDef, PickupDef } from './LevelGen';
+import type { LevelDef, GapDef, PickupDef, ItemGateDef } from './LevelGen';
 import { tweenPos, tweenScale, clamp } from './util';
 import { spawnBox, BoxKind } from './BoxFactory';
 
@@ -55,6 +55,7 @@ export class TrackBuilder extends Component {
     this.buildRoad();
     this.buildPickups();
     this.buildGate();
+    this.buildItems();
   }
 
   private buildRoad(): void {

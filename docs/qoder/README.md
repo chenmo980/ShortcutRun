@@ -54,6 +54,19 @@ prog.starsFor(level, timeSec, bricksLeft) -> 1|2|3 // 时间星=低于 PAR 线�
 prog.state() / prog.reset()
 ```
 
+## 接口签名（theme.mjs，Q5）
+
+```
+ROLE_KEYS = 十键契约（照抄 assets/Theme.ts）+ 可选 shoe
+verifyTheme(theme) -> violations[]   // 纯函数：关键对 WCAG 对比（2.2~2.4 场景折减带）
+                                     // ∨ 高饱和色相通道(≥70°/90°)、Viénot-Brettel 三色盲
+                                     // 模拟残余、天空亮度/天路明暗序、砖门饱和带
+PALETTES.day                         // 规范盘（原版配方：深土道+天蓝砖+奶白角色+大红门），全过验
+PALETTES.city/candy                  // step-5 现表镜像，仅对照用（现表未过验，见 PROPOSALS）
+PROPOSALS.city/candy                 // 最小改动修复表（city 只改 player 一键），全部实跑过验
+contrast / cvdWorst / relLum / satOf / hueOf   // 单件工具，step-5 想在 CI 自检可直接 import
+```
+
 `LevelDef = { length, gaps:[{zStart,zEnd,cost}], pickups:[{x,z}], gateZ, gateCost }`——与 §4 契约一致。
 v4 开启道具时追加：`gates:[{z,type:'add'|'mul',v}]`（按 z 升序），鞋以 `pickups` 内 `{x,z,kind:'shoe'}` 混放（无 kind 字段 = 砖簇）。**关闭时这两个形状变化完全不存在**（键都不会加），消费端只需 `'gates' in level` 判断。
 
@@ -76,6 +89,10 @@ v4 开启道具时追加：`gates:[{z,type:'add'|'mul',v}]`（按 z 升序），
 13. **推进元规则也上了漂移锁（§17）**：预览内联 prog 与 `progression.mjs` 母本行为全等机验——同一胜/败操作序列（含 150 连败封顶）逐步比对 state() 与返回值、starsFor 全边界扫描（L1-12 × 时间/余砖临界）、四类脏档自愈、跨重启续档、键名一致。真机（playwright 持久化 profile）复验：两胜进 L3、关浏览器重开续档 L3、败局同关换图 attempt=2 落盘，7/7 全过。星级计时口径：预览按 `elapsed - runT0`（startRun 置表），与 bot 的 t 同单位。注（2026-09-21 晚事故后定稿）：页内保留的是 step-5 那份 SR_KEY 块（Qoder 重复块已删，§17 锚点=「关卡推进（移植自」→「关卡生成」分节标记）；同轮新增 §18 整页编译锁，专抓跨块重复声明这类区域锁盲区。
 
 14. **v4 道具落地（复刻原版道具集：+N 门 / ×2 门 / 加速鞋）**：genLevelV3 加 `opts.items`（levels.mjs `itemsFor` 分带，L1-2 教学无、L3 起 +N、L4 起 ×2、L6 起鞋、loop 微增），布置在修复之后、用独立子种子 `mulberry32(seed*104729+7)`，确定性；供需数学按 `!kind` 过滤 → **道具纯增益，永不可能引入新死局**（§19 用"加道具前后 prefixBalance 全等"锁死）。关闭态输出逐字节 = v3（6 个 sha256 快照锚 + 形状锁"不得出现 gates 键"，防"永远加空数组"这类静默破坏 §14/§16 parity 的写法）。实测：道具开 600 局贪心 100% 胜、门 0 压崖 0 越界、布置逐 seed 可复现。渲染与手感归 step-5（V2/V3 视觉轮可一并做：门拱 +N/×2 大字、鞋形拾取、吃鞋 3.5s 提速尾迹）。
+
+15. **Q5 主题规范（theme.mjs）**：step-5 明言"我不自己拍颜色，避免审美争议"，所以这里定的不是审美而是**可读性下限**——关键对（砖/路、角色/路、门/天…）用"明度对比 ∨ 高饱和色相分离"双通道判定 + Viénot-Brettel 三色盲模拟残余下限 + 天空亮度/路面饱和带。阈值是 3D 场景折减版（平面 WCAG 3:1 会误杀所有中性地板，实测把 city 都错杀）。体检结论：**city 仅 1 项不过**（淡蓝角色 vs 琥珀砖在绿色盲下残余 1.00=同色，改 `player: 0x0288d1` 一键即全过）；**candy 7 项不过**（浅粉路上放黄砖/粉紫桥，拾取物直接隐身，PROPOSALS 给了保糖果身份的修复表）。§20 双锁：规范盘常绿 + Theme.ts 现表逐张跑（**当前红=故意报警**，同 §15a 先例；测试专测盘 name 加「(QA)」可豁免）。
+
+16. **Q6 G1 数据回调方案（g1-tuning.md）**：事件 schema（level/seed/outcome/t/bricksLeft/failZ）+ 六条"症状→单旋钮"回调公式（含实测斜率 k±0.1≈胜率±20pt）+ 验收带更新流程（真人数据 vs HUMAN_AVG 同向性判定：同偏改数值、唯真人偏改失误模型）。统计坑已列：restart 后门数据按 seed 合法区间剔除、分母用局不用关（attempt 墙）、计时口径 runT0 跨端对齐。**v4 基准带已实测入 §5**：items-on vs off 人形代理 L1-L30（60 seeds/关）——道具纯增益（胜率均值 +1.9pt、无 <25% 墙、双态贪心 60/60），但 ×2 门使 loop2 余砖中位膨胀至 99-130、鞋使平均 T 降 1.5~3s，故真机"太松"判断须扣 gate 增益、PAR 星线须按 on 态校准。
 
 ## 移植要求（给 step-5）
 

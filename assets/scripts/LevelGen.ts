@@ -131,7 +131,7 @@ export function zonesOf(level: LevelDef): Array<[number, number]> {
 export function prefixBalance(level: LevelDef, cfg: Cfg) {
   const zones = zonesOf(level);
   const perZone = zones.map(([z0, z1]) =>
-    level.pickups.filter((p) => p.z >= z0 && p.z < z1).length * cfg.brickCluster);
+    level.pickups.filter((p) => !p.kind && p.z >= z0 && p.z < z1).length * cfg.brickCluster);
   const surplus: number[] = [];
   let acc = 0;
   for (let i = 0; i < level.gaps.length; i++) {
@@ -222,11 +222,51 @@ export function genLevelV2(seed: number, cfg: Cfg): LevelDef {
 }
 
 // v3 生产版：tailSafe + margin/k 双目标供给修复 + 拾取摊开
-export function genLevelV3(seed: number, cfg: Cfg, opts: { margin?: number; supplyRatio?: number } = {}): LevelDef {
+export function genLevelV3(seed: number, cfg: Cfg, opts: { margin?: number; supplyRatio?: number; items?: ItemsPlan } = {}): LevelDef {
   const margin = opts.margin ?? cfg.supplyMargin ?? 2;
   const k = opts.supplyRatio ?? cfg.supplyRatio ?? 1;
   const level = genLevel(seed, cfg, { tailSafe: true });
   repairPrefixSupply(level, cfg, seed, margin, k);
   spaceOutPickups(level, zonesOf(level));
+  // v4 道具开关:opts.items 显式传入,或 cfg.enableItems 走 ITEMS_DEFAULT。
+  // **默认关闭 = 输出与 v3 逐字节一致(§14 parity 锚不失效)**;开启时仅追加 level.gates 与 kind:'shoe' 拾取。
+  const items = opts.items ?? (cfg.enableItems ? ITEMS_DEFAULT : null);
+  if (items) placeItems(level, cfg, seed, items);
   return level;
+}
+
+// 道具布置(独立子种子 mulberry32(seed*104729+7),确定性):
+// 门放在可跑区间内、避开断崖与彼此;鞋作为 kind:'shoe' 拾取追加。
+// 放不下的名额直接放弃(计数 <= 计划)。供需数学只数无 kind 砖拾取 = 道具纯增益,不可能制造新死局(母本 §19 锁死)。
+function placeItems(level: LevelDef, cfg: Cfg, seed: number, plan: ItemsPlan): void {
+  const rnd = mulberry32(seed * 104729 + 7);
+  const zones = zonesOf(level);
+  const gates: ItemGateDef[] = [];
+  const putGate = (type: 'add' | 'mul', v: number, from: number, to: number) => {
+    for (let tries = 0; tries < 40; tries++) {
+      const z = from + rnd() * (to - from);
+      const onTrack = zones.some(([z0, z1]) => z > z0 + 1.5 && z < z1 - 1.5);
+      const clear = gates.every((g) => Math.abs(g.z - z) >= 6);
+      if (onTrack && clear) {
+        gates.push({ z: +z.toFixed(2), type, v });
+        return;
+      }
+    }
+  };
+  const gateZ = level.gateZ;
+  for (let i = 0; i < (plan.addGates ?? 0); i++) putGate('add', plan.addValue ?? 5, gateZ * 0.45, gateZ * 0.8);
+  for (let i = 0; i < (plan.mulGates ?? 0); i++) putGate('mul', plan.mulValue ?? 2, gateZ * 0.55, gateZ * 0.85);
+  gates.sort((a, b) => a.z - b.z);
+  level.gates = gates;
+
+  const shoeZones = zones.filter(([z0, z1]) => z1 - z0 >= 6);
+  for (let i = 0; i < (plan.shoes ?? 0); i++) {
+    if (!shoeZones.length) break;
+    const [z0, z1] = shoeZones[Math.floor(rnd() * shoeZones.length)];
+    level.pickups.push({
+      x: +((rnd() * 2 - 1) * (cfg.trackHalfWidth - 0.8)).toFixed(2),
+      z: +(z0 + 2 + rnd() * Math.max(1, z1 - z0 - 4)).toFixed(2),
+      kind: 'shoe',
+    });
+  }
 }

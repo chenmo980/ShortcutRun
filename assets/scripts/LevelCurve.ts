@@ -55,3 +55,27 @@ export function cfgForLevel(level: number, base: Cfg): Cfg {
     supplyRatio: Math.max(1.5, ratioFor(level) - loop * 0.1),
   };
 }
+
+// v4 道具分带（移植自 docs/qoder/levels.mjs itemsFor）：L1-2 教学关无道具；
+// L3 起 +N 门；L4 起 ×2 门；L6 起加速鞋；loop 微增封顶。null = 本关无道具
+// （genLevelV3 不传 items = 输出与 v3 逐字节一致，parity 锚不失效）
+export interface ItemsPlan {
+  addGates?: number;
+  mulGates?: number;
+  shoes?: number;
+  addValue?: number;
+  mulValue?: number;
+}
+
+export function itemsFor(level: number): ItemsPlan | null {
+  const l = ((Math.max(1, level) - 1) % 10) + 1;
+  const loop = Math.floor((Math.max(1, level) - 1) / 10);
+  if (l <= 2) return null;
+  return {
+    addGates: 1 + Math.min(loop, 1),
+    mulGates: (l >= 4 ? 1 : 0) + (loop >= 2 ? 1 : 0),
+    shoes: (l >= 6 ? 1 : 0) + Math.min(loop, 2),
+    addValue: 5,
+    mulValue: 2,
+  };
+}

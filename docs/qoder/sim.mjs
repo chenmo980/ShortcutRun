@@ -591,5 +591,79 @@ const N = 2000;
   }
 }
 
+// 20. Q5 主题锁：① 规范盘 day + 修复提案 PROPOSALS 必须全过 verifyTheme；
+//     ② 读 step-5 的 assets/scripts/Theme.ts THEMES 色表逐张体检（只读）——
+//     现表未过项=故意红报警（同 §15a 先例），修复色直接抄 PROPOSALS，或给
+//     测试盘 name 加「(QA)」前缀豁免。name 含 QA 的盘跳过。
+{
+  const { verifyTheme, verifyAll } = await import('./theme.mjs');
+  const va = verifyAll();
+  const bad20a = Object.entries(va).filter(([, v]) => v.length).map(([k, v]) => `${k}: ${v.join(', ')}`).join(' | ');
+  check('Q5 spec palettes pass (day + proposals)', !bad20a, bad20a);
+
+  const { default: fs } = await import('node:fs');
+  const src = fs.readFileSync(new URL('../../assets/scripts/Theme.ts', import.meta.url), 'utf8');
+  const block = src.slice(src.indexOf('THEMES'), src.indexOf('export function colorOf'));
+  const themes = {};
+  for (const m of block.matchAll(/(\w+): \{([^}]*)\}/g)) {
+    const t = {};
+    for (const k of ['sky', 'ground', 'road', 'brick', 'bridge', 'player', 'limb', 'skin', 'gate', 'pillar', 'shoe']) {
+      const hm = m[2].match(new RegExp(`${k}: 0x([0-9a-fA-F]{6})`));
+      if (hm) t[k] = parseInt(hm[1], 16);
+    }
+    const nm = m[2].match(/name: '([^']*)'/);
+    if (nm) t.name = nm[1];
+    if (Object.keys(t).length > 1) themes[m[1]] = t;
+  }
+  const names = Object.keys(themes);
+  let bad20b = '';
+  for (const [k, t] of Object.entries(themes)) {
+    if ((t.name || '').includes('QA')) continue;
+    const v = verifyTheme(t);
+    if (v.length) bad20b += `${k}: ${v.join(', ')}; `;
+  }
+  check('Theme.ts palettes pass Q5 spec', names.length >= 2 && !bad20b, bad20b || (names.length < 2 ? `仅解析到 ${names.length} 张盘，解析锚可能失效` : ''));
+}
+
+// 21. v4 道具**开启态** parity 锁：step-5 TS 拷贝与预览内联（若已接 placeItems）
+//     必须与母本逐 seed 位级一致。items-off 半边由 §19 字节锚+§14/§16 守着，
+//     这里守的是"道具一旦上线，三处实现不许各摆各的门"。
+{
+  let bad21 = '';
+  for (const lv of [3, 4, 5, 6, 7, 8, 9, 10, 13, 16, 23]) {
+    const cfg = cfgForLevel(lv), plan = itemsFor(lv);
+    for (let s = 1; s <= 60; s++) {
+      const seed = lv * 1000 + s;
+      const m = JSON.stringify(genLevelV3(seed, cfg, { items: plan }));
+      const t = JSON.stringify(tsGenLevelV3(seed, cfg, { items: plan }));
+      if (m !== t) { bad21 = `lv=${lv} seed=${seed} ${m.length !== t.length ? `len ${m.length}!=${t.length}` : m.slice(0, 400) === t.slice(0, 400) ? 'first-diff@' + m.split('').findIndex((c, i) => c !== t[i]) : 'head-diff'}`; break; }
+    }
+    if (bad21) break;
+  }
+  check('v4 items-on parity: TS copy (660 runs)', !bad21, bad21);
+
+  const { default: fs } = await import('node:fs');
+  const html = fs.readFileSync(new URL('../../web-preview/index.html', import.meta.url), 'utf8');
+  const s0 = html.indexOf('function mulberry32');
+  const s1 = html.indexOf('// ===== 关卡进阶曲线');
+  if (s0 >= 0 && s1 > s0 && html.slice(s0, s1).includes('placeItems')) {
+    const { default: vm } = await import('node:vm');
+    const sb = vm.createContext({ Math, console });
+    vm.runInContext(html.slice(s0, s1), sb, { filename: 'web-preview-inline' });
+    let bad21b = '';
+    for (const lv of [3, 6, 9, 16]) {
+      const cfg = cfgForLevel(lv), plan = itemsFor(lv);
+      for (let s = 1; s <= 30 && !bad21b; s++) {
+        const seed = lv * 1000 + s;
+        if (JSON.stringify(sb.genLevelV3(seed, cfg, { items: plan })) !==
+            JSON.stringify(genLevelV3(seed, cfg, { items: plan }))) bad21b = `lv=${lv} seed=${seed}`;
+      }
+    }
+    check('v4 items-on parity: preview inline', !bad21b, bad21b);
+  } else {
+    console.log('info v4 items-on inline parity: 预览尚未接 placeItems，跳过（接线后本项自动激活）');
+  }
+}
+
 console.log(failed ? `\n${failed} checks FAILED` : '\nbridge-rules OK: all invariants passed');
 process.exit(failed ? 1 : 0);

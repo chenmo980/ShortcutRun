@@ -57,11 +57,16 @@ s = await page.evaluate(() => window.__game.getState());
 // 手性修正（Qoder 2026-09-21）：Three.js 屏幕右 = 世界 -X，右拖/按 D 应得 x < 0
 check('steer-input', s.x < -0.2, `x=${s.x.toFixed(2)}`);
 
-// 4. 铺桥路径：砖够 → 自动拍桥，状态保持 run
-await page.evaluate(() => window.__game.setBricks(60));
-await sleep(6000); // 越过第一个断崖
+// 4. 铺桥路径：重开 + 99 砖 → 第一个断崖被自动桥接，状态保持 run（事件等待，无时序假设）
+await page.evaluate(() => window.__game.restart(1));
+await sleep(300);
+await page.evaluate(() => window.__game.setBricks(99));
+await page.mouse.move(450, 300);
+await page.mouse.down();
+await page.mouse.up();
+await page.waitForFunction(() => window.__game.getState().gapList[0].bridged, null, { timeout: 10000 });
 s = await page.evaluate(() => window.__game.getState());
-check('bridge-pass', s.state === 'run' && s.z > 12, `state=${s.state} z=${s.z.toFixed(1)}`);
+check('bridge-pass', s.state === 'run' && s.gapList[0].bridged === true, `state=${s.state} bridged=${s.gapList[0].bridged} z=${s.z.toFixed(1)}`);
 await page.screenshot({ path: `${SHOTS}/03-bridged.png` });
 
 // 5. 掉落路径：重开 + 零砖 + 切到没有拾取物的车道 → 到断崖掉下去

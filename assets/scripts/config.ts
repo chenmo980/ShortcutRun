@@ -24,7 +24,9 @@ export interface Cfg {
 
   // ---- v3 供给修复参数（由 LevelCurve 按关卡设定，见 docs/qoder/levels.mjs） ----
   supplyMargin?: number;   // 每个前缀点至少剩余砖数（真人容错余量）
-  supplyRatio?: number;    // 累计供给 >= k × 累计需求（漏吃 25% 时的溢出倍率）
+  supplyRatio?: number;
+  // ---- v4 (add/mul gates + speed shoes); off by default = byte-identical to v3 output ----
+  enableItems?: boolean;    // 累计供给 >= k × 累计需求（漏吃 25% 时的溢出倍率）
 
   // ---- 视觉（灰模） ----
   brickUnit: number;       // 砖块立方体边长
