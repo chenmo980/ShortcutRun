@@ -4,18 +4,20 @@
 
 ## 进行中
 
-- [ ] **G1 手感门禁**：在 Cocos 里试玩灰模版，反馈手感（速度/转向/难度）——阻塞后续资产投入，只有你能过这关
+- [ ] **G1 手感门禁（浏览器版）**：双击 `web-preview/index.html` 试玩，反馈手感（速度/转向/难度）——Cocos 装配问题搁置，先用浏览器版过 G1
 
 ## 已完成
 
 - [x] v0.1 灰模原型：GameApp 状态机 + TrackBuilder + LevelGen（2026-09-20）
 - [x] 冒烟测试 tools/smoke.ts 50 种子全绿
-- [x] HUD：GameUI.ts + SETUP.md 4.5 装配步骤（2026-09-21，待试玩验证）
+- [x] HUD：GameUI.ts + SETUP.md 4.5 装配步骤（2026-09-21）
 - [x] AI-TEAM.md v2 最小协作方案
-- [x] 本地 git 仓库初始化 + 首次提交
-- [x] 远程仓库：origin=chenmo980/ShortcutRun（用户 PAT 推送），backup=lark980-web/ShortcutRun（2026-09-21）
-- [x] 扫掠检测修复：断崖/拾取按帧位移区间判定，防低端机帧抖动穿透（2026-09-21）
-- [x] docs/compliance.md 上架合规清单（软著/版号/主体/流量主时间线）
+- [x] 远程仓库：origin=chenmo980/ShortcutRun（用户 PAT 推送），backup=lark980-web/ShortcutRun
+- [x] 扫掠检测修复：断崖/拾取按帧位移区间判定，防低端机帧抖动穿透
+- [x] docs/compliance.md 上架合规清单
+- [x] **浏览器试玩版 web-preview/index.html**（2026-09-21）：零安装双击即玩，逻辑与 Cocos 版一致
+- [x] **浏览器版自动化验证 10/10 全过**（tools/verify-web.mjs）：开始/吃砖/转向/铺桥/掉落/胜利/无错误/画面渲染(62色85%非背景)/玩家可见(4379蓝像素)
+- [x] 修复：浏览器版重开关卡时玩家位置未重置（从旧位置起步直接踩断崖）——Cocos 版整场景重载无此问题
 
 ## 阻塞
 
