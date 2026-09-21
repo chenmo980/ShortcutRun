@@ -11,6 +11,8 @@ import { CFG, Cfg } from './config';
 import { genLevelV3, LevelDef } from './LevelGen';
 import { cfgForLevel } from './LevelCurve';
 import { createProgress, ProgressStore } from './Progression';
+import { cycleTheme, currentTheme } from './Theme';
+import { applyTheme } from './BoxFactory';
 import { TrackBuilder, RuntimePickup } from './TrackBuilder';
 import { CameraFollow } from './CameraFollow';
 import { GameUI } from './GameUI';
@@ -117,7 +119,9 @@ export class GameApp extends Component {
     this.heldRight = false;
     this.dragging = false;
     this.ui?.setBricks(0);
-    this.ui?.showHint(`第 ${this.levelNum} 关 · 点击开始（终点需 ${this.cfg.gateCost} 砖）`);
+    const best = this.prog.state().best[cur.level];
+    const bestTxt = best ? `（最佳 ${best.stars}★ ${best.time}s）` : '';
+    this.ui?.showHint(`第 ${cur.level} 关 · 点击开始（终点需 ${this.cfg.gateCost} 砖）${bestTxt}`);
   }
 
   private findOrCreateCamera(): Node {
@@ -186,6 +190,7 @@ export class GameApp extends Component {
   private onKeyPressing(ev: EventKeyboard): void {
     this.startRun();
     this.applyKeyHold(ev.keyCode, true);
+    if (ev.keyCode === KeyCode.KEY_T) this.toggleTheme();
   }
 
   private onKeyUp(ev: EventKeyboard): void {
@@ -195,6 +200,14 @@ export class GameApp extends Component {
   private applyKeyHold(code: number, down: boolean): void {
     if (code === KeyCode.KEY_A || code === KeyCode.ARROW_LEFT) this.heldLeft = down;
     if (code === KeyCode.KEY_D || code === KeyCode.ARROW_RIGHT) this.heldRight = down;
+  }
+
+  // T 键换肤：切主题 + 清材质缓存 + 重建当前关卡（种子不变，同图换色）
+  private toggleTheme(): void {
+    cycleTheme();
+    applyTheme();
+    console.log(`[ShortcutRun] 切换主题：${currentTheme().name}`);
+    this.startLevel();
   }
 
   private clampTarget(): void {

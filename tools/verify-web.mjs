@@ -98,7 +98,15 @@ s = await page.evaluate(() => window.__game.getState());
 check('win-state', s.state === 'win' && s.z >= s.gateZ - 1, `z=${s.z.toFixed(1)} gateZ=${s.gateZ.toFixed(1)}`);
 await page.screenshot({ path: `${SHOTS}/05-win.png` });
 
-// 7. 无页面错误
+// 9. 主题换肤：按 T 切换，theme 字段变化且游戏不崩
+const themeBefore = (await page.evaluate(() => window.__game.getState())).theme;
+await page.keyboard.press('t');
+await sleep(400);
+const themeAfter = (await page.evaluate(() => window.__game.getState())).theme;
+check('theme-toggle', themeBefore !== themeAfter, `${themeBefore} -> ${themeAfter}`);
+await page.screenshot({ path: `${SHOTS}/07-theme-${themeAfter}.png` });
+
+// 10. 无页面错误
 check('no-page-error', errors.length === 0, errors.slice(0, 3).join(' | '));
 
 // 8. 像素级验证（替代肉眼）：画面有内容、色彩丰富、玩家（蓝色）出现在镜头中央区域
@@ -108,6 +116,7 @@ await page.mouse.move(450, 300);
 await page.mouse.down();
 await page.mouse.up();
 await sleep(600);
+const st0 = await page.evaluate(() => window.__game.getState());
 const vis = await page.evaluate(() => {
   window.__game.renderOnce(); // 同一任务内渲染后立刻读，避免 WebGL 缓冲被清
   const c = window.__game.canvas();
@@ -116,18 +125,20 @@ const vis = await page.evaluate(() => {
   const ctx = off.getContext('2d');
   ctx.drawImage(c, 0, 0, 200, 140);
   const d = ctx.getImageData(0, 0, 200, 140).data;
+  const sky = window.__game.getState().sky;
+  const sr = (sky >> 16) & 255, sg = (sky >> 8) & 255, sb = sky & 255;
   const colors = new Set();
   let nonBg = 0, blue = 0;
   for (let i = 0; i < d.length; i += 4) {
     const r = d[i], g = d[i + 1], b = d[i + 2];
     colors.add((r >> 4) + ',' + (g >> 4) + ',' + (b >> 4));
-    if (Math.abs(r - 135) > 25 || Math.abs(g - 165) > 25 || Math.abs(b - 200) > 30) nonBg++;
+    if (Math.abs(r - sr) > 25 || Math.abs(g - sg) > 25 || Math.abs(b - sb) > 30) nonBg++;
     if (b > 150 && b - r > 40 && g > 100) blue++; // 玩家蓝
   }
-  return { colors: colors.size, nonBgRatio: nonBg / (200 * 140), bluePx: blue };
+  return { colors: colors.size, nonBgRatio: nonBg / (200 * 140), bluePx: blue, theme: window.__game.getState().theme };
 });
 check('scene-rendered', vis.colors >= 8 && vis.nonBgRatio > 0.15 && vis.nonBgRatio < 0.98,
-  `colors=${vis.colors} nonBg=${(vis.nonBgRatio * 100).toFixed(0)}%`);
+  `colors=${vis.colors} nonBg=${(vis.nonBgRatio * 100).toFixed(0)}% theme=${vis.theme}`);
 check('player-visible', vis.bluePx > 50, `bluePx=${vis.bluePx}`);
 await page.screenshot({ path: `${SHOTS}/06-pixel-check.png` });
 

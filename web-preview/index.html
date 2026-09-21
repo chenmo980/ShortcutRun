@@ -14,7 +14,7 @@
 </head>
 <body>
 <div id="app"></div>
-<div id="title">ShortcutRun 灰模 · 拖动鼠标 / A D 转向</div>
+<div id="title">ShortcutRun 灰模 · 拖动鼠标 / A D 转向 · T 换肤</div>
 <div id="brick" class="hud">砖块 0</div>
 <div id="hint" class="hud">点击开始 · 终点需 14 砖</div>
 <script src="three.min.js"></script>
@@ -241,17 +241,37 @@ sun.position.set(8, 20, 6);
 scene.add(sun);
 
 const BOX = new THREE.BoxGeometry(1, 1, 1);
-const MAT = {
-  road:   new THREE.MeshLambertMaterial({ color: 0x9aa2ab }),
-  ground: new THREE.MeshLambertMaterial({ color: 0x5b7a5e }),
-  brick:  new THREE.MeshLambertMaterial({ color: 0xffd54f }),
-  bridge: new THREE.MeshLambertMaterial({ color: 0xb08968 }),
-  player: new THREE.MeshLambertMaterial({ color: 0x4fc3f7 }),
-  limb:   new THREE.MeshLambertMaterial({ color: 0x2196f3 }),
-  skin:   new THREE.MeshLambertMaterial({ color: 0xffe0b2 }),
-  gate:   new THREE.MeshLambertMaterial({ color: 0xef5350 }),
-  pillar: new THREE.MeshLambertMaterial({ color: 0x546e7a }),
+// ============ 主题系统（换肤 = 换色表，与 Cocos 版 Theme.ts 一致） ============
+const THEMES = {
+  city: { name: '城市', sky: 0x8fb3d9, ground: 0x7d8a99, road: 0x3d444d, brick: 0xffc107, bridge: 0x8d6e63, player: 0x4fc3f7, limb: 0x2196f3, skin: 0xffe0b2, gate: 0xe53935, pillar: 0x455a64 },
+  candy: { name: '糖果', sky: 0xffd9e8, ground: 0xb8e6c1, road: 0xff8fab, brick: 0xfff176, bridge: 0xce93d8, player: 0x64b5f6, limb: 0x42a5f5, skin: 0xffe0b2, gate: 0xff7043, pillar: 0xab47bc },
 };
+let themeKey = 'city';
+const MAT = {
+  road:   new THREE.MeshLambertMaterial(),
+  ground: new THREE.MeshLambertMaterial(),
+  brick:  new THREE.MeshLambertMaterial(),
+  bridge: new THREE.MeshLambertMaterial(),
+  player: new THREE.MeshLambertMaterial(),
+  limb:   new THREE.MeshLambertMaterial(),
+  skin:   new THREE.MeshLambertMaterial(),
+  gate:   new THREE.MeshLambertMaterial(),
+  pillar: new THREE.MeshLambertMaterial(),
+};
+function applyTheme() {
+  const t = THEMES[themeKey];
+  scene.background.setHex(t.sky);
+  scene.fog.color.setHex(t.sky);
+  for (const k of Object.keys(MAT)) MAT[k].color.setHex(t[k]);
+}
+function cycleTheme() {
+  const keys = Object.keys(THEMES);
+  themeKey = keys[(keys.indexOf(themeKey) + 1) % keys.length];
+  applyTheme();
+  console.log(`[ShortcutRun] 切换主题：${THEMES[themeKey].name}`);
+  return themeKey;
+}
+applyTheme();
 
 function box(mat, sx, sy, sz, x, y, z) {
   const m = new THREE.Mesh(BOX, mat);
@@ -358,7 +378,9 @@ function buildLevel(cur) {
   for (const m of stackMeshes) m.visible = false;
   camInited = false;
   setBricksUI(0);
-  showHint(`第 ${cur.level} 关 · 点击开始（终点需 ${cfg.gateCost} 砖）`);
+  const b = prog.state().best[cur.level];
+  const bestTxt = b ? `（最佳 ${b.stars}★ ${b.time}s）` : '';
+  showHint(`第 ${cur.level} 关 · 点击开始（终点需 ${cfg.gateCost} 砖）${bestTxt}`);
   console.log(`[ShortcutRun] 第 ${cur.level} 关 (seed ${cur.seed}) 断崖=${level.gaps.length} 拾取=${level.pickups.length} 终点z=${level.gateZ.toFixed(1)} 门需求=${cfg.gateCost}`);
 }
 function road(z0, z1, w) {
@@ -385,6 +407,7 @@ addEventListener('keydown', (e) => {
   startRun();
   if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') heldLeft = true;
   if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') heldRight = true;
+  if (e.key === 't' || e.key === 'T') { cycleTheme(); syncLevel(); } // 换肤
 });
 addEventListener('keyup', (e) => {
   if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') heldLeft = false;
@@ -561,6 +584,7 @@ window.__game = {
   getState: () => ({
     state, bricks, x: player.position.x, y: player.position.y, z: player.position.z, speed,
     pickups: pickups.length, gaps: level.gaps.length, gateZ: level.gateZ,
+    level: levelNum, theme: themeKey, themeName: THEMES[themeKey].name, sky: THEMES[themeKey].sky,
     pickupList: pickups.map((p) => ({ x: p.def.x, z: p.def.z, taken: p.taken })),
     gapList: level.gaps.map((g) => ({ zStart: g.zStart, zEnd: g.zEnd, cost: g.cost, bridged: !!g.bridged })),
   }),

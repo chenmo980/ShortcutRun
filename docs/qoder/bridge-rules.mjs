@@ -73,8 +73,9 @@ export function genLevel(seed, cfg = DEFAULT_CFG, opts = {}) {
   return { length: cfg.levelLength, gaps, pickups, gateZ, gateCost: cfg.gateCost };
 }
 
+// 供需只数砖拾取（v4 起 kind:'shoe' 不计入供给 = 道具可行性无关化）
 export function levelStats(level, cfg = DEFAULT_CFG) {
-  const obtainable = level.pickups.length * cfg.brickCluster;
+  const obtainable = level.pickups.filter((p) => !p.kind).length * cfg.brickCluster;
   const need = level.gateCost + level.gaps.reduce((s, g) => s + g.cost, 0);
   return { obtainable, need, ok: obtainable >= need };
 }
@@ -93,7 +94,7 @@ export function zonesOf(level) {
 export function prefixBalance(level, cfg = DEFAULT_CFG) {
   const zones = zonesOf(level);
   const perZone = zones.map(([z0, z1]) =>
-    level.pickups.filter((p) => p.z >= z0 && p.z < z1).length * cfg.brickCluster);
+    level.pickups.filter((p) => !p.kind && p.z >= z0 && p.z < z1).length * cfg.brickCluster);
   const surplus = []; // surplus[i] = 到达第 i 个断崖前（含第 i 段区间）的累计余砖；最后一个是终点门后
   let acc = 0;
   for (let i = 0; i < level.gaps.length; i++) {
@@ -121,13 +122,58 @@ export function genLevelV2(seed, cfg = DEFAULT_CFG) {
 //   ② 累计供给 >= k × 累计需求（乘法溢出；k=1 时即①的特例）
 // 依据：失误人形 bot 归因实测（sim.mjs §11）——漏吃 25% 时纯加法 margin 下 L7 胜率 0%，
 // 反应/横移/瞄准全绿；瓶颈唯一是供给量。真人有效拾取率≈65~75%，故 k 带 1.35~2.0。
+// —— v4：道具门（+N / ×N）+ 加速鞋（复刻原版 Shortcut Run 道具集）——
+// 开关：opts.items = { addGates, mulGates, shoes, addValue?, mulValue? }（levels.mjs itemsFor 给分带）
+//      或 cfg.enableItems=true 走默认计划。**关闭时（默认）输出与 v3 逐字节一致**，
+//      §14/§16 parity 锚不失效。开启时仅新增 level.gates 数组与拾取项上的 kind:'shoe'。
+// 可行性不变量：供需数学（levelStats/prefixBalance/repair）全部只数无 kind 的砖拾取，
+// 门与鞋是纯增益——开道具永远不可能制造新死局（sim.mjs §19 断言）。
+export const ITEMS_DEFAULT = { addGates: 1, mulGates: 1, shoes: 1 };
+
 export function genLevelV3(seed, cfg = DEFAULT_CFG, opts = {}) {
   const margin = opts.margin ?? cfg.supplyMargin ?? 2;
   const k = opts.supplyRatio ?? cfg.supplyRatio ?? 1;
   const level = genLevel(seed, cfg, { tailSafe: true });
   repairPrefixSupply(level, cfg, seed, margin, k);
   spaceOutPickups(level, zonesOf(level));
+  const items = opts.items ?? (cfg.enableItems ? ITEMS_DEFAULT : null);
+  if (items) placeItems(level, cfg, seed, items);
   return level;
+}
+
+// 道具布置（独立子种子，确定性）：门放在可跑区间内、避开断崖与彼此；
+// 鞋作为 kind:'shoe' 拾取追加在空间足够的区间。放不下的名额直接放弃（计数<=计划）。
+function placeItems(level, cfg, seed, plan) {
+  const rnd = mulberry32(seed * 104729 + 7);
+  const zones = zonesOf(level);
+  const gates = [];
+  const putGate = (type, v, from, to) => {
+    for (let tries = 0; tries < 40; tries++) {
+      const z = from + rnd() * (to - from);
+      const onTrack = zones.some(([z0, z1]) => z > z0 + 1.5 && z < z1 - 1.5);
+      const clear = gates.every((g) => Math.abs(g.z - z) >= 6);
+      if (onTrack && clear) {
+        gates.push({ z: +z.toFixed(2), type, v });
+        return;
+      }
+    }
+  };
+  const gateZ = level.gateZ;
+  for (let i = 0; i < (plan.addGates ?? 0); i++) putGate('add', plan.addValue ?? 5, gateZ * 0.45, gateZ * 0.8);
+  for (let i = 0; i < (plan.mulGates ?? 0); i++) putGate('mul', plan.mulValue ?? 2, gateZ * 0.55, gateZ * 0.85);
+  gates.sort((a, b) => a.z - b.z);
+  level.gates = gates;
+
+  const shoeZones = zones.filter(([z0, z1]) => z1 - z0 >= 6);
+  for (let i = 0; i < (plan.shoes ?? 0); i++) {
+    if (!shoeZones.length) break;
+    const [z0, z1] = shoeZones[Math.floor(rnd() * shoeZones.length)];
+    level.pickups.push({
+      x: +((rnd() * 2 - 1) * (cfg.trackHalfWidth - 0.8)).toFixed(2),
+      z: +(z0 + 2 + rnd() * Math.max(1, z1 - z0 - 4)).toFixed(2),
+      kind: 'shoe',
+    });
+  }
 }
 
 function repairPrefixSupply(level, cfg, seed, margin, k = 1) {
@@ -213,6 +259,14 @@ export function botRun(level, cfg = DEFAULT_CFG, opts = {}) {
   const pMiss = opts.pMiss ?? 0;
   const jitter = opts.jitter ?? 0;
   const look = opts.look ?? 12;
+  // v4 道具镜像：shoeMul/shoeDur=提速鞋参数；chaseShoes=false（默认）bot 不专门为鞋横跳，
+  // 鞋只按顺路判定吃到——保证 bot 口径下道具纯增益、胜率断言不因绕路抖动而脆
+  const shoeMul = opts.shoeMul ?? 1.35;
+  const shoeDur = opts.shoeDur ?? 3.5;
+  const chaseShoes = opts.chaseShoes === true;
+  const gates = level.gates ?? [];
+  const fired = gates.map(() => false);
+  let shoeUntil = -Infinity;
   const rnd = pMiss || jitter ? mulberry32(opts.seed ?? 1) : null;
   const taken = level.pickups.map(() => false);
   const missed = level.pickups.map(() => false);
@@ -221,7 +275,8 @@ export function botRun(level, cfg = DEFAULT_CFG, opts = {}) {
   let target = 0, lastPlan = -Infinity;
   const maxT = opts.maxT ?? 60;
   while (t < maxT) {
-    const speed = Math.min(cfg.maxSpeed, cfg.runSpeed + bricks * cfg.speedPerBrick);
+    let speed = Math.min(cfg.maxSpeed, cfg.runSpeed + bricks * cfg.speedPerBrick);
+    if (t < shoeUntil) speed *= shoeMul;
     const prevZ = z;
     z += speed * dt;
     // 目标横位：贪心=前方 look 内最近未吃拾取；人形=每 reactSec 才重算一次
@@ -231,6 +286,7 @@ export function botRun(level, cfg = DEFAULT_CFG, opts = {}) {
       for (let i = 0; i < level.pickups.length; i++) {
         const p = level.pickups[i];
         if (taken[i] || missed[i] || p.z < z - 0.7 || p.z > z + look) continue;
+        if (p.kind === 'shoe' && !chaseShoes) continue;
         if (p.z < bestZ) { bestZ = p.z; target = p.x; }
       }
       if (rnd && jitter) target += (rnd() * 2 - 1) * jitter;
@@ -248,7 +304,20 @@ export function botRun(level, cfg = DEFAULT_CFG, opts = {}) {
       const p = level.pickups[i];
       if (z >= p.z - 0.7 && prevZ <= p.z + 0.7 && Math.abs(x - p.x) < 0.95) {
         if (rnd && rnd() < pMiss) missed[i] = true;
-        else { taken[i] = true; bricks += cfg.brickCluster; }
+        else {
+          taken[i] = true;
+          if (p.kind === 'shoe') shoeUntil = t + shoeDur;
+          else bricks += cfg.brickCluster;
+        }
+      }
+    }
+    for (let i = 0; i < gates.length; i++) {
+      if (fired[i]) continue;
+      if (z >= gates[i].z && prevZ < gates[i].z + 0.5) {
+        fired[i] = true;
+        bricks = gates[i].type === 'add'
+          ? bricks + gates[i].v
+          : Math.round(bricks * gates[i].v);
       }
     }
     for (let i = 0; i < level.gaps.length; i++) {

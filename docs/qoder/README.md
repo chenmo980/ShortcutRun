@@ -23,10 +23,12 @@ zonesOf(level) -> [[z0,z1], ...]  // 可跑区间（断崖之间 + 首尾段）
 prefixBalance(level, cfg) -> { perZone, surplus, feasible, minSurplus, minAt }
 genLevelV2(seed, cfg) -> LevelDef // 可行版（D2 修复 + v2.1 间距），签名与 genLevel 一致
 genLevelV3(seed, cfg, opts?) -> LevelDef // ★ 推荐移植目标：tailSafe（D1 根治）+ 双重供给修复：每前缀点 余量>=cfg.supplyMargin 且 累计供给>=cfg.supplyRatio×累计需求
+                                          // v4 道具：opts.items={addGates,mulGates,shoes,addValue?,mulValue?}（itemsFor(lv) 给分带）；缺省/cfg.enableItems=false 时输出与 v3 逐字节一致（§19 sha 锚）
 spaceOutPickups(level, zones, minGap?) // v2.1：V2/V3 内部已调用，导出的仅为测试可见
 HUMAN_AVG = { pMiss:.25, reactSec:.18, jitter:.35, lateralMax:6.5 } // 「平均玩家」QA 标准参数
 botRun(level, cfg, opts?) -> { outcome:'win'|'fall'|'short'|'timeout', bricks, t, ... }
                                 // opts 缺省=零失误贪心（可达性上限）；传 HUMAN_AVG+seed=失误人形（真实难度口径）
+                                // v4 道具镜像：过 gates 触发 add:+v / mul:×v；吃 kind:'shoe' 后 speed×shoeMul(1.35) 持续 shoeDur(3.5s)；chaseShoes=false 时 bot 不为鞋绕路
 ```
 
 ## 接口签名（levels.mjs）
@@ -37,6 +39,7 @@ bandFor(level) -> 0.95|0.90|0.80            // 分段贪心 bot 胜率验收带�
 marginFor(level) -> 4|2|1                   // 分段前缀余量带（块）：绝对容错
 ratioFor(level) -> 2.0|1.8|1.55             // 分段供给倍率：每前缀点累计供给 >= k×累计需求（真人胜率曲线的实际调节旋钮）
                                             // 注意人形有效拾取率≈0.62，k 实际下限≈1/0.62≈1.6，cfgForLevel 内已夹到 1.5 地板
+itemsFor(level) -> null|{addGates,mulGates,shoes,addValue:5,mulValue:2} // v4 道具分带：L1-2（含每 loop 前两关）null 教学不带；L3 +1 扇 +N 门；L4 起 +×2 门；L6 起 +加速鞋；loop 微增（门/鞋随循环加，封顶 +1 门/+2 鞋）。cfgForLevel 不含道具 key（§15 曲线锁不红），接入只此一处
 ```
 
 ## 接口签名（progression.mjs）
@@ -52,6 +55,7 @@ prog.state() / prog.reset()
 ```
 
 `LevelDef = { length, gaps:[{zStart,zEnd,cost}], pickups:[{x,z}], gateZ, gateCost }`——与 §4 契约一致。
+v4 开启道具时追加：`gates:[{z,type:'add'|'mul',v}]`（按 z 升序），鞋以 `pickups` 内 `{x,z,kind:'shoe'}` 混放（无 kind 字段 = 砖簇）。**关闭时这两个形状变化完全不存在**（键都不会加），消费端只需 `'gates' in level` 判断。
 
 ## sim.mjs 实测结论（2000 seeds / 60 seeds 每关，v1 = 现网 LevelGen.ts）
 
@@ -71,10 +75,13 @@ prog.state() / prog.reset()
 
 13. **推进元规则也上了漂移锁（§17）**：预览内联 prog 与 `progression.mjs` 母本行为全等机验——同一胜/败操作序列（含 150 连败封顶）逐步比对 state() 与返回值、starsFor 全边界扫描（L1-12 × 时间/余砖临界）、四类脏档自愈、跨重启续档、键名一致。真机（playwright 持久化 profile）复验：两胜进 L3、关浏览器重开续档 L3、败局同关换图 attempt=2 落盘，7/7 全过。星级计时口径：预览按 `elapsed - runT0`（startRun 置表），与 bot 的 t 同单位。注（2026-09-21 晚事故后定稿）：页内保留的是 step-5 那份 SR_KEY 块（Qoder 重复块已删，§17 锚点=「关卡推进（移植自」→「关卡生成」分节标记）；同轮新增 §18 整页编译锁，专抓跨块重复声明这类区域锁盲区。
 
+14. **v4 道具落地（复刻原版道具集：+N 门 / ×2 门 / 加速鞋）**：genLevelV3 加 `opts.items`（levels.mjs `itemsFor` 分带，L1-2 教学无、L3 起 +N、L4 起 ×2、L6 起鞋、loop 微增），布置在修复之后、用独立子种子 `mulberry32(seed*104729+7)`，确定性；供需数学按 `!kind` 过滤 → **道具纯增益，永不可能引入新死局**（§19 用"加道具前后 prefixBalance 全等"锁死）。关闭态输出逐字节 = v3（6 个 sha256 快照锚 + 形状锁"不得出现 gates 键"，防"永远加空数组"这类静默破坏 §14/§16 parity 的写法）。实测：道具开 600 局贪心 100% 胜、门 0 压崖 0 越界、布置逐 seed 可复现。渲染与手感归 step-5（V2/V3 视觉轮可一并做：门拱 +N/×2 大字、鞋形拾取、吃鞋 3.5s 提速尾迹）。
+
 ## 移植要求（给 step-5）
 
 - **移植目标 = `genLevelV3`**（一次到位，含 v2 前缀修复 + v2.1 间距 + tailSafe + margin）。你们已移植的 TS 版 genLevelV2 与母本 v2.1/v3 输出已有逐 seed 差异，替换后按 §1 口径重跑 parity（v1 基线永不变，可作为移植正确性的锚）。
 - 接入方式：`cfg = cfgForLevel(level, CFG)`（levels.mjs，含 supplyMargin 字段）→ `genLevelV3(seed, cfg)`；种子建议 `seed = level*1000 + attempt`（同关重开同图，换关换图）。
 - **保留 D1/D2/间距/margin 断言进 tools/smoke**，防止回归。
 - `botRun` 是 QA 工具不进游戏包体，留在 `tools/` 层。
+- **v4 道具接入（增量，随时可接不阻塞）**：进场处 `genLevelV3(seed, cfg, { items: itemsFor(level) ?? undefined })`；渲染 `level.gates`（拱门 +5/×2）与 `pickups` 里 `kind:'shoe'`；运行时吃鞋 `speed×1.35 持续 3.5s`、过门 `+v / ×v`。不接则一切如旧（默认关闭=逐字节 v3）。内联移植后 §19 字节锚自动守护未开启路径，开启路径 parity 我下轮加锁。
 - **跨重启存档：web-preview 已落地（2026-09-21，Qoder 按用户指令接线）**，内联 prog 块由 `sim.mjs §17` 行为锁看守（操作序列逐步全等 + starsFor 边界扫描 + 脏档自愈 + 键名一致），真机复验胜/败/续档 7/7。**Cocos 侧仍待接**：`sys.localStorage` 包 `{getItem,setItem}` 喂 `createProgress` 即可，规则口径照 §17 内联版或 TS 直译。注：母本 STORAGE_KEY 曾混入一个 U+2026 坏字符，已修正为文档口径 `shortcut_run_progress_v1`；旧键下的本地脏档因键名变更会被视为「无存档→全新开局」自愈，无需迁移。

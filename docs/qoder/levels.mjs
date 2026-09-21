@@ -65,3 +65,20 @@ export function ratioFor(level) {
   if (l <= 7) return 1.8;
   return 1.55;
 }
+
+// —— v4 道具分带（复刻原版节奏：先见 +N 门，再见 ×2 门，再见到处是鞋）——
+// 返回 null = 该关无道具（genLevelV3 输出与 v3 逐字节一致）。
+// 接入：genLevelV3(seed, cfgForLevel(lv), { items: itemsFor(lv) ?? undefined })。
+// cfgForLevel 不含道具 key——§15 曲线锁因此不红；step-5 接道具只需加 itemsFor 一处。
+export function itemsFor(level) {
+  const l = ((Math.max(1, level) - 1) % 10) + 1;
+  const loop = Math.floor((Math.max(1, level) - 1) / 10);
+  if (l <= 2) return null; // L1-2 教学：纯铺路，不被道具稀释手感
+  return {
+    addGates: 1 + Math.min(loop, 1), // loop+ 微增：中后期两扇 +5 门
+    mulGates: (l >= 4 ? 1 : 0) + (loop >= 2 ? 1 : 0), // L4 起 ×2 门（放在后半程）
+    shoes: (l >= 6 ? 1 : 0) + Math.min(loop, 2), // L6 起加速鞋，每 loop 加一双
+    addValue: 5, // ≈1.25 簇，原版 +N 门量级
+    mulValue: 2,
+  };
+}

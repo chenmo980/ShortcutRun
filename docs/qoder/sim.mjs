@@ -4,7 +4,7 @@
 import {
   DEFAULT_CFG, genLevel, genLevelV2, genLevelV3, levelStats, prefixBalance, botRun, zonesOf, HUMAN_AVG,
 } from './bridge-rules.mjs';
-import { cfgForLevel, bandFor, marginFor, ratioFor } from './levels.mjs';
+import { cfgForLevel, bandFor, marginFor, ratioFor, itemsFor } from './levels.mjs';
 import { genLevel as tsGenLevel, genLevelV3 as tsGenLevelV3 } from '../../assets/scripts/LevelGen.ts';
 import { CFG } from '../../assets/scripts/config.ts';
 
@@ -505,6 +505,90 @@ const N = 2000;
     catch (e) { bad18 += `script#${i}: ${e.message}; `; }
   });
   check('whole-page compile lock (dup-decl/SyntaxError)', !bad18 && scripts.length > 0, bad18 || (scripts.length ? '' : '未抽到内联 script'));
+}
+
+// 19. v4 道具锁：开关关闭逐字节不变（sha256 快照锚）+ 开启后布置不变量 + 供需无关 + 胜率。
+//     锚 = 2026-09-21 v3 定稿输出摘要（改动前采集）。任何无意漂移（哪怕一个 .toFixed 位数）都会红。
+{
+  const { createHash } = await import('node:crypto');
+  const H = (s) => createHash('sha256').update(s).digest('hex').slice(0, 16);
+  const ANCHORS = [
+    [3, 2, 'f90fdb59f0c26fad'], [77, 9, '7fef651c042bc33d'], [1001, 5, '945686c2ac0e2fb1'],
+    [20260921, 12, 'edc995f05bee41e0'], [42, 7, '6827be087d9a0916'], [999, 15, 'b1174ad314a7f19d'],
+  ];
+  let bad19 = '';
+  for (const [s, lv, h] of ANCHORS) {
+    const j = JSON.stringify(genLevelV3(s, cfgForLevel(lv)));
+    if (H(j) !== h) { bad19 += `seed=${s} lv=${lv} `; }
+  }
+  check('v4 items-off byte anchor (6 sha256)', !bad19, bad19);
+
+  // items-off 输出不得含 gates 键 / kind 拾取（形状锁，防"永远加空数组"破坏 TS parity 逐字节比对）
+  {
+    let bad = '';
+    for (let s = 1; s <= 50; s++) {
+      const L = genLevelV3(s, cfgForLevel(1 + (s % 10)));
+      if ('gates' in L || L.pickups.some((p) => p.kind)) { bad = `seed=${s}`; break; }
+    }
+    check('items-off shape: no gates key / no kind', !bad, bad);
+  }
+
+  // 开启后：确定性 + 布置不变量（门在可跑区间内、避断崖、彼此 >=6m、z<gateZ；鞋数<=计划；门排序）
+  {
+    let bad = '';
+    for (let lv = 3; lv <= 12 && !bad; lv++) {
+      const cfg = cfgForLevel(lv), plan = itemsFor(lv);
+      if (!plan) continue; // L12 落回教学带（l=2）无道具，属分带设计
+      for (let s = 1; s <= 100; s++) {
+        const a = JSON.stringify(genLevelV3(lv * 1000 + s, cfg, { items: plan }));
+        const b = JSON.stringify(genLevelV3(lv * 1000 + s, cfg, { items: plan }));
+        if (a !== b) { bad = `非确定 seed=${lv * 1000 + s}`; break; }
+        const L = JSON.parse(a);
+        const zones = zonesOf(L);
+        if (L.gates.some((g) => g.z >= L.gateZ - 1 || g.z < 8)) { bad = `门越界 ${L.gateZ}`; break; }
+        for (const g of L.gates) {
+          const inRun = zones.some(([z0, z1]) => g.z > z0 + 1 && g.z < z1 - 1);
+          if (!inRun) { bad = `门压在断崖/间隙 ${JSON.stringify(g)} seed=${lv * 1000 + s}`; break; }
+        }
+        if (bad) break;
+        if (L.gates.length > (plan.addGates + plan.mulGates)) { bad = '门超计划'; break; }
+        if (L.pickups.filter((p) => p.kind === 'shoe').length > plan.shoes) { bad = '鞋超计划'; break; }
+      }
+    }
+    check('items-on determinism + placement invariants', !bad, bad);
+  }
+
+  // 供需无关性：加道具前后 prefixBalance 完全一致（鞋不计数、门不预判）
+  {
+    let bad = '';
+    for (let s = 1; s <= 100; s++) {
+      const cfg = cfgForLevel(6);
+      const off = JSON.stringify(prefixBalance(genLevelV3(s, cfg)));
+      const on = JSON.stringify(prefixBalance(genLevelV3(s, cfg, { items: itemsFor(6) })));
+      if (off !== on) { bad = `seed=${s}`; break; }
+    }
+    check('items do not alter supply/demand math', !bad, bad);
+  }
+
+  // 贪心 bot 开道具仍 100% 通关（道具纯增益，不引入新死局）；itemsFor 分带单调
+  {
+    let losses = 0, tot = 0;
+    for (const lv of [3, 4, 5, 6, 7, 8, 9, 10, 13, 25]) {
+      const cfg = cfgForLevel(lv);
+      for (let s = 1; s <= 60; s++) {
+        const r = botRun(genLevelV3(lv * 1000 + s, cfg, { items: itemsFor(lv) }), cfg);
+        tot++; if (r.outcome !== 'win') losses++;
+      }
+    }
+    check('greedy bot 100% win with items (600 runs)', losses === 0, `losses=${losses}/${tot}`);
+    let bad = '';
+    const cnt = (l) => { const p = itemsFor(l); return p ? p.addGates + p.mulGates + p.shoes : 0; };
+    if (itemsFor(1) || itemsFor(2)) bad += 'L1-2 应有 null;';
+    for (const l of [2, 3, 5, 7]) if (cnt(l + 1) < cnt(l)) bad += `非单调 ${l}->${l + 1};`;
+    // loop 微增：同带位（l=3/6）跨 loop 计数严格增（11/21 属 l=1 教学带为 null，不能拿来比）
+    for (const l of [3, 6]) if (cnt(l + 10) <= cnt(l) || cnt(l + 20) <= cnt(l + 10)) bad += `loop 未微增 @l=${l};`;
+    check('itemsFor bands (L1-2 none, monotonic, loop grows)', !bad, bad);
+  }
 }
 
 console.log(failed ? `\n${failed} checks FAILED` : '\nbridge-rules OK: all invariants passed');
