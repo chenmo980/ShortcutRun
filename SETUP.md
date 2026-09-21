@@ -1,4 +1,4 @@
-# Shortcut Run 复刻 · 灰模原型 v0.1
+# Shortcut Run 复刻 · 灰模原型 v0.2
 
 **零装配版**：场景和灰盒都由仓库内置/代码生成，不需要做 prefab、不需要挂脚本。
 
@@ -18,17 +18,28 @@ Cocos Dashboard → **导入** → 选择本目录 `shortcut-run`。
 1. 资源管理器里双击 **`assets/scenes/game.scene`**（Bootstrap 节点已挂好 GameApp，相机已内置）
 2. 编辑器顶部按 **▶**，然后**点击一下画面**开始
 
-成功的标志：控制台出现 `[ShortcutRun] 关卡 seed=1 断崖=5 拾取=10 ...`，屏幕里出现灰色跑道、黄色砖块、蓝色小人。
+成功的标志：控制台出现 `[ShortcutRun] 第 1 关 (seed 1001) 断崖=... 拾取=... 门需求=10`，屏幕里出现深色跑道、黄色砖块、蓝色小人。
 
 | 操作 | 按键 |
 |---|---|
 | 开始 | 任意点击 / 任意键 |
 | 转向 | 鼠标拖动 / 触屏滑动，或 `A`/`D`、`←`/`→` |
-| 重开 | 胜利/失败 1.6 秒后自动重开 |
+| 换肤 | **`T`**（城市 / 糖果主题轮换） |
+| 重开 | 胜利/失败 1.6 秒后自动进入下一关/换图重试 |
 
-规则：自动前进 → 吃砖块（身后拖砖堆 = 携带量）→ 断崖处砖够自动拍桥下来、砖不够掉落 → 终点门验 14 砖，够就开门胜利。
+规则：自动前进 → 吃砖块（身后拖砖堆 = 携带量）→ 断崖处砖够自动拍桥下来、砖不够掉落 → 终点门验砖。**赢了进下一关（L1-L10 难度递增，进度和星级自动存档），输了同关换图重试。**
 
-> 想先体验也行：双击 `web-preview/index.html` 浏览器直接玩（逻辑相同）。
+> 想先体验也行：双击 `web-preview/index.html` 浏览器直接玩（逻辑相同，还带进度条）。
+
+### 3.5 HUD（可选，约 3 分钟）
+
+不配也能玩（砖块数/进度看控制台），但试玩时建议配上：
+
+1. 层级右键 → **创建 → UI → Label**（引擎会自动生成 `Canvas` 和 UI 相机），命名为 `BrickLabel`，拖到屏幕上方中间，字号调大（如 60）
+2. 再建 Label 命名 `HintLabel`（屏幕中央）和 `ProgressLabel`（BrickLabel 下方）
+3. `Canvas` 节点挂 **GameUI** 组件，把三个 Label 分别拖到对应字段
+
+效果：上方常驻“砖块 N / 进度 xx%”，中央显示关卡提示（含本关最佳成绩）/ 胜利星级 / 失败原因。
 
 ## 4. 兜底：如果 game.scene 打不开/报错
 
@@ -42,23 +53,20 @@ Cocos Dashboard → **导入** → 选择本目录 `shortcut-run`。
 
 ## 5. 调参（手感不对就改这里）
 
-全部在 `assets/scripts/config.ts`：
-
-| 参数 | 作用 | 调整方向 |
-|---|---|---|
-| `runSpeed` / `speedPerBrick` / `maxSpeed` | 速度与加速感 | 觉得肉就先加 20% |
-| `steerSpeed` / `steerPerPixel` | 转向跟手度 | 觉得涩就加大 |
-| `gapWidthMin/Max`、`gapIntervalMin/Max` | 难度曲线 | 太难就缩窄断崖/拉大间隔 |
-
-`seed`（GameApp 组件上）换数字 = 换一张关卡图。
+| 文件 | 管什么 |
+|---|---|
+| `assets/scripts/config.ts` | 手感参数（速度/转向/相机） |
+| `assets/scripts/LevelCurve.ts` | L1-L10 难度曲线（断崖宽窄/间隔/门需求/速度） |
+| `assets/scripts/Theme.ts` | 主题色表（换肤改这里） |
 
 ## 6. 决策关口（G1）
 
-**连玩 30 分钟。** 还想再来一把 = 立项成功，进入 v0.2（Mixamo 角色/广告 SDK/主题换肤）；觉得无聊 = 趁早砍，只亏两周。
+**连玩 30 分钟。** 还想再来一把 = 立项成功，进入下一阶段（UI 打磨/音效/广告 SDK）；觉得无聊 = 趁早砍，只亏两周。
 
 ## 7. 测试
 
 ```bash
-node tools/smoke.ts          # 关卡生成器 50 种子不变量
-node tools/verify-web.mjs    # 浏览器版端到端 10 项断言
+node tools/smoke.ts          # 关卡生成器：parity + 200 种子不变量 + bot 通关率 + 曲线漂移 + progression
+node tools/verify-web.mjs    # 浏览器版端到端 11 项断言（含换肤/像素检测）
+node docs/qoder/sim.mjs      # 规则母本验收套件（Qoder 维护）
 ```

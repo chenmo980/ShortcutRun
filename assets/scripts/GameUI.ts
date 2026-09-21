@@ -11,8 +11,17 @@ export class GameUI extends Component {
   @property({ type: Label, tooltip: '中央提示：开始 / 胜利 / 失败' })
   hintLabel: Label | null = null;
 
+  @property({ type: Label, tooltip: '关卡进度百分比（可选）' })
+  progressLabel: Label | null = null;
+
   setBricks(n: number): void {
     if (this.brickLabel) this.brickLabel.string = `砖块 ${n}`;
+  }
+
+  setProgress(z: number, gateZ: number): void {
+    if (!this.progressLabel) return;
+    const pct = Math.max(0, Math.min(100, (z / gateZ) * 100));
+    this.progressLabel.string = `进度 ${pct.toFixed(0)}%`;
   }
 
   showHint(text: string): void {

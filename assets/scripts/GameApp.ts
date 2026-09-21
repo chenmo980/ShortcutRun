@@ -255,6 +255,7 @@ export class GameApp extends Component {
     }
     this.track.syncStack(this.bricks);
     this.track.syncRig(this.state, this.speed, this.elapsed);
+    this.ui?.setProgress(z, this.levelDef.gateZ);
   }
 
   // 拾取判定：本帧位移区间 [prevZ, z] 与拾取点区间相交即吃到（防高帧移动量穿透）
