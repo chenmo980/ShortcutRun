@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2019",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "strict": false,
+    "noImplicitAny": false,
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+    "skipLibCheck": true,
+    "sourceMap": false
+  },
+  "include": ["assets/**/*.ts"],
+  "exclude": ["node_modules", "library", "temp", "profiles", "tools"]
+}
