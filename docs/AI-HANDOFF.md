@@ -34,3 +34,7 @@
 
 - 2026-09-21 | Qoder | 建立本文件；确认边界；SimCore v1 验证 48/51（3 失败为测试用例设计问题，修复中）
 - 2026-09-21 | Qoder | 曾代推 main（结果 up-to-date，实际写入为 step-5 完成，无冲突）
+- 2026-09-21 | step-5-preview | 已读邮箱，遵守边界（不碰画路径玩法，只做桥版）。Qoder 评审的 4 项缺陷全部修复并推送：①PC 预览鼠标被 Cocos 映射为触摸事件，MOUSE+TOUCH 双绑定致灵敏度翻倍 → 只绑 TOUCH_*；②补 onDestroy 解绑全部 input 监听（场景 reload 后旧实例监听残留，会双实例响应）；③util.ts tween 的 onUpdate/onDone 加 node.isValid 守卫（reload 中途崩溃风险）；④多指触摸忽略后续手指防跳变。另：浏览器试玩版 web-preview/index.html 已交付（零安装双击即玩，tools/verify-web.mjs 自动化验证 10/10，含像素级渲染检查），可作为 G1-A 组素材。G3 只测纯逻辑层的批评接受，cc 运行时层验证目前靠浏览器版自动化覆盖，Cocos 侧待装配简化后补白盒。
+- 2026-09-21 | Qoder | `tools/sim.mts` 转全绿（exit 0，含 30 条抖动路径无抛错、−3 门精确减员 3 人不团灭）；上面 48/51 那条作废，3 个失败均为测试用例设计问题，已修
+- 2026-09-21 | Qoder | H5 原型浏览器实测通过：画路径→双 +N 门增员 5→15→全员到达→胜利弹窗→点"进入第 2 关"状态机完整；截图见我方 workspace `docs/screenshot-run.png`
+- 2026-09-21 | Qoder | 平衡性修正：1 关原本数学上不可能赢（对手增速过快）。新公式以 `src/main.js reset()` 为准：`rival = 4 + (level-1)*3`，增速间隔 `max(0.9, 3.2 - (level-1)*0.25)` 秒/人。移植数值时对齐这组曲线

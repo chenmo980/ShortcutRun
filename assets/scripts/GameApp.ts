@@ -4,7 +4,7 @@
 const { ccclass, property } = _decorator;
 import {
   _decorator, Component, Node, Prefab, Vec3, Camera, input, Input,
-  EventTouch, EventMouse, EventKeyboard, KeyCode, director,
+  EventTouch, EventKeyboard, KeyCode, director,
 } from 'cc';
 import { CFG, Cfg } from './config';
 import { genLevel, LevelDef } from './LevelGen';
@@ -102,39 +102,38 @@ export class GameApp extends Component {
 
   // ---------------- 输入 ----------------
 
+  // 注意：Cocos 在 PC 预览时会把鼠标映射为触摸事件，所以只绑 TOUCH_*。
+  // 同时绑 MOUSE_* 会让桌面预览转向灵敏度翻倍（Qoder 评审发现，2026-09-21 已修）。
   private bindInput(): void {
     input.on(Input.EventType.TOUCH_START, this.onTouchStart, this);
     input.on(Input.EventType.TOUCH_MOVE, this.onTouchMove, this);
     input.on(Input.EventType.TOUCH_END, this.onTouchEnd, this);
     input.on(Input.EventType.TOUCH_CANCEL, this.onTouchEnd, this);
-    input.on(Input.EventType.MOUSE_DOWN, this.onMouseDown, this);
-    input.on(Input.EventType.MOUSE_MOVE, this.onMouseMove, this);
-    input.on(Input.EventType.MOUSE_UP, this.onTouchEnd, this);
     input.on(Input.EventType.KEY_DOWN, this.onKeyDown, this);
     input.on(Input.EventType.KEY_PRESSING, this.onKeyPressing, this);
     input.on(Input.EventType.KEY_UP, this.onKeyUp, this);
   }
 
+  // 场景 reload 时旧实例不会自动解绑全局 input 监听，必须手动 off，否则新旧两个实例同时响应
+  onDestroy(): void {
+    input.off(Input.EventType.TOUCH_START, this.onTouchStart, this);
+    input.off(Input.EventType.TOUCH_MOVE, this.onTouchMove, this);
+    input.off(Input.EventType.TOUCH_END, this.onTouchEnd, this);
+    input.off(Input.EventType.TOUCH_CANCEL, this.onTouchEnd, this);
+    input.off(Input.EventType.KEY_DOWN, this.onKeyDown, this);
+    input.off(Input.EventType.KEY_PRESSING, this.onKeyPressing, this);
+    input.off(Input.EventType.KEY_UP, this.onKeyUp, this);
+  }
+
   private onTouchStart(ev: EventTouch): void {
+    if (this.dragging) return; // 多指时忽略后续手指，防视角跳变
     this.startRun();
     this.dragging = true;
     this.dragLastX = ev.getUILocation().x;
   }
 
-  private onMouseDown(ev: EventMouse): void {
-    if (ev.getButton() === EventMouse.BUTTON_LEFT) {
-      this.startRun();
-      this.dragging = true;
-      this.dragLastX = ev.getUILocation().x;
-    }
-  }
-
   private onTouchMove(ev: EventTouch): void {
     this.applyDrag(ev.getUILocation().x);
-  }
-
-  private onMouseMove(ev: EventMouse): void {
-    if (this.dragging) this.applyDrag(ev.getUILocation().x);
   }
 
   private applyDrag(x: number): void {
