@@ -3,7 +3,10 @@
 //       D1 全局不缺砖、D2 前缀可行（含 margin）、tailSafe 末段、拾取摊开、bot 通关率
 import { CFG } from '../assets/scripts/config.ts';
 import { genLevel, genLevelV3, levelStats, prefixBalance, zonesOf } from '../assets/scripts/LevelGen.ts';
+import { cfgForLevel } from '../assets/scripts/LevelCurve.ts';
+import { createProgress, starsFor } from '../assets/scripts/Progression.ts';
 import { genLevelV3 as jsGenLevelV3, botRun } from '../docs/qoder/bridge-rules.mjs';
+import { cfgForLevel as jsCfgForLevel } from '../docs/qoder/levels.mjs';
 
 let failed = 0;
 const check = (name: string, cond: boolean, detail = '') => {
@@ -64,7 +67,34 @@ for (let seed = 1; seed <= BOT_SEEDS; seed++) {
 const rate = wins / BOT_SEEDS;
 check('bot-win-rate>=95%', rate >= 0.95, `rate=${(rate * 100).toFixed(0)}% (${wins}/${BOT_SEEDS})`);
 
-// 5. 输出
+// 5. 曲线漂移：LevelCurve.ts 与母本 levels.mjs 逐 level 一致（L1-L60，含 L11+ 饱和段）
+for (let lv = 1; lv <= 60; lv++) {
+  check(`curve-drift L${lv}`,
+    JSON.stringify(cfgForLevel(lv, CFG)) === JSON.stringify(jsCfgForLevel(lv, CFG)));
+}
+
+// 6. progression 单元断言（母本 progression.mjs 移植版）
+const mem = new Map<string, string>();
+const store = {
+  getItem: (k: string) => (mem.has(k) ? mem.get(k)! : null),
+  setItem: (k: string, v: string) => { mem.set(k, v); },
+};
+const p1 = createProgress(store);
+check('prog-fresh', p1.state().level === 1 && p1.state().attempt === 1);
+const c1 = p1.current((lv) => cfgForLevel(lv, CFG));
+check('prog-current', c1.seed === 1001 && c1.cfg.levelLength === 120, `seed=${c1.seed} len=${c1.cfg.levelLength}`);
+const w1 = p1.win(15, 5);
+check('prog-win', w1.stars === 3 && w1.nextLevel === 2, `stars=${w1.stars} next=${w1.nextLevel}`);
+check('prog-stars-par', starsFor(1, 99, 5) === 2 && starsFor(1, 99, 0) === 1);
+p1.lose(); p1.lose();
+check('prog-lose', p1.state().attempt === 3 && p1.state().level === 2);
+const p2 = createProgress(store);
+check('prog-persist', p2.state().level === 2 && p2.state().attempt === 3);
+mem.set('shortcut_run_progress_v1', '{bad json');
+const p3 = createProgress(store);
+check('prog-dirty-recover', p3.state().level === 1);
+
+// 7. 输出
 const demo = genLevelV3(1, CFG);
 console.log(`v3 demo: gaps=${demo.gaps.length} pickups=${demo.pickups.length} stats=${JSON.stringify(levelStats(demo, CFG))}`);
 console.log(`bot win rate: ${(rate * 100).toFixed(0)}% (${wins}/${BOT_SEEDS})`);

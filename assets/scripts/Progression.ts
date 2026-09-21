@@ -1,25 +1,36 @@
-// 关卡推进元规则（Qoder 投递，AI-HANDOFF v2 §5）：局内循环的唯一母本。
-// cc-free：存储用适配器注入（web: localStorage；Cocos: sys.localStorage 包一层同名方法即可）。
-// 设计决策：
-//   ① 同关重开换图（seed=level*1000+attempt，attempt 随失败递增）—— procedural 关卡下
-//      换图比"背图重开"挫败感低，且每图仍可复现（seed 确定）。
-//   ② 状态必须跨重启存活（JSON 落存储），损坏则全新开局，绝不让脏数据卡死循环。
-//   ③ 星级只依赖 time+bricks，无随机，人机验收可断言。
+// 关卡推进元规则（移植自 docs/qoder/progression.mjs，唯一规则源）
+// cc-free：存储适配器注入（web: localStorage；Cocos: sys.localStorage 包一层同名方法）
+// 设计决策（母本）：
+//   ① 同关重开换图（seed=level*1000+attempt，attempt 随失败递增）——程序化关卡下换图比背图挫败感低
+//   ② 状态必须跨重启存活（JSON 落存储），损坏则全新开局，绝不让脏数据卡死循环
+//   ③ 星级只依赖 time+bricks，无随机，人机验收可断言
+import type { Cfg } from './config';
 
 export const STORAGE_KEY = 'shortcut_run_progress_v1';
 
-const FRESH = () => ({ v: 1, level: 1, attempt: 1, wins: 0, best: {} });
+export interface ProgressBest { time: number; stars: number }
+export interface ProgressState {
+  v: number; level: number; attempt: number; wins: number;
+  best: Record<string, ProgressBest>;
+}
+
+const FRESH = (): ProgressState => ({ v: 1, level: 1, attempt: 1, wins: 0, best: {} });
 
 // 三星线（秒）：≈ 人形 bot 通关均时的快档（约前 1/3），L11+ 循环复用
 const PAR = [16.5, 18.5, 20.0, 20.0, 21.0, 20.5, 21.5, 23.0, 22.5, 23.5];
 
-export function starsFor(level, timeSec, bricksLeft) {
+export function starsFor(level: number, timeSec: number, bricksLeft: number): number {
   const par = PAR[(level - 1) % PAR.length];
   return 1 + (bricksLeft >= 3 ? 1 : 0) + (timeSec <= par ? 1 : 0);
 }
 
-export function createProgress(store) {
-  function load() {
+export interface ProgressStore {
+  getItem(k: string): string | null;
+  setItem(k: string, v: string): void;
+}
+
+export function createProgress(store: ProgressStore) {
+  function load(): ProgressState {
     try {
       const raw = store.getItem(STORAGE_KEY);
       if (!raw) return FRESH();
@@ -37,15 +48,15 @@ export function createProgress(store) {
     state: () => ({ ...s }),
     starsFor,
 
-    // 当前图：seed + 本关 cfg。step-5 接入点：每次进场调一次，胜/负回调后再调
-    current: (cfgForLevel) => ({
+    // 当前图：seed + 本关 cfg。接入点：每次进场调一次，胜/负回调后再调
+    current: (cfgFn: (level: number) => Cfg) => ({
       level: s.level,
       seed: s.level * 1000 + s.attempt,
-      cfg: cfgForLevel(s.level),
+      cfg: cfgFn(s.level),
     }),
 
     // 胜利：记成绩/星级，进下一关，attempt 归 1
-    win(timeSec, bricksLeft) {
+    win(timeSec: number, bricksLeft: number) {
       const lv = s.level;
       const stars = starsFor(lv, timeSec, bricksLeft);
       s.wins += 1;

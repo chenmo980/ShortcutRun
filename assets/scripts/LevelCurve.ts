@@ -1,7 +1,7 @@
-// 关卡进阶曲线：level -> Cfg（移植自 docs/qoder/levels.mjs，母本优先）
+// 关卡进阶曲线：level -> Cfg（移植自 docs/qoder/levels.mjs 饱和版，母本优先）
 // 数值依据见 docs/drafts/balance-v1.md；验收带：真人 ≈ bot × 0.6~0.8
+// 注意：本文件零运行时 import（Cfg 仅作类型），tools/smoke.ts 可直接 import 做漂移断言
 import type { Cfg } from './config';
-import { CFG } from './config';
 
 // [length, gateCost, gwMin, gwMax, giMin, giMax, runSpeed, maxSpeed, speedPerBrick]
 const CURVE: Array<[number, number, number, number, number, number, number, number, number]> = [
@@ -34,21 +34,24 @@ export function ratioFor(level: number): number {
   return 1.55;
 }
 
-export function cfgForLevel(level: number, base: Cfg = CFG): Cfg {
+// 饱和版（2026-09-21 Qoder 重做）：加深只跑两个 loop 然后收敛——
+// 实测 f/k 越过饱和点后供给崩成 3~13% 胜率墙；终局平台 ≈35~55% 胜率 + 每 loop 地图更长更新
+export function cfgForLevel(level: number, base: Cfg): Cfg {
   const idx = (Math.max(1, level) - 1) % CURVE.length;
-  const loop = Math.floor((Math.max(1, level) - 1) / CURVE.length); // 第 11 关起循环加深
+  const loop = Math.floor((Math.max(1, level) - 1) / CURVE.length);
+  const f = 1 + Math.min(loop, 1) * 0.1;
   const [length, gateCost, gwMin, gwMax, giMin, giMax, runSpeed, maxSpeed, speedPerBrick] = CURVE[idx];
-  const f = 1 + loop * 0.1;
   return {
     ...base,
-    levelLength: length + loop * 10,
-    gateCost: Math.round(gateCost * f),
-    gapWidthMin: Math.min(4.0, gwMin * f),
+    levelLength: length + loop * 20,
+    gateCost: Math.round(gateCost * f * f),
+    gapWidthMin: Math.min(4.5, gwMin * f),
     gapWidthMax: Math.min(7.0, gwMax * f),
-    gapIntervalMin: Math.max(8, giMin / f),
-    gapIntervalMax: Math.max(12, giMax / f),
+    gapIntervalMin: Math.max(6, giMin / f),
+    gapIntervalMax: Math.max(10, giMax / f),
     runSpeed, maxSpeed, speedPerBrick,
     supplyMargin: marginFor(level),
-    supplyRatio: ratioFor(level),
+    // 人形有效拾取率≈0.62，k 低于 1/0.62≈1.6 后密度越高越饿死；1.5=实测终局平台下限
+    supplyRatio: Math.max(1.5, ratioFor(level) - loop * 0.1),
   };
 }

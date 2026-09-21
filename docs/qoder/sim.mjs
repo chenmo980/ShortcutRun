@@ -409,5 +409,103 @@ const N = 2000;
   }
 }
 
+// 17. 推进元规则漂移锁：web-preview 内联 prog（关卡/attempt/星级/存档）必须与
+//     progression.mjs 母本行为全等——同一操作序列下 state()/返回值逐步比对 +
+//     starsFor 边界扫描 + 脏档自愈 + 存储键一致。规则漂移 = 玩家存档语义分叉，属严重。
+{
+  const { default: fs } = await import('node:fs');
+  const { default: vm } = await import('node:vm');
+  const { createProgress, starsFor: mStars, STORAGE_KEY } = await import('./progression.mjs');
+  const html = fs.readFileSync(new URL('../../web-preview/index.html', import.meta.url), 'utf8');
+  const p0 = html.indexOf('// ===== 关卡推进（移植自');
+  const p1 = html.indexOf('// ============ 关卡生成');
+  if (p0 < 0 || p1 <= p0) {
+    check('preview-inline progression parity', false, '抽取失败：请保留"关卡推进（移植自"注释与"关卡生成"分节标记');
+  } else {
+    const mkStore = (initRaw) => {
+      const m = initRaw ? new Map([[STORAGE_KEY, initRaw]]) : new Map();
+      return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, v) };
+    };
+    const compile = (storeObj) => {
+      const sb = vm.createContext({ Math, JSON, console, localStorage: storeObj, cfgForLevel });
+      vm.runInContext(
+        html.slice(p0, p1) +
+        '\nObject.assign(this, { __state: () => prog.state(), __win: (t, b) => prog.win(t, b), __lose: () => prog.lose(), __reset: () => prog.reset(), __key: SR_KEY, __stars: starsFor, __current: () => prog.current(cfgForLevel) });',
+        sb, { filename: 'preview-prog-inline' });
+      return sb;
+    };
+    let bad17 = '';
+    // a) 存储键一致 + current() 三元组（level/seed/cfg）与母本一致
+    const sbA = compile(mkStore());
+    if (sbA.__key !== STORAGE_KEY) bad17 = `PROG_KEY=${sbA.__key} != 母本 ${STORAGE_KEY}`;
+    if (!bad17) {
+      const pM0 = createProgress(mkStore());
+      if (JSON.stringify(pM0.current(cfgForLevel)) !== JSON.stringify(sbA.__current())) bad17 = 'current() 分叉';
+    }
+    // b) 真实操作序列逐步行为全等（含星级边界、连败封顶、重复刷 best）
+    if (!bad17) {
+      const pM = createProgress(mkStore());
+      const ops = [];
+      for (let lv = 1; lv <= 14; lv++) {
+        ops.push(['win', 15 + lv, lv % 4]);
+        if (lv % 3 === 0) ops.push(['lose'], ['lose']);
+        if (lv % 5 === 0) ops.push(['win', 22, 9], ['lose']);
+      }
+      for (let i = 0; i < 150; i++) ops.push(['lose']);
+      for (const op of ops) {
+        let rM, rP;
+        if (op[0] === 'win') { rM = pM.win(op[1], op[2]); rP = sbA.__win(op[1], op[2]); }
+        else if (op[0] === 'lose') { rM = pM.lose(); rP = sbA.__lose(); }
+        if (JSON.stringify(rM) !== JSON.stringify(rP)) { bad17 = `op ${op.join(',')} 返回值分叉`; break; }
+        if (JSON.stringify(pM.state()) !== JSON.stringify(sbA.__state())) { bad17 = `op ${op.join(',')} state 分叉`; break; }
+      }
+    }
+    // c) starsFor 边界扫描（L1-L12 × 时间/余砖临界值）
+    if (!bad17) {
+      outer17: for (let lv = 1; lv <= 12; lv++) {
+        for (const t of [0, 16, 16.5, 16.51, 18.5, 20, 21, 23, 23.5, 23.51]) {
+          for (const b of [0, 2, 3, 4, 99]) {
+            if (mStars(lv, t, b) !== sbA.__stars(lv, t, b)) { bad17 = `stars(${lv},${t},${b}) 分叉`; break outer17; }
+          }
+        }
+      }
+    }
+    // d) 脏档自愈 + 跨重启存活
+    if (!bad17) {
+      for (const junk of ['not json{{', '{"v":2,"level":5}', '{"v":1,"level":"x"}', 'null']) {
+        const sbJ = compile(mkStore(junk));
+        const st = sbJ.__state();
+        if (!(st.level === 1 && st.attempt === 1 && st.wins === 0)) { bad17 = `脏档未自愈: ${junk}`; break; }
+      }
+    }
+    if (!bad17) {
+      const storeB = mkStore();
+      const sbB1 = compile(storeB);
+      sbB1.__win(16.0, 5); sbB1.__lose();
+      const sbB2 = compile(storeB); // 模拟刷新页面：新实例读同一 store
+      const st = sbB2.__state();
+      if (!(st.level === 2 && st.attempt === 2 && st.wins === 1 && st.best[1])) bad17 = '跨重启未续档';
+    }
+    check('preview-inline progression parity (ops/stars/junk/restart)', !bad17, bad17);
+  }
+}
+
+// 18. 整页编译锁：index.html 的内联 <script> 必须整体可解析。
+//     §15-§17 都是区域抽取比对，抓不到跨区域重复声明（2026-09-21 实事故：step-5 与 Qoder
+//     各插一份 prog 块，const PAR/prog 重复声明 => 整页 SyntaxError => 玩家点击无反应）。
+//     编译不执行，不需要 DOM。
+{
+  const { default: fs } = await import('node:fs');
+  const { Script } = await import('node:vm');
+  const html = fs.readFileSync(new URL('../../web-preview/index.html', import.meta.url), 'utf8');
+  const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+  let bad18 = '';
+  scripts.forEach((code, i) => {
+    try { new Script(code, { filename: `web-preview-inline-${i}` }); }
+    catch (e) { bad18 += `script#${i}: ${e.message}; `; }
+  });
+  check('whole-page compile lock (dup-decl/SyntaxError)', !bad18 && scripts.length > 0, bad18 || (scripts.length ? '' : '未抽到内联 script'));
+}
+
 console.log(failed ? `\n${failed} checks FAILED` : '\nbridge-rules OK: all invariants passed');
 process.exit(failed ? 1 : 0);

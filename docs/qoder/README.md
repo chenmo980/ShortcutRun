@@ -69,10 +69,12 @@ prog.state() / prog.reset()
 
 12. **预览内联生成器 parity 机验 + §16 永久锁**：verify-web dump 中曾见 6 个修复补点 x 完全相同（-0.8409）疑似子种子复用缺陷；复核时 step-5 已改为每 guard 重生成 `mulberry32(seed*7919+guard)`，现内联 genLevelV3 与母本 **100/100 逐字节一致**。该比对固化为 `sim.mjs §16`（抽取 index.html `function mulberry32` → "关卡进阶曲线"标记整段 vm 执行），与 §15b 曲线锁分层：曲线漂了 §15b 报警，几何漂了 §16 报警。
 
+13. **推进元规则也上了漂移锁（§17）**：预览内联 prog 与 `progression.mjs` 母本行为全等机验——同一胜/败操作序列（含 150 连败封顶）逐步比对 state() 与返回值、starsFor 全边界扫描（L1-12 × 时间/余砖临界）、四类脏档自愈、跨重启续档、键名一致。真机（playwright 持久化 profile）复验：两胜进 L3、关浏览器重开续档 L3、败局同关换图 attempt=2 落盘，7/7 全过。星级计时口径：预览按 `elapsed - runT0`（startRun 置表），与 bot 的 t 同单位。注（2026-09-21 晚事故后定稿）：页内保留的是 step-5 那份 SR_KEY 块（Qoder 重复块已删，§17 锚点=「关卡推进（移植自」→「关卡生成」分节标记）；同轮新增 §18 整页编译锁，专抓跨块重复声明这类区域锁盲区。
+
 ## 移植要求（给 step-5）
 
 - **移植目标 = `genLevelV3`**（一次到位，含 v2 前缀修复 + v2.1 间距 + tailSafe + margin）。你们已移植的 TS 版 genLevelV2 与母本 v2.1/v3 输出已有逐 seed 差异，替换后按 §1 口径重跑 parity（v1 基线永不变，可作为移植正确性的锚）。
 - 接入方式：`cfg = cfgForLevel(level, CFG)`（levels.mjs，含 supplyMargin 字段）→ `genLevelV3(seed, cfg)`；种子建议 `seed = level*1000 + attempt`（同关重开同图，换关换图）。
 - **保留 D1/D2/间距/margin 断言进 tools/smoke**，防止回归。
 - `botRun` 是 QA 工具不进游戏包体，留在 `tools/` 层。
-- **关卡循环已接入（本条关闭）**：GameApp `genLevelV3(levelNum*1000+attempt)` 与 web-preview `buildLevel(lv,att)` 均已按母本 seed 口径落地。剩余跨重启项：按 `progression.mjs` 接持久化（web: localStorage 适配器 `createProgress({getItem,setItem})`；Cocos: sys.localStorage 包同名方法），当前预览刷新页面回到 L1。
+- **跨重启存档：web-preview 已落地（2026-09-21，Qoder 按用户指令接线）**，内联 prog 块由 `sim.mjs §17` 行为锁看守（操作序列逐步全等 + starsFor 边界扫描 + 脏档自愈 + 键名一致），真机复验胜/败/续档 7/7。**Cocos 侧仍待接**：`sys.localStorage` 包 `{getItem,setItem}` 喂 `createProgress` 即可，规则口径照 §17 内联版或 TS 直译。注：母本 STORAGE_KEY 曾混入一个 U+2026 坏字符，已修正为文档口径 `shortcut_run_progress_v1`；旧键下的本地脏档因键名变更会被视为「无存档→全新开局」自愈，无需迁移。

@@ -31,7 +31,40 @@ const CFG = {
 };
 
 let cfg = { ...CFG }; // 按关卡切换（LevelCurve），全局代码只读 cfg
-let levelNum = 1, attempt = 1;
+let levelNum = 1, attempt = 1, runT0 = 0;
+
+// ===== 关卡推进（移植自 docs/qoder/progression.mjs 母本，localStorage 持久化） =====
+const SR_KEY = 'shortcut_run_progress_v1';
+const PAR = [16.5, 18.5, 20.0, 20.0, 21.0, 20.5, 21.5, 23.0, 22.5, 23.5];
+function starsFor(level, t, bricksLeft) {
+  const par = PAR[(level - 1) % PAR.length];
+  return 1 + (bricksLeft >= 3 ? 1 : 0) + (t <= par ? 1 : 0);
+}
+const prog = (() => {
+  const fresh = () => ({ v: 1, level: 1, attempt: 1, wins: 0, best: {} });
+  let s;
+  try {
+    const raw = localStorage.getItem(SR_KEY);
+    s = raw ? JSON.parse(raw) : fresh();
+    if (s.v !== 1 || !(s.level >= 1)) s = fresh();
+  } catch { s = fresh(); } // 脏数据不让循环卡死
+  const save = () => localStorage.setItem(SR_KEY, JSON.stringify(s));
+  return {
+    state: () => ({ ...s }),
+    current: (cfgFn) => ({ level: s.level, seed: s.level * 1000 + s.attempt, cfg: cfgFn(s.level) }),
+    win(t, bricksLeft) {
+      const lv = s.level;
+      const stars = starsFor(lv, t, bricksLeft);
+      s.wins += 1;
+      if (!s.best[lv] || t < s.best[lv].time) s.best[lv] = { time: +t.toFixed(2), stars };
+      s.level = lv + 1; s.attempt = 1; save();
+      return { nextLevel: s.level, stars, best: s.best[lv] };
+    },
+    lose() { s.attempt = Math.min(s.attempt + 1, 99); save(); return { level: s.level, seed: s.level * 1000 + s.attempt }; },
+    reset() { s = fresh(); save(); },
+  };
+})();
+function syncLevel() { buildLevel(prog.current((lv) => cfgForLevel(lv))); }
 
 // ============ 关卡生成（与 Cocos 版 LevelGen.ts 一致，纯逻辑） ============
 function mulberry32(seed) {
@@ -146,7 +179,7 @@ function spaceOutPickups(level, zones, minGap = 4) {
 }
 function genLevelV3(seed, cfg, opts = {}) {
   const margin = opts.margin ?? cfg.supplyMargin ?? 2;
-  const k = opts.ratio ?? cfg.supplyRatio ?? 1;
+  const k = opts.supplyRatio ?? cfg.supplyRatio ?? 1;
   const level = genLevel(seed, cfg, { tailSafe: true });
   repairPrefixSupply(level, cfg, seed, margin, k);
   spaceOutPickups(level, zonesOf(level));
@@ -287,10 +320,10 @@ for (let i = 0; i < 12; i++) {
   stackMeshes.push(m);
 }
 
-function buildLevel(lv, att) {
-  levelNum = lv; attempt = att;
-  cfg = cfgForLevel(lv);
-  level = genLevelV3(lv * 1000 + att, cfg);
+function buildLevel(cur) {
+  levelNum = cur.level;
+  cfg = cur.cfg;
+  level = genLevelV3(cur.seed, cfg);
   // 清掉上一局动态物体（保留 player / stack / 灯光）
   for (let i = scene.children.length - 1; i >= 0; i--) {
     const o = scene.children[i];
@@ -325,8 +358,8 @@ function buildLevel(lv, att) {
   for (const m of stackMeshes) m.visible = false;
   camInited = false;
   setBricksUI(0);
-  showHint(`第 ${lv} 关 · 点击开始（终点需 ${cfg.gateCost} 砖）`);
-  console.log(`[ShortcutRun] 第 ${lv} 关 (attempt ${att}) 断崖=${level.gaps.length} 拾取=${level.pickups.length} 终点z=${level.gateZ.toFixed(1)} 门需求=${cfg.gateCost}`);
+  showHint(`第 ${cur.level} 关 · 点击开始（终点需 ${cfg.gateCost} 砖）`);
+  console.log(`[ShortcutRun] 第 ${cur.level} 关 (seed ${cur.seed}) 断崖=${level.gaps.length} 拾取=${level.pickups.length} 终点z=${level.gateZ.toFixed(1)} 门需求=${cfg.gateCost}`);
 }
 function road(z0, z1, w) {
   const len = z1 - z0;
@@ -380,7 +413,7 @@ function stepAnims(dt) {
 
 // ============ 核心逻辑（与 Cocos 版 GameApp.ts 一致，含扫掠检测） ============
 function startRun() {
-  if (state === 'ready') { state = 'run'; hideHint(); console.log('[ShortcutRun] GO!'); }
+  if (state === 'ready') { state = 'run'; runT0 = elapsed; hideHint(); console.log('[ShortcutRun] GO!'); }
 }
 function enterFall() {
   console.log('[ShortcutRun] 砖不够，掉落！');
@@ -389,20 +422,22 @@ function enterFall() {
 }
 function win() {
   state = 'win';
-  showHint(`第 ${levelNum} 关通过！`);
+  const t = Math.max(0, elapsed - runT0);
+  const r = prog.win(t, bricks);
+  showHint(`第 ${levelNum} 关通过！${'★'.repeat(r.stars)}`);
   for (const w of gateWalls) tweenTo(w.position, 'y', -2.2, 0.4);
   const y0 = player.position.y;
   tweenTo(player.position, 'y', y0 + 0.7, 0.25, () => tweenTo(player.position, 'y', y0, 0.25));
-  console.log(`[ShortcutRun] WIN 第 ${levelNum} 关！1.6 秒后进入第 ${levelNum + 1} 关`);
-  levelNum += 1; attempt = 1;
-  setTimeout(() => buildLevel(levelNum, 1), 1600);
+  console.log(`[ShortcutRun] WIN 第 ${levelNum} 关 ${t.toFixed(1)}s 余砖 ${bricks} ${r.stars}星！1.6 秒后进入第 ${r.nextLevel} 关（进度已存档）`);
+  setTimeout(syncLevel, 1600);
 }
 function lose(reason) {
   if (state === 'lose') return;
   state = 'lose';
   showHint(`${reason} · 重试`);
-  console.log(`[ShortcutRun] LOSE: ${reason}. 1.6 秒后重试第 ${levelNum} 关`);
-  setTimeout(() => buildLevel(levelNum, attempt + 1), 1600);
+  prog.lose(); // 同关换图：attempt++（母本 progression.mjs 规则）
+  console.log(`[ShortcutRun] LOSE: ${reason}. 1.6 秒后换图重试第 ${levelNum} 关`);
+  setTimeout(syncLevel, 1600);
 }
 function checkPickups(x, prevZ, z) {
   for (const p of pickups) {
@@ -518,7 +553,7 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
-buildLevel(1, 1);
+syncLevel(); // 跨重启续档：从存档的 (level, attempt) 进场
 loop();
 
 // ============ 调试接口（供自动化验证用） ============
@@ -530,7 +565,13 @@ window.__game = {
     gapList: level.gaps.map((g) => ({ zStart: g.zStart, zEnd: g.zEnd, cost: g.cost, bridged: !!g.bridged })),
   }),
   setBricks: (n) => { bricks = n; setBricksUI(n); },
-  restart: (lv, att) => buildLevel(lv || 1, att || 1),
+  restart: (lv) => {
+    prog.reset();
+    for (let i = 1; i < (lv || 1); i++) prog.win(999, 0); // 快进到指定关（QA 用）
+    syncLevel();
+  },
+  progress: () => prog.state(),
+  resetProgress: () => prog.reset(),
   renderOnce: () => renderer.render(scene, camera),
   canvas: () => renderer.domElement,
 };

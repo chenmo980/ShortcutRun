@@ -201,9 +201,9 @@ export function genLevelV2(seed: number, cfg: Cfg): LevelDef {
 }
 
 // v3 生产版：tailSafe + margin/k 双目标供给修复 + 拾取摊开
-export function genLevelV3(seed: number, cfg: Cfg, opts: { margin?: number; ratio?: number } = {}): LevelDef {
+export function genLevelV3(seed: number, cfg: Cfg, opts: { margin?: number; supplyRatio?: number } = {}): LevelDef {
   const margin = opts.margin ?? cfg.supplyMargin ?? 2;
-  const k = opts.ratio ?? cfg.supplyRatio ?? 1;
+  const k = opts.supplyRatio ?? cfg.supplyRatio ?? 1;
   const level = genLevel(seed, cfg, { tailSafe: true });
   repairPrefixSupply(level, cfg, seed, margin, k);
   spaceOutPickups(level, zonesOf(level));

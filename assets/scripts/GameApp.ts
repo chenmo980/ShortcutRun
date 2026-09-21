@@ -5,11 +5,12 @@
 const { ccclass, property } = _decorator;
 import {
   _decorator, Component, Node, Prefab, Vec3, Camera, input, Input,
-  EventTouch, EventKeyboard, KeyCode,
+  EventTouch, EventKeyboard, KeyCode, sys,
 } from 'cc';
 import { CFG, Cfg } from './config';
 import { genLevelV3, LevelDef } from './LevelGen';
 import { cfgForLevel } from './LevelCurve';
+import { createProgress, ProgressStore } from './Progression';
 import { TrackBuilder, RuntimePickup } from './TrackBuilder';
 import { CameraFollow } from './CameraFollow';
 import { GameUI } from './GameUI';
@@ -25,7 +26,7 @@ export class GameApp extends Component {
   @property({ tooltip: '关卡种子基数：实际种子 = 关卡号×1000 + 尝试次数' })
   seed = 1;
 
-  @property({ tooltip: '开启后按 L1-L10 难度曲线生成关卡（LevelCurve.ts）' })
+  @property({ tooltip: '已废弃：关卡参数由 LevelCurve + Progression 母本驱动（保留字段仅为兼容旧场景）' })
   useCurve = true;
 
   // 以下三项仅 useCurve=false 时生效（手动调参用）
@@ -40,6 +41,7 @@ export class GameApp extends Component {
   private camFollow!: CameraFollow;
   private pickups: RuntimePickup[] = [];
   private ui: GameUI | null = null;
+  private prog!: ReturnType<typeof createProgress>;
 
   private state: State = 'ready';
   private levelNum = 1;
@@ -53,6 +55,7 @@ export class GameApp extends Component {
   private heldLeft = false;
   private heldRight = false;
   private elapsed = 0;
+  private runT0 = 0;
 
   onLoad(): void {
     if (!this.boxPrefab) {
@@ -71,16 +74,24 @@ export class GameApp extends Component {
     const canvasNode = this.node.scene.getChildByName('Canvas');
     this.ui = canvasNode ? canvasNode.getComponent(GameUI) : null;
 
+    // 关卡推进（母本 progression.mjs，跨重启存活，脏数据自愈）
+    const store: ProgressStore = {
+      getItem: (k) => sys.localStorage.getItem(k),
+      setItem: (k, v) => sys.localStorage.setItem(k, v),
+    };
+    this.prog = createProgress(store);
+
     this.bindInput();
     this.startLevel();
   }
 
   // 开局/重开：生成关卡、搭场景、复位状态（原地重建，不重载场景）
   private startLevel(): void {
-    this.cfg = this.useCurve
-      ? cfgForLevel(this.levelNum, CFG)
-      : { ...CFG, runSpeed: this.runSpeed, levelLength: this.levelLength, gateCost: this.gateCost };
-    this.levelDef = genLevelV3(this.levelNum * 1000 + this.attempt, this.cfg);
+    const cur = this.prog.current((lv) => cfgForLevel(lv, CFG));
+    this.levelNum = cur.level;
+    this.attempt = Math.floor(cur.seed % 1000);
+    this.cfg = cur.cfg;
+    this.levelDef = genLevelV3(cur.seed, this.cfg);
     console.log(
       `[ShortcutRun] 第 ${this.levelNum} 关 (attempt ${this.attempt}) 断崖=${this.levelDef.gaps.length} ` +
       `拾取=${this.levelDef.pickups.length} 终点z=${this.levelDef.gateZ.toFixed(1)} 门需求=${this.cfg.gateCost}`
@@ -284,6 +295,7 @@ export class GameApp extends Component {
   private startRun(): void {
     if (this.state === 'ready') {
       this.state = 'run';
+      this.runT0 = this.elapsed;
       this.ui?.hideHint();
       console.log('[ShortcutRun] GO!');
     }
@@ -292,23 +304,23 @@ export class GameApp extends Component {
   private win(): void {
     this.state = 'win';
     this.track.openGate();
-    this.ui?.showHint(`第 ${this.levelNum} 关通过！`);
+    const timeSec = this.elapsed - this.runT0;
+    const r = this.prog.win(timeSec, this.bricks);
+    this.ui?.showHint(`第 ${this.levelNum} 关通过！${'★'.repeat(r.stars)}`);
     const p = this.player.position;
     tweenPos(this.player, 0.25, new Vec3(p.x, p.y + 0.7, p.z), () => {
       tweenPos(this.player, 0.25, new Vec3(p.x, p.y, p.z));
     });
-    console.log(`[ShortcutRun] WIN 第 ${this.levelNum} 关！1.6 秒后进入第 ${this.levelNum + 1} 关`);
-    this.levelNum += 1;
-    this.attempt = 1;
+    console.log(`[ShortcutRun] WIN 第 ${this.levelNum} 关 ${timeSec.toFixed(1)}s 余砖 ${this.bricks} ${r.stars}星！1.6 秒后进入第 ${r.nextLevel} 关`);
     this.scheduleOnce(() => this.startLevel(), 1.6);
   }
 
   private lose(reason = '失败'): void {
     if (this.state === 'lose') return;
     this.state = 'lose';
+    this.prog.lose();
     this.ui?.showHint(`${reason} · 重试`);
     console.log(`[ShortcutRun] LOSE: ${reason}. 1.6 秒后重试第 ${this.levelNum} 关`);
-    this.attempt += 1;
     this.scheduleOnce(() => this.startLevel(), 1.6);
   }
 }
