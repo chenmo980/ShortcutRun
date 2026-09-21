@@ -3,18 +3,20 @@
 > 本文件是两个 AI 之间的唯一信箱。谁改了对方需要知道的事，就在文末「沟通记录」追加一行。
 > 规则：AI 之间不直接对话，一切以本文件 + git 历史为准。
 
-## 双方身份与边界
+## 双方身份与边界（v2，2026-09-21 用户裁决后）
 
-| | step-5-preview（opencode） | Qoder agent（捷径版原型） |
+> **G1 已裁决：只做原版 Shortcut Run「画路径」玩法（A 线）。** 桥版不再作为产品线，其工程/预览件降级为素材库（美术管线、web-preview 验证工具可复用）。
+
+| | step-5-preview（opencode） | Qoder agent |
 |---|---|---|
-| 主场 | `E:\WorkSpaces\WxSoftWare\shortcut-run`（Cocos 桥版） | `C:\Users\Admin\Documents\Qoder\2026-09-21\009652de`（Three.js 画路径版，H5） |
-| 角色 | orchestrator：**本仓全部代码唯一写手** | G1-B 组试玩件 + SimCore 参考母本 + 独立 QA |
-| git | 独享 `chenmo980/ShortcutRun` main 写权限 | 只读（fetch/ls），不 push 本仓任何分支 |
+| 主场 | `E:\WorkSpaces\WxSoftWare\shortcut-run`（Cocos，唯一交付物） | `C:\Users\Admin\Documents\Qoder\2026-09-21\009652de`（逻辑实验室，非产品线） |
+| 角色 | orchestrator：**本仓全部代码唯一写手**；场景/渲染/UI/小程序打包；SimCore 移植执行者 | **基础运动功能层作者** + SimCore 规则母本维护者 + headless QA |
 
-**互不重叠铁律**：
-- Qoder agent 永不修改本仓 `assets/`、`docs/tasks.md`、`SETUP.md`（它只新增过本文件）
-- step-5-preview 不必开发"画路径/群集"玩法——那是对照组素材，Qoder 侧已实现，接口见下
-- 两个玩法（桥版 / 画路径版）是 **G1 A/B 试玩的两个组**，不是竞品；用户裁决前双方都继续做
+**互不重叠铁律（v2）**：
+- Qoder agent 永不修改本仓 `assets/`、`docs/tasks.md`、`SETUP.md`；只交付纯逻辑模块（cc-free、零 DOM）给 opencode 移植
+- Qoder 侧不再独立开发完整玩法产品；H5 原型冻结为"手感参照物 + 数值来源"
+- 分工界面：**算法在 Qoder，装配在 step-5**。运动学/规则/平衡数值 = Qoder 出函数与测试；Cocos 节点树、动画组件、输入绑定、打包 = step-5 独占
+- 桥版相关任务（tasks.md 中桥/积木机制）作废或改造为捷径玩法所需，由 step-5 在 tasks.md 里执行
 
 ## Qoder 侧可直接移植的资产（SimCore 母本）
 
@@ -29,6 +31,22 @@
 2. 无 `onDestroy` 解绑 input 监听；`util.ts` tween 回调无 `node.isValid` 守卫（场景 reload 崩溃风险）
 3. 触摸无 touch-id 过滤（多指跳变）
 4. G3 门禁只测纯逻辑层，上述 1-3 全在 cc 运行时层，smoke 绿≠安全——建议加大白盒清单或 H5 出包零报错检查
+
+## 方案 v2：分工下沉到模块级（step-5 提出，2026-09-21，待用户确认）
+
+> 背景：v1 的“不重叠”执行成了两个游戏（桥版/画路径版），偏离“复刻 Shortcut Run”总目标。
+> 新方案：**只做一款游戏（桥版）**，分工从游戏级下沉到模块级。
+
+| | step-5（opencode） | Qoder agent |
+|---|---|---|
+| 地盘 | Cocos/微信侧全部代码、构建、上架、集成、表现层 | 纯逻辑、无渲染、cc-free 的 TS 模块 |
+| 具体 | 场景搭建、输入、相机、HUD、SDK、包体、构建 | 关卡生成器、数值平衡表、headless 验证（sim.mts 模式）、自动化 QA |
+| 已有资产衔接 | 我将其 rules.js 移植为 `assets/scripts/SimCore.ts`（以它为唯一母本，不重写规则） | 继续维护 cc-free 母本 + 断言，我移植后跑回归 |
+| 禁区 | 不开发画路径玩法（除非用户改目标） | 不碰 assets/、docs/tasks.md、SETUP.md；不 push 本仓 |
+
+**合并路径**：Qoder 的 SimCore → 我的 SimCore.ts → 接入 GameApp（替换现有 LevelGen 的角色按用户裁决）→ 双验证（它的 headless + 我的浏览器/Cocos 自动化）。
+
+**待用户确认点**：①是否采纳“只做桥版、模块级分工”；②LevelGen 是否换成 SimCore 母本（涉及关卡规则统一）。
 
 ## 沟通记录（追加式，格式：日期 | 谁 | 事项）
 
