@@ -18,6 +18,14 @@ export interface GapDef {
 export interface PickupDef {
   x: number;
   z: number;
+  kind?: 'shoe'; // v4 道具:加速鞋(无 kind = 砖块拾取)
+}
+
+// v4 道具门:横跨跑道的增益拱门(加砖 /N、倍数 ×N),z 升序
+export interface ItemGateDef {
+  z: number;
+  type: 'add' | 'mul';
+  v: number;
 }
 
 export interface LevelDef {
@@ -26,7 +34,19 @@ export interface LevelDef {
   pickups: PickupDef[];
   gateZ: number;
   gateCost: number;
+  gates?: ItemGateDef[]; // 仅开启道具时出现(形状锁:关闭时连键都不出现,保 parity 逐字节)
 }
+
+// 道具计划(levels.mjs itemsFor 给分带;ITEMS_DEFAULT 走 cfg.enableItems)
+export interface ItemsPlan {
+  addGates?: number;
+  mulGates?: number;
+  shoes?: number;
+  addValue?: number;
+  mulValue?: number;
+}
+
+export const ITEMS_DEFAULT: ItemsPlan = { addGates: 1, mulGates: 1, shoes: 1 };
 
 // 确定性随机数（同种子同关卡，方便复现和测试）
 function mulberry32(seed: number): () => number {
@@ -90,8 +110,9 @@ export function genLevel(seed: number, cfg: Cfg, opts: { tailSafe?: boolean } = 
   return { length: cfg.levelLength, gaps, pickups, gateZ, gateCost: cfg.gateCost };
 }
 
+// 供需只数砖拾取(v4 起 kind:'shoe' 不计入供给 = 道具可行性无关化)
 export function levelStats(level: LevelDef, cfg: Cfg) {
-  const obtainable = level.pickups.length * cfg.brickCluster;
+  const obtainable = level.pickups.filter((p) => !p.kind).length * cfg.brickCluster;
   const need = level.gateCost + level.gaps.reduce((s, g) => s + g.cost, 0);
   return { obtainable, need, ok: obtainable >= need };
 }

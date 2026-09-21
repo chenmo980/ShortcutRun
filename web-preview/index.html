@@ -16,7 +16,7 @@
 </head>
 <body>
 <div id="app"></div>
-<div id="title">ShortcutRun 灰模 · 拖动鼠标 / A D 转向 · T 换肤</div>
+<div id="title">ShortcutRun 灰模 · 拖动 / A D 转向 · T 换肤 · M 音效</div>
 <div id="brick" class="hud">砖块 0</div>
 <div id="progbar"><div id="progfill"></div></div>
 <div id="hint" class="hud">点击开始 · 终点需 14 砖</div>
@@ -284,6 +284,33 @@ function box(mat, sx, sy, sz, x, y, z) {
   return m;
 }
 
+// ===== 音效（WebAudio 代码合成，零素材；Cocos 版待音频文件阶段） =====
+let audioCtx = null, muted = false;
+function ensureAudio() {
+  if (!audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { /* 无音频环境 */ } }
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+}
+function beep(freq, dur, type = 'sine', vol = 0.15, slide = 0) {
+  if (!audioCtx || muted) return;
+  try {
+    const t = audioCtx.currentTime;
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(t); o.stop(t + dur);
+  } catch (e) { /* 忽略音频错误 */ }
+}
+const sfx = {
+  pickup: () => beep(880, 0.08, 'square', 0.07, 400),
+  bridge: () => { beep(160, 0.18, 'sawtooth', 0.16, -60); beep(320, 0.1, 'square', 0.07); },
+  win: () => [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => beep(f, 0.15, 'triangle', 0.14), i * 90)),
+  lose: () => beep(220, 0.4, 'sawtooth', 0.14, -160),
+};
+
 // ============ 角色：程序化骨骼小人（零外部素材，四肢正弦摆动） ============
 const player = new THREE.Group();
 scene.add(player);
@@ -395,6 +422,7 @@ function road(z0, z1, w) {
 // ============ 输入 ============
 let dragging = false, dragLastX = 0, heldLeft = false, heldRight = false;
 addEventListener('pointerdown', (e) => {
+  ensureAudio();
   startRun();
   dragging = true; dragLastX = e.clientX;
 });
@@ -407,10 +435,12 @@ addEventListener('pointermove', (e) => {
 });
 addEventListener('pointerup', () => { dragging = false; });
 addEventListener('keydown', (e) => {
+  ensureAudio();
   startRun();
   if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') heldLeft = true;
   if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') heldRight = true;
   if (e.key === 't' || e.key === 'T') { cycleTheme(); syncLevel(); } // 换肤
+  if (e.key === 'm' || e.key === 'M') { muted = !muted; console.log(`[ShortcutRun] 音效 ${muted ? '关' : '开'}`); }
 });
 addEventListener('keyup', (e) => {
   if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') heldLeft = false;
@@ -453,6 +483,7 @@ function win() {
   const t = Math.max(0, elapsed - runT0);
   const r = prog.win(t, bricks);
   showHint(`第 ${levelNum} 关通过！${'★'.repeat(r.stars)}`);
+  sfx.win();
   for (const w of gateWalls) tweenTo(w.position, 'y', -2.2, 0.4);
   const y0 = player.position.y;
   tweenTo(player.position, 'y', y0 + 0.7, 0.25, () => tweenTo(player.position, 'y', y0, 0.25));
@@ -463,6 +494,7 @@ function lose(reason) {
   if (state === 'lose') return;
   state = 'lose';
   showHint(`${reason} · 重试`);
+  sfx.lose();
   prog.lose(); // 同关换图：attempt++（母本 progression.mjs 规则）
   console.log(`[ShortcutRun] LOSE: ${reason}. 1.6 秒后换图重试第 ${levelNum} 关`);
   setTimeout(syncLevel, 1600);
@@ -471,12 +503,13 @@ function checkPickups(x, prevZ, z) {
   for (const p of pickups) {
     if (p.taken) continue;
     const hitZ = z >= p.def.z - 0.7 && prevZ <= p.def.z + 0.7;
-    if (hitZ && Math.abs(x - p.def.x) < 0.95) {
-      p.taken = true;
-      p.mesh.visible = false;
-      bricks += cfg.brickCluster;
-      setBricksUI(bricks);
-    }
+      if (hitZ && Math.abs(x - p.def.x) < 0.95) {
+        p.taken = true;
+        p.mesh.visible = false;
+        bricks += cfg.brickCluster;
+        setBricksUI(bricks);
+        sfx.pickup();
+      }
   }
 }
 function checkGaps(prevZ, z) {
@@ -490,6 +523,7 @@ function checkGaps(prevZ, z) {
         const w = cfg.trackHalfWidth * 2 + 0.6;
         const b = box(MAT.bridge, w, 0.4, g.zEnd - g.zStart, 0, 4, (g.zStart + g.zEnd) / 2);
         tweenTo(b.position, 'y', -0.2, 0.25);
+        sfx.bridge();
         console.log(`[ShortcutRun] 铺桥 -${g.cost} 砖，剩余 ${bricks}`);
       } else {
         enterFall();
