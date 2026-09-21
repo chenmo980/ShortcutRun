@@ -70,6 +70,47 @@ function genLevel(seed, cfg) {
   return { length: cfg.levelLength, gaps, pickups, gateZ, gateCost: cfg.gateCost };
 }
 
+// ===== v2 修复（移植自 docs/qoder/bridge-rules.mjs）：前缀可行保证 =====
+// D1：v1 有 2.75% 关卡全局砖不足；D2：16.4% 关卡存在前缀死局
+function zonesOf(level) {
+  const zones = [];
+  let prev = 0;
+  for (const g of level.gaps) { zones.push([prev, g.zStart]); prev = g.zEnd; }
+  zones.push([prev, level.gateZ]);
+  return zones;
+}
+function prefixBalance(level, cfg) {
+  const zones = zonesOf(level);
+  const perZone = zones.map(([z0, z1]) => level.pickups.filter((p) => p.z >= z0 && p.z < z1).length * cfg.brickCluster);
+  const surplus = [];
+  let acc = 0;
+  for (let i = 0; i < level.gaps.length; i++) { acc += perZone[i] - level.gaps[i].cost; surplus.push(acc); }
+  acc += perZone[perZone.length - 1] - level.gateCost;
+  surplus.push(acc);
+  const minSurplus = Math.min(...surplus);
+  return { perZone, surplus, feasible: surplus.every((s) => s >= 0), minSurplus, minAt: surplus.indexOf(minSurplus) };
+}
+function chooseZoneToFix(zones, badGapIdx) {
+  for (let i = badGapIdx; i >= 0; i--) { if (zones[i][1] - zones[i][0] >= 6) return i; }
+  return -1;
+}
+function genLevelV2(seed, cfg) {
+  const level = genLevel(seed, cfg);
+  const zones = zonesOf(level);
+  let guard = 0;
+  while (guard++ < 500) {
+    const { surplus } = prefixBalance(level, cfg);
+    const bad = surplus.findIndex((s) => s < 0);
+    if (bad === -1) break;
+    const zoneIdx = chooseZoneToFix(zones, bad);
+    if (zoneIdx < 0) break;
+    const [z0, z1] = zones[zoneIdx];
+    const rnd = mulberry32(seed * 7919 + guard);
+    level.pickups.push({ x: (rnd() * 2 - 1) * (cfg.trackHalfWidth - 0.8), z: z0 + 2 + rnd() * Math.max(1, z1 - z0 - 4) });
+  }
+  return level;
+}
+
 // ============ 三维场景 ============
 const app = document.getElementById('app');
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -121,7 +162,7 @@ for (let i = 0; i < 12; i++) {
 }
 
 function buildLevel(seed) {
-  level = genLevel(seed, CFG);
+  level = genLevelV2(seed, CFG);
   // 清掉上一局动态物体（保留 player / stack / 灯光）
   for (let i = scene.children.length - 1; i >= 0; i--) {
     const o = scene.children[i];

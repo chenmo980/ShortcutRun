@@ -26,6 +26,9 @@
 - [x] **浏览器版自动化验证 10/10 全过**（tools/verify-web.mjs）：开始/吃砖/转向/铺桥/掉落/胜利/无错误/画面渲染/玩家可见
 - [x] 修复：浏览器版重开关卡时玩家位置未重置——Cocos 版整场景重载无此问题
 - [x] **Qoder 评审 4 项缺陷全修**（2026-09-21）：①MOUSE+TOUCH 双绑定致 PC 预览灵敏度翻倍→只绑 TOUCH_*；②补 onDestroy 解绑 input（reload 后旧实例监听残留）；③tween 回调加 node.isValid 守卫；④多指触摸忽略后续手指。详见 docs/AI-HANDOFF.md
+- [x] **S1 Cocos 零装配**：内置 game.scene + BoxFactory 程序化灰盒，双击场景按 ▶ 即玩（2026-09-21）
+- [x] **移植 genLevelV2**（Qoder 母本）：修复 D1（2.75% 数学不可通关）+ D2（16.4% 前缀死局），bot 通关率 82%→100%；smoke 增加 parity/D1/D2/bot 四断言全绿
+- [x] Qoder Q2/Q3/Q4 交付并审阅：规则母本包 docs/qoder/ + balance-v1.md（L1-L10 曲线）
 
 ## 阻塞
 

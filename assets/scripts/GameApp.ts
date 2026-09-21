@@ -7,7 +7,7 @@ import {
   EventTouch, EventKeyboard, KeyCode, director,
 } from 'cc';
 import { CFG, Cfg } from './config';
-import { genLevel, LevelDef } from './LevelGen';
+import { genLevelV2, LevelDef } from './LevelGen';
 import { TrackBuilder, RuntimePickup } from './TrackBuilder';
 import { CameraFollow } from './CameraFollow';
 import { GameUI } from './GameUI';
@@ -55,7 +55,7 @@ export class GameApp extends Component {
       levelLength: this.levelLength,
       gateCost: this.gateCost,
     };
-    this.level = genLevel(this.seed, this.cfg);
+    this.level = genLevelV2(this.seed, this.cfg);
     console.log(
       `[ShortcutRun] 关卡 seed=${this.seed} 断崖=${this.level.gaps.length} ` +
       `拾取=${this.level.pickups.length} 终点z=${this.level.gateZ.toFixed(1)} 门需求=${this.cfg.gateCost}`
