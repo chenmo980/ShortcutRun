@@ -43,6 +43,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     state: 'idle' | 'running' | 'bridging' | 'drowned' | 'finished';
     lastBridgeDropZ: number;
     runCycle: number;
+    pickupPulse: number;
+    stepTimer: number;
     materials: { [key: string]: THREE.Material };
     trackBounds: { minZ: number; maxZ: number; minX: number; maxX: number }[];
   }>({
@@ -65,6 +67,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     state: 'idle',
     lastBridgeDropZ: 0,
     runCycle: 0,
+    pickupPulse: 0,
+    stepTimer: 0,
     materials: {},
     trackBounds: [],
   });
@@ -361,6 +365,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       state: 'running',
       lastBridgeDropZ: 0,
       runCycle: 0,
+      pickupPulse: 0,
+      stepTimer: 0,
       materials,
       trackBounds,
     };
@@ -581,6 +587,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               item.collected = true;
               item.mesh.visible = false;
               g.carriedPlanks += 2;
+              g.pickupPulse = 1.0;
               setPlankCount(g.carriedPlanks);
               updatePlankStackVisual(g.carriedPlanks);
               setScore((s) => s + 20);
@@ -615,6 +622,21 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         // Steer velocity for dynamic character banking
         const steerVelocity = g.targetPlayerX - g.playerX;
         g.runCycle += delta * 15;
+        g.pickupPulse = Math.max(0, g.pickupPulse - delta * 6);
+
+        // Footstep ground contact particles (dust puffs on runway, water drops on bridge)
+        g.stepTimer += delta * 15;
+        if (g.stepTimer >= Math.PI) {
+          g.stepTimer -= Math.PI;
+          if (settings.pickupVFX && (g.state === 'running' || g.state === 'bridging')) {
+            const isLeftFoot = Math.sin(g.runCycle) > 0;
+            const footX = g.playerX + (isLeftFoot ? -0.22 : 0.22);
+            const footZ = g.playerZ - 0.05;
+            const footY = g.isOverWater ? 0.48 : 0.82;
+            const stepColor = g.isOverWater ? palette.waterShallow : '#E2E8F0';
+            spawnPuff(new THREE.Vector3(footX, footY, footZ), stepColor);
+          }
+        }
 
         // Animate Player Character
         if (g.playerChar) {
@@ -624,7 +646,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             steerVelocity,
             g.carriedPlanks,
             g.state,
-            delta
+            delta,
+            g.pickupPulse
           );
           g.playerChar.root.position.set(g.playerX, 0.85, g.playerZ);
         }
