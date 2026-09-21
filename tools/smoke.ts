@@ -5,6 +5,9 @@ import { CFG } from '../assets/scripts/config.ts';
 import { genLevel, genLevelV3, levelStats, prefixBalance, zonesOf } from '../assets/scripts/LevelGen.ts';
 import { cfgForLevel, itemsFor } from '../assets/scripts/LevelCurve.ts';
 import { createProgress, starsFor, parFor } from '../assets/scripts/Progression.ts';
+import { SFX } from '../assets/scripts/SfxSynth.ts';
+import type { SfxName } from '../assets/scripts/SfxSynth.ts';
+import { readFileSync } from 'node:fs';
 import { genLevelV3 as jsGenLevelV3, botRun } from '../docs/qoder/bridge-rules.mjs';
 import { cfgForLevel as jsCfgForLevel, itemsFor as jsItemsFor } from '../docs/qoder/levels.mjs';
 import { parFor as jsParFor, starsFor as jsStarsFor } from '../docs/qoder/progression.mjs';
@@ -136,6 +139,31 @@ check('starsFor-parity', starsFor(1, 16.5, 5) === jsStarsFor(1, 16.5, 5)
   const offBal = prefixBalance(genLevelV3(6001, cfg6), cfg6);
   const onBal = prefixBalance(genLevelV3(6001, cfg6, { items: itemsFor(6) ?? undefined }), cfg6);
   check('items-no-supply-change', JSON.stringify(offBal) === JSON.stringify(onBal), '道具不改供需');
+}
+
+// 9. 音效表漂移锁：assets/scripts/SfxSynth.ts 与 web-preview 内联 sfx 表必须逐值一致
+//    背景：Cocos/微信侧素材缺失时降级为代码合成（零包体），两处参数漂移会让两端听感不一致
+{
+  const html = readFileSync(new URL('../web-preview/index.html', import.meta.url), 'utf8');
+  const expect: Record<string, [number, number, string, number, number]> = {
+    pickup: [880, 0.08, 'square', 0.07, 400],
+    lose: [220, 0.4, 'sawtooth', 0.14, -160],
+  };
+  for (const [name] of Object.entries(expect)) {
+    const re = new RegExp(`${name}:\\s*\\(\\)\\s*=>\\s*(?:\\{[^}]*)?beep\\((\\d+(?:\\.\\d+)?),\\s*(\\d+(?:\\.\\d+)?),\\s*'([a-z]+)',\\s*(\\d+(?:\\.\\d+)?)(?:,\\s*(-?\\d+(?:\\.\\d+)?))?`);
+    const m = html.match(re);
+    if (!m) { check(`sfx-inline-${name}`, false, '内联音效表抽取失败'); continue; }
+    const mine = SFX[name as SfxName][0];
+    check(`sfx-inline-${name}`,
+      Number(m[1]) === mine.freq && Math.abs(Number(m[2]) - mine.dur) < 1e-9
+      && m[3] === mine.type && Math.abs(Number(m[4]) - mine.vol) < 1e-9
+      && (m[5] === undefined ? mine.slide === undefined : Math.abs(Number(m[5]) - (mine.slide ?? 0)) < 1e-9),
+      `内联=${m[1]}/${m[2]}/${m[3]}/${m[4]}/${m[5]} TS=${mine.freq}/${mine.dur}/${mine.type}/${mine.vol}/${mine.slide}`);
+  }
+  check('sfx-win-arpeggio', html.includes('[523, 659, 784, 1047]') && SFX.win.map((t) => t.freq).join(',') === '523,659,784,1047',
+    '胜利音四音琶音一致');
+  check('sfx-bridge-two-tones', SFX.bridge.length === 2 && html.includes('beep(160, 0.18') && html.includes('beep(320, 0.1'),
+    '铺桥双音一致');
 }
 
 // 8. 输出

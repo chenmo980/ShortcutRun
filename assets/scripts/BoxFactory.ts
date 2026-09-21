@@ -7,22 +7,30 @@ import { _decorator, Node, Vec3, Mesh, MeshRenderer, Material, utils, primitives
 import { currentTheme, colorOf } from './Theme';
 
 export type BoxKind = 'road' | 'ground' | 'brick' | 'bridge' | 'player' | 'limb' | 'skin' | 'gate' | 'pillar'
-  | 'gateAdd' | 'gateMul' | 'shoe';
+  | 'gateAdd' | 'gateMul' | 'shoe' | 'building1' | 'building2' | 'edge' | 'warn1' | 'warn2';
 
 let sharedMesh: Mesh | null = null;
 let colors: Record<BoxKind, Color> = buildColors();
 const matCache = new Map<BoxKind, Material>();
 
+// 固定色（不随主题）：道路边线 + 断崖警示条纹（J2 视觉可读性）
+const FIXED: Partial<Record<BoxKind, number>> = {
+  edge: 0xf5f5f5, warn1: 0xffc107, warn2: 0x37474f,
+};
+
 function buildColors(): Record<BoxKind, Color> {
   const t = currentTheme();
-  return {
+  const c: Record<string, Color> = {
     road: colorOf(t.road), ground: colorOf(t.ground), brick: colorOf(t.brick),
     bridge: colorOf(t.bridge), player: colorOf(t.player), limb: colorOf(t.limb),
     skin: colorOf(t.skin), gate: colorOf(t.gate), pillar: colorOf(t.pillar),
     shoe: colorOf(t.shoe ?? 0xffee58),
+    building1: colorOf(t.building1 ?? 0xb0bec5), building2: colorOf(t.building2 ?? 0x546e7a),
     // 道具门语义色：+N 蓝底 / ×2 红底（照原版，不随主题变）
     gateAdd: colorOf(0x1976d2), gateMul: colorOf(0xd32f2f),
   };
+  for (const k of Object.keys(FIXED)) c[k] = colorOf(FIXED[k as BoxKind]!);
+  return c as Record<BoxKind, Color>;
 }
 
 function getMesh(): Mesh {

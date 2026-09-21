@@ -148,11 +148,14 @@ const vis = await page.evaluate(() => {
   window.__game.setPlayerColor(0xff00ff); // 品红 marker
   window.__game.renderOnce(); // 同一任务内渲染后立刻读，避免 WebGL 缓冲被清
   const c = window.__game.canvas();
+  // 整帧缩放采样（不再固定取左上角）：角色随相机插值在画面中移动，
+  // 固定裁剪窗口会让 marker 像素数随帧相位抖动（实测 46~56 越过阈值），整帧采样消除该抖动
+  const W = 320, H = 180;
   const off = document.createElement('canvas');
-  off.width = 200; off.height = 140;
+  off.width = W; off.height = H;
   const ctx = off.getContext('2d');
-  ctx.drawImage(c, 0, 0, 200, 140);
-  const d = ctx.getImageData(0, 0, 200, 140).data;
+  ctx.drawImage(c, 0, 0, W, H);
+  const d = ctx.getImageData(0, 0, W, H).data;
   const sky = window.__game.getState().sky;
   const sr = (sky >> 16) & 255, sg = (sky >> 8) & 255, sb = sky & 255;
   const colors = new Set();
@@ -164,7 +167,8 @@ const vis = await page.evaluate(() => {
     if (r > 150 && b > 150 && g < 100) marker++; // 品红（暗面也按通道比例判定）
   }
   window.__game.setPlayerColor(orig); // 还原主题色
-  return { colors: colors.size, nonBgRatio: nonBg / (200 * 140), markerPx: marker, theme: window.__game.getState().theme };
+  const tot = W * H;
+  return { colors: colors.size, nonBgRatio: nonBg / tot, markerPx: marker, theme: window.__game.getState().theme };
 });
 check('scene-rendered', vis.colors >= 8 && vis.nonBgRatio > 0.15 && vis.nonBgRatio < 0.98,
   `colors=${vis.colors} nonBg=${(vis.nonBgRatio * 100).toFixed(0)}% theme=${vis.theme}`);

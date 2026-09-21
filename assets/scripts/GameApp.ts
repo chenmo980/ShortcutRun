@@ -62,6 +62,7 @@ export class GameApp extends Component {
   private heldRight = false;
   private elapsed = 0;
   private runT0 = 0;
+  private speedDip = 0; // 铺桥瞬间轻微减速（J4 手感）
 
   onLoad(): void {
     if (!this.boxPrefab) {
@@ -108,7 +109,7 @@ export class GameApp extends Component {
       `拾取=${this.levelDef.pickups.length} 终点z=${this.levelDef.gateZ.toFixed(1)} 门需求=${this.cfg.gateCost}`
     );
 
-    this.track.build(this.levelDef, this.cfg);
+    this.track.build(this.levelDef, this.cfg, cur.seed);
     this.pickups = this.track.pickups;
     this.player = this.track.buildPlayer(this.cfg);
     this.player.setPosition(new Vec3(0, 0, 0));
@@ -204,6 +205,10 @@ export class GameApp extends Component {
     this.startRun();
     this.applyKeyHold(ev.keyCode, true);
     if (ev.keyCode === KeyCode.KEY_T) this.toggleTheme();
+    if (ev.keyCode === KeyCode.KEY_M && this.audio) {
+      const m = this.audio.toggleMute();
+      console.log(`[ShortcutRun] 音效 ${m ? '关' : '开'}`);
+    }
   }
 
   private onKeyUp(ev: EventKeyboard): void {
@@ -247,9 +252,11 @@ export class GameApp extends Component {
 
     if (this.state === 'run') {
       if (this.shoeT > 0) this.shoeT -= dt;
+      if (this.speedDip > 0) this.speedDip -= dt;
       // 提速鞋：终速 ×1.35（可短暂超 maxSpeed，提速感优先；母本 botRun 同口径）
+      // 铺桥瞬间减速 ×0.55（J4：给“落桥”一个可感知的停顿）
       this.speed = Math.min(this.cfg.maxSpeed, this.cfg.runSpeed + this.bricks * this.cfg.speedPerBrick)
-        * (this.shoeT > 0 ? 1.35 : 1);
+        * (this.shoeT > 0 ? 1.35 : 1) * (this.speedDip > 0 ? 0.55 : 1);
       z += this.speed * dt;
       const k = 1 - Math.exp(-this.cfg.steerSpeed * dt);
       x += (this.targetX - x) * k;
@@ -273,6 +280,9 @@ export class GameApp extends Component {
     this.track.syncStack(this.bricks);
     this.track.syncRig(this.state, this.speed, this.elapsed);
     this.ui?.setProgress(z, this.levelDef.gateZ);
+    // J1：速度因子喂相机（FOV 冲刺）
+    const span = Math.max(0.1, this.cfg.maxSpeed - this.cfg.runSpeed);
+    this.camFollow.speedFactor = Math.max(0, Math.min(1, (this.speed - this.cfg.runSpeed) / span));
   }
 
   // 拾取判定：本帧位移区间 [prevZ, z] 与拾取点区间相交即吃到（防高帧移动量穿透）
@@ -321,6 +331,8 @@ export class GameApp extends Component {
           this.track.bridge(g);
           this.ui?.setBricks(this.bricks);
           this.audio?.play('bridge');
+          this.speedDip = 0.35;                 // J4：落桥停顿
+          this.camFollow.addShake(0.22, 0.25);  // J1：落桥震屏
           console.log(`[ShortcutRun] 铺桥 -${g.cost} 砖，剩余 ${this.bricks}`);
         } else {
           this.enterFall();
@@ -335,6 +347,7 @@ export class GameApp extends Component {
     this.ui?.showHint('掉落！');
     this.state = 'fall';
     this.fallVel = 1;
+    this.camFollow.addShake(0.18, 0.2); // J1：掉落实感
   }
 
   private checkGate(z: number): void {

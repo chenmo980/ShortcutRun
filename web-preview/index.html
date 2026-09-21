@@ -20,6 +20,7 @@
   .title { font-size: 46px; font-weight: 900; color: #263238; letter-spacing: 2px; }
   .subtitle { font-size: 14px; color: #78909c; margin-top: 6px; }
   .bestline { font-size: 16px; color: #455a64; margin-top: 18px; }
+  .goalline { font-size: 15px; color: #ef6c00; margin-top: 8px; font-weight: bold; }
   .btn { margin-top: 26px; font-size: 22px; font-weight: bold; color: #fff; background: linear-gradient(180deg, #66bb6a, #43a047); border: none; border-radius: 14px; padding: 14px 52px; cursor: pointer; box-shadow: 0 6px 0 #2e7d32, 0 8px 16px rgba(0,0,0,.25); transition: transform .08s ease; }
   .btn:hover { filter: brightness(1.06); }
   .btn:active { transform: translateY(4px); box-shadow: 0 2px 0 #2e7d32; }
@@ -52,6 +53,7 @@
     <div class="title">铺路飞人</div>
     <div class="subtitle">Shortcut Run 玩法复刻 · 灰模试玩 v0.2</div>
     <div class="bestline" id="startBest">最高进度：第 1 关</div>
+    <div class="goalline" id="startGoal"></div>
     <button class="btn" id="startBtn">开始游戏</button>
     <div class="help">拖动鼠标 / A D 转向 · 吃砖铺路过断崖<br>T 换肤 · M 音效开关</div>
   </div>
@@ -80,6 +82,7 @@ const CFG = {
 
 let cfg = { ...CFG }; // 按关卡切换（LevelCurve），全局代码只读 cfg
 let levelNum = 1, attempt = 1, runT0 = 0;
+let speedDip = 0; // 铺桥瞬间轻微减速（J4 手感）
 
 // ===== 关卡推进（移植自 docs/qoder/progression.mjs 母本，localStorage 持久化） =====
 const SR_KEY = 'shortcut_run_progress_v1';
@@ -349,9 +352,9 @@ const BOX = new THREE.BoxGeometry(1, 1, 1);
 // 色表过 Qoder Q5 规范（docs/qoder/theme.mjs，sim.mjs §20 机验）：
 // day=原版 Voodoo 配方（默认）；city=player 深蓝化修复；candy=修复表（紫砖/可可桥/白角色）
 const THEMES = {
-  day: { name: '白天（原版）', sky: 0xaee6ff, ground: 0x43a047, road: 0x6d4c41, brick: 0x4dd0ff, bridge: 0xc98d4f, player: 0xffffff, limb: 0x90a4ae, skin: 0xffe0b2, gate: 0xff3b30, pillar: 0x263238, shoe: 0xffee58 },
-  city: { name: '城市', sky: 0x8fb3d9, ground: 0x7d8a99, road: 0x3d444d, brick: 0xffc107, bridge: 0x8d6e63, player: 0x0288d1, limb: 0x2196f3, skin: 0xffe0b2, gate: 0xe53935, pillar: 0x455a64, shoe: 0xffee58 },
-  candy: { name: '糖果', sky: 0xffe4ef, ground: 0x66bb6a, road: 0xd8b8ca, brick: 0xab27d3, bridge: 0x4e342e, player: 0xffffff, limb: 0xbdbdbd, skin: 0xffe0b2, gate: 0xc51162, pillar: 0x6a1b9a, shoe: 0x006064 },
+  day: { name: '白天（原版）', sky: 0xaee6ff, ground: 0x43a047, road: 0x6d4c41, brick: 0x4dd0ff, bridge: 0xc98d4f, player: 0xffffff, limb: 0x90a4ae, skin: 0xffe0b2, gate: 0xff3b30, pillar: 0x263238, shoe: 0xffee58, building1: 0xeceff1, building2: 0xb0bec5 },
+  city: { name: '城市', sky: 0x8fb3d9, ground: 0x7d8a99, road: 0x3d444d, brick: 0xffc107, bridge: 0x8d6e63, player: 0x0288d1, limb: 0x2196f3, skin: 0xffe0b2, gate: 0xe53935, pillar: 0x455a64, shoe: 0xffee58, building1: 0x78909c, building2: 0x546e7a },
+  candy: { name: '糖果', sky: 0xffe4ef, ground: 0x66bb6a, road: 0xd8b8ca, brick: 0xab27d3, bridge: 0x4e342e, player: 0xffffff, limb: 0xbdbdbd, skin: 0xffe0b2, gate: 0xc51162, pillar: 0x6a1b9a, shoe: 0x006064, building1: 0xf8bbd0, building2: 0xb39ddb },
 };
 let themeKey = 'day';
 const MAT = {
@@ -365,6 +368,8 @@ const MAT = {
   gate:   new THREE.MeshLambertMaterial(),
   pillar: new THREE.MeshLambertMaterial(),
   shoe:   new THREE.MeshLambertMaterial(),
+  building1: new THREE.MeshLambertMaterial(),
+  building2: new THREE.MeshLambertMaterial(),
 };
 // 道具门语义色（+N 蓝底 / ×2 红底，照原版，不随主题变）
 const ITEM_MAT = {
@@ -375,8 +380,14 @@ function applyTheme() {
   const t = THEMES[themeKey];
   scene.background.setHex(t.sky);
   scene.fog.color.setHex(t.sky);
-  for (const k of Object.keys(MAT)) { if (t[k]) MAT[k].color.setHex(t[k]); }
+  for (const k of Object.keys(MAT)) MAT[k].color.setHex(t[k]);
 }
+// 固定色（不随主题）：道路边线 + 断崖警示条纹
+const MAT_FIX = {
+  edge: new THREE.MeshLambertMaterial({ color: 0xf5f5f5 }),
+  warn1: new THREE.MeshLambertMaterial({ color: 0xffc107 }),
+  warn2: new THREE.MeshLambertMaterial({ color: 0x37474f }),
+};
 function cycleTheme() {
   const keys = Object.keys(THEMES);
   themeKey = keys[(keys.indexOf(themeKey) + 1) % keys.length];
@@ -525,6 +536,8 @@ function buildLevel(cur) {
   const wallW = (cfg.trackHalfWidth * 2) / 3;
   for (let i = -1; i <= 1; i++) gateWalls.push(box(MAT.gate, wallW, 1.4, 0.4, i * wallW, 0.7, level.gateZ));
   for (const sx of [-1, 1]) box(MAT.pillar, 0.5, 2.8, 0.5, sx * (cfg.trackHalfWidth + 0.35), 1.4, level.gateZ);
+  gapWarnings(level.gaps, cfg.trackHalfWidth * 2 + 0.6); // J2：断崖警示条纹
+  buildProps(cur.seed);                                   // J2：两侧建筑群
   // v4 道具拱门：横跨跑道的横梁 + 白色大字（+N 蓝底 / ×2 红底，照原版）
   if (level.gates) {
     for (const g of level.gates) {
@@ -558,6 +571,30 @@ function road(z0, z1, w) {
   const len = z1 - z0;
   if (len <= 0.1) return;
   box(MAT.road, w, 0.4, len, 0, -0.2, (z0 + z1) / 2);
+  // 白色边线（道路边界可读性）
+  for (const sx of [-1, 1]) {
+    box(MAT_FIX.edge, 0.12, 0.08, len - 0.2, sx * (w / 2 - 0.12), 0.02, (z0 + z1) / 2);
+  }
+}
+// 断崖警示条纹（提前 1.5m 告诉玩家“前面没路”）
+function gapWarnings(gaps, w) {
+  for (const g of gaps) {
+    for (let i = 0; i < 3; i++) {
+      box(i % 2 === 0 ? MAT_FIX.warn1 : MAT_FIX.warn2, w - 0.4, 0.06, 0.4, 0, 0.03, g.zStart - 1.3 + i * 0.42);
+    }
+  }
+}
+// 两侧建筑群（主题色，seed 确定，纯视觉纵深）
+function buildProps(seed) {
+  const rnd = mulberry32(seed * 31 + 7);
+  const n = 26;
+  for (let i = 0; i < n; i++) {
+    const side = i % 2 === 0 ? -1 : 1;
+    const z = 3 + (i / n) * (level.gateZ - 6);
+    const h = 2.5 + rnd() * 7;
+    const w = 1.5 + rnd() * 2;
+    box(rnd() < 0.5 ? MAT.building1 : MAT.building2, w, h, w, side * (6.5 + rnd() * 8), h / 2 - 0.5, z);
+  }
 }
 // 道具门大字：canvas 贴图（白字透明底，叠在彩色横梁上），零字体资产
 function textPlane(txt, w, h) {
@@ -615,6 +652,18 @@ const resultStats = document.getElementById('resultStats');
 const resultBtn = document.getElementById('resultBtn');
 function setBricksUI(n) { brickEl.textContent = '砖块 ' + n; }
 function setProgressUI(z, gateZ) { progFill.style.width = Math.max(0, Math.min(100, (z / gateZ) * 100)).toFixed(1) + '%'; }
+// 浮动数字（吃砖 +N）
+function floatText(txt, x, y) {
+  const el = document.createElement('div');
+  el.textContent = txt;
+  el.style.cssText = `position:fixed;left:${x}px;top:${y}px;color:#ffd54f;font-weight:900;font-size:26px;text-shadow:0 2px 6px rgba(0,0,0,.55);pointer-events:none;z-index:5;transition:all .7s ease-out;`;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => { el.style.top = (y - 60) + 'px'; el.style.opacity = '0'; });
+  setTimeout(() => el.remove(), 750);
+}
+// 屏幕震动
+let shakeT = 0, shakeMag = 0;
+function shake(mag, dur) { shakeMag = Math.max(shakeMag, mag); shakeT = Math.max(shakeT, dur); }
 function showHint(t) { hintEl.textContent = t; hintEl.style.display = 'block'; }
 function hideHint() { hintEl.style.display = 'none'; }
 // 道具飘字反馈（+N 砖 / ×2 砖 / 加速）
@@ -648,6 +697,9 @@ function showStart() {
   startBest.textContent = b
     ? `最高进度：第 ${st.level} 关 · 本关最佳 ${b.stars}★ ${b.time}s`
     : `最高进度：第 ${st.level} 关`;
+  const c = cfgForLevel(st.level);
+  const par = PAR[(st.level - 1) % PAR.length];
+  startGoal.textContent = `本关目标：终点需 ${c.gateCost} 砖 · 3★：≤${par}s 且余砖≥3`;
   badgeEl.textContent = `第 ${st.level} 关`;
   hintEl.style.display = 'none';
   startScreen.style.display = 'flex';
@@ -691,6 +743,8 @@ function enterFall() {
   console.log('[ShortcutRun] 砖不够，掉落！');
   showHint('掉落！');
   state = 'fall'; fallVel = 1;
+  slowT = 0.55;  // 失败慢动作
+  shake(0.18, 0.2);
 }
 function win() {
   state = 'win';
@@ -769,6 +823,8 @@ function checkGaps(prevZ, z) {
         const b = box(MAT.bridge, w, 0.4, g.zEnd - g.zStart, 0, 4, (g.zStart + g.zEnd) / 2);
         tweenTo(b.position, 'y', -0.2, 0.25);
         sfx.bridge();
+        shake(0.22, 0.25); // 落桥震屏
+        speedDip = 0.35;   // 铺桥瞬间轻微减速（J4 手感）
         console.log(`[ShortcutRun] 铺桥 -${g.cost} 砖，剩余 ${bricks}`);
       } else {
         enterFall();
@@ -787,9 +843,12 @@ function checkGate(z) {
 // ============ 主循环 ============
 const clock = new THREE.Clock();
 let elapsed = 0;
+let slowT = 0; // 失败慢动作剩余时间
 function loop() {
   requestAnimationFrame(loop);
-  const dt = Math.min(clock.getDelta(), 0.05);
+  const raw = clock.getDelta();
+  if (slowT > 0) slowT -= raw;
+  const dt = Math.min(raw * (slowT > 0 ? 0.35 : 1), 0.05);
   elapsed += dt;
   stepAnims(dt);
 
@@ -804,7 +863,9 @@ function loop() {
     if (state === 'run') {
       if (shoeT > 0) shoeT -= dt;
       // 提速鞋：终速 ×1.35（可短暂超 maxSpeed，提速感优先）
-      speed = Math.min(cfg.maxSpeed, cfg.runSpeed + bricks * cfg.speedPerBrick) * (shoeT > 0 ? 1.35 : 1);
+      if (shoeT > 0) shoeT -= dt;
+      if (speedDip > 0) speedDip -= dt;
+      speed = Math.min(cfg.maxSpeed, cfg.runSpeed + bricks * cfg.speedPerBrick) * (shoeT > 0 ? 1.35 : 1) * (speedDip > 0 ? 0.55 : 1);
       z += speed * dt;
       const k = 1 - Math.exp(-cfg.steerSpeed * dt);
       x += (targetX - x) * k;
@@ -854,6 +915,21 @@ function loop() {
     camera.position.z += (dz - camera.position.z) * k;
   }
   camera.lookAt(t.x, t.y + 0.8, t.z);
+
+  // 铺桥/掉落实感：震屏衰减
+  if (shakeT > 0) {
+    shakeT -= dt;
+    const m = shakeMag * Math.max(0, shakeT / 0.25);
+    camera.position.x += (Math.random() - 0.5) * m;
+    camera.position.y += (Math.random() - 0.5) * m;
+  }
+  // 速度感：FOV 随速度冲刺（56 → 64）
+  const sp = Math.max(0, Math.min(1, (speed - cfg.runSpeed) / Math.max(0.1, cfg.maxSpeed - cfg.runSpeed)));
+  const targetFov = 56 + sp * 8;
+  if (Math.abs(camera.fov - targetFov) > 0.15) {
+    camera.fov += (targetFov - camera.fov) * Math.min(1, 4 * dt);
+    camera.updateProjectionMatrix();
+  }
 
   renderer.render(scene, camera);
 }

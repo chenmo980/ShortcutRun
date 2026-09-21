@@ -44,7 +44,7 @@ export class TrackBuilder extends Component {
     return spawnBox(parent, kind, scale.x, scale.y, scale.z, pos.x, pos.y, pos.z);
   }
 
-  build(level: LevelDef, cfg: Cfg): void {
+  build(level: LevelDef, cfg: Cfg, seed = 1): void {
     this.level = level;
     this.cfg = cfg;
     this.node.removeAllChildren();
@@ -56,6 +56,8 @@ export class TrackBuilder extends Component {
     this.buildPickups();
     this.buildGate();
     this.buildItems();
+    this.buildWarnings();
+    this.buildProps(seed);
   }
 
   private buildRoad(): void {
@@ -72,6 +74,38 @@ export class TrackBuilder extends Component {
     const len = z1 - z0;
     if (len <= 0.1) return;
     this.box('road', new Vec3(w, 0.4, len), new Vec3(0, -0.2, (z0 + z1) / 2), this.node);
+    // 白色边线（道路边界可读性，J2）
+    for (const sx of [-1, 1]) {
+      this.box('edge', new Vec3(0.12, 0.08, len - 0.2), new Vec3(sx * (w / 2 - 0.12), 0.02, (z0 + z1) / 2), this.node);
+    }
+  }
+
+  // 断崖警示条纹：提前告诉玩家“前面没路”（J2）
+  private buildWarnings(): void {
+    const w = this.cfg.trackHalfWidth * 2 + 0.6;
+    for (const g of this.level.gaps) {
+      for (let i = 0; i < 3; i++) {
+        this.box(i % 2 === 0 ? 'warn1' : 'warn2',
+          new Vec3(w - 0.4, 0.06, 0.4), new Vec3(0, 0.03, g.zStart - 1.3 + i * 0.42), this.node);
+      }
+    }
+  }
+
+  // 两侧建筑群（主题色，seed 确定，纯视觉纵深，J2）
+  private buildProps(seed: number): void {
+    const n = 26;
+    for (let i = 0; i < n; i++) {
+      const side = i % 2 === 0 ? -1 : 1;
+      // 确定性伪随机（与浏览器版同配方：索引推导，避免引入独立 RNG）
+      const r1 = ((seed * 31 + i * 17) % 100) / 100;
+      const r2 = ((seed * 47 + i * 29) % 100) / 100;
+      const r3 = ((seed * 13 + i * 53) % 100) / 100;
+      const z = 3 + (i / n) * (this.level.gateZ - 6);
+      const h = 2.5 + r1 * 7;
+      const bw = 1.5 + r2 * 2;
+      this.box(r3 < 0.5 ? 'building1' : 'building2',
+        new Vec3(bw, h, bw), new Vec3(side * (6.5 + r3 * 8), h / 2 - 0.5, z), this.node);
+    }
   }
 
   private buildPickups(): void {
