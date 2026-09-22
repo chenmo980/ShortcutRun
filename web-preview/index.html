@@ -632,6 +632,7 @@ applyTheme(); // 初始配色（须在 MAT/CHAR_MATS/char 都就绪后）
 
 // 动画（移植自母本 animateCharacter）：跑步步态/前倾/转弯侧倾/头带飘动/胜利/落水
 function animateChar(char, runCycle, steerVelocity, carriedPlanks, state, delta) {
+  if (!char || !char.root || !char.torso || !char.head || !char.headbandRibbon || !char.plankMount || !char.leftArm || !char.leftArm.shoulder || !char.leftArm.elbow || !char.rightArm || !char.rightArm.shoulder || !char.rightArm.elbow || !char.leftLeg || !char.leftLeg.hip || !char.leftLeg.knee || !char.leftLeg.foot || !char.rightLeg || !char.rightLeg.hip || !char.rightLeg.knee || !char.rightLeg.foot) return; // Polle clone missing joints
   const lerp = (a, b, t) => a + (b - a) * Math.min(1, Math.max(0, t));
   if (state === 'drowned') {
     char.root.rotation.x = lerp(char.root.rotation.x, Math.PI / 2, delta * 5);
