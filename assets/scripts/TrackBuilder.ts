@@ -30,6 +30,34 @@ export class TrackBuilder extends Component {
   private gateWalls: Node[] = [];
   private stackNodes: Node[] = [];
   private rig: CharRig | null = null;
+  private plankPool: Node[] = [];  // 铺板轨迹池（自由铺板机制）
+  private plankCursor = 0;
+
+  // 铺一块板（Pool：未满新增，满后循环复用最老的）；pos 为 level-space
+  spawnPlank(z: number, x: number): void {
+    const c = this.curve;
+    const h = headingAt(z, c);
+    const px = bendX(z, c) + x * Math.cos(h) + (Math.random() - 0.5) * 0.15;
+    let node = this.plankPool[this.plankCursor];
+    if (!node) {
+      node = this.box('plank',
+        new Vec3(1.5, 0.1, (this.cfg.plankStride ?? 0.6) * 0.95),
+        new Vec3(px, 0.02, z - 0.2), this.node);
+      node.eulerAngles = new Vec3(0, h, 0);
+      if (this.plankPool.length < (this.cfg.plankPoolMax ?? 300)) this.plankPool.push(node);
+    } else {
+      this.plankCursor = (this.plankCursor + 1) % (this.cfg.plankPoolMax ?? 300);
+      node.setPosition(new Vec3(px, 0.02, z - 0.2));
+      node.eulerAngles = new Vec3(0, h, 0);
+    }
+  }
+
+  isOnMainRoad(x: number, z: number): boolean {
+    if (z >= this.level.gateZ - 0.5) return true;
+    if (Math.abs(x - bendX(z, this.curve)) > this.cfg.trackHalfWidth) return false;
+    for (const g of this.level.gaps) if (z >= g.zStart - 0.15 && z <= g.zEnd + 0.15) return false;
+    return true;
+  }
 
   private box(kind: BoxKind, scale: Vec3, pos: Vec3, parent: Node): Node {
     if (this.boxPrefab) {

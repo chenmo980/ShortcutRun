@@ -65,10 +65,12 @@ export class GameApp extends Component {
   private heldRight = false;
   private elapsed = 0;
   private runT0 = 0;
-  private speedDip = 0; // 铺桥瞬间轻微减速（J4 手感）
   private runCycle = 0; // 角色步态相位
   private fell = false;  // 是否坠落死亡（决定 lose 姿势：旋水 or 站立）
-  private bridgeT = 0;   // 铺桥推掷动作剩余时间（v2 增强）
+  private bridgeT = 0;   // 铺板推掷动作剩余时间（v2 增强）
+  private offRoad = false; // 当前是否在主路外（铺板模式）
+  private plankAcc = 0;    // 累计铺板距离（米）
+  private leapGrace = 0;   // 剩余最后一跃距离（米），>0 表示飞跃中不耗板
   private curve: CurveState = { amp: 0, freq: 0.12, phase: 0 }; // 弯道（表现层）
 
   onLoad(): void {
@@ -243,7 +245,8 @@ export class GameApp extends Component {
   }
 
   private clampTarget(): void {
-    const m = this.cfg.trackHalfWidth - 0.45;
+    // 允许横移出主路铺捷径（超出主路半宽即耗板，原版机制）
+    const m = this.cfg.trackHalfWidth + 3.5;
     this.targetX = clamp(this.targetX, -m, m);
   }
 
@@ -268,15 +271,17 @@ export class GameApp extends Component {
 
     if (this.state === 'run') {
       if (this.shoeT > 0) this.shoeT -= dt;
-      if (this.speedDip > 0) this.speedDip -= dt;
+      if (this.bridgeT > 0) this.bridgeT -= dt;
       // 提速鞋：终速 ×1.35（可短暂超 maxSpeed，提速感优先；母本 botRun 同口径）
-      // 铺桥瞬间减速 ×0.55（J4：给“落桥”一个可感知的停顿）
+      // 铺捷径加速 ×offRoadBoost（赌板子换速度，原版 Shortcut Run 规则）
       this.speed = Math.min(this.cfg.maxSpeed, this.cfg.runSpeed + this.bricks * this.cfg.speedPerBrick)
-        * (this.shoeT > 0 ? 1.35 : 1) * (this.speedDip > 0 ? 0.55 : 1);
-      z += this.speed * dt;
+        * (this.shoeT > 0 ? 1.35 : 1) * (this.offRoad ? (this.cfg.offRoadBoost ?? 1.15) : 1);
+      const adv = this.speed * dt; // 本帧前进距离（米）——铺板按距离耗板
+      z += adv;
       const k = 1 - Math.exp(-this.cfg.steerSpeed * dt);
       x += (this.targetX - x) * k;
       y = 0;
+      this.updateShortcut(x, z, adv); // 自由铺板核心（原版机制）
     } else if (this.state === 'fall') {
       this.fallVel += 22 * dt;
       y -= this.fallVel * dt;
@@ -293,7 +298,6 @@ export class GameApp extends Component {
 
     if (this.state === 'run') {
       this.checkPickups(x, prevZ, z);
-      this.checkGaps(prevZ, z);
       this.checkGates(prevZ, z);
       this.checkGate(z);
     }
@@ -345,26 +349,40 @@ export class GameApp extends Component {
     }
   }
 
-  // 断崖判定：本帧是否进入断崖区（扫掠，防穿透）。砖够拍桥，砖不够掉落
-  private checkGaps(prevZ: number, z: number): void {
-    for (const g of this.levelDef.gaps) {
-      if (g.bridged) continue;
-      if (z >= g.zStart && prevZ < g.zEnd + 0.5) {
-        if (this.bricks >= g.cost) {
-          this.bricks -= g.cost;
-          g.bridged = true;
-          this.track.bridge(g);
-          this.ui?.setBricks(this.bricks);
-          this.audio?.play('bridge');
-          this.speedDip = 0.35;                 // J4：落桥停顿
-          this.bridgeT = 0.4;                    // v2：铺桥推掷动作窗
-          this.camFollow.addShake(0.22, 0.25);  // J1：落桥震屏
-          console.log(`[ShortcutRun] 铺桥 -${g.cost} 砖，剩余 ${this.bricks}`);
-        } else {
-          this.enterFall();
-        }
-        return;
-      }
+  // ===== 自由铺板捷径（原版 Shortcut Run 核心机制，2026-09-22 复刻） =====
+  // 规则：脚在主路上（半宽内且非缺口）= 免费；离开主路即进入铺板模式——
+  // 每前进 1 米消耗 plankCostPerMeter 块板、每 plankStride 米生成一块板（视觉轨迹），
+  // 并获得 offRoadBoost 加速（赌板子换速度）；板子耗尽时给 1.2m 最后一跃，
+  // 飞跃中落回主路则生还，否则坠落。
+  private updateShortcut(x: number, z: number, adv: number): void {
+    const realOnRoad = this.track.isOnMainRoad(x, z);
+    // 最后一跃优先于“回主路”复位（否则 leapGrace 被立即清掉永坠不了）
+    if (this.leapGrace > 0) {
+      if (realOnRoad) { this.leapGrace = 0; this.offRoad = false; return; } // 落到主路=生还
+      this.leapGrace -= adv;
+      if (this.leapGrace <= 0) { this.enterFall(); return; }
+      return;
+    }
+    if (realOnRoad) { this.offRoad = false; return; }
+
+    if (!this.offRoad) {
+      this.offRoad = true;
+      this.plankAcc = 0;
+      console.log('[ShortcutRun] 离开主路，开始铺板捷径');
+      this.audio?.play('bridge');
+    }
+    this.bridgeT = 0.25; // 铺板推掷动作窗（v2 增强）
+    this.camFollow.addShake(0.05, 0.1);
+
+    if (this.bricks <= 0) { this.leapGrace = 1.2; return; } // 触发最后一跃
+
+    this.plankAcc += adv;
+    this.bricks = Math.max(0, this.bricks - (this.cfg.plankCostPerMeter ?? 1) * adv);
+    this.ui?.setBricks(Math.floor(this.bricks));
+
+    if (this.plankAcc >= (this.cfg.plankStride ?? 0.6)) {
+      this.plankAcc = 0;
+      this.track.spawnPlank(z, x);
     }
   }
 
@@ -378,10 +396,7 @@ export class GameApp extends Component {
   }
 
   private checkGate(z: number): void {
-    if (z >= this.levelDef.gateZ - 0.5) {
-      if (this.bricks >= this.cfg.gateCost) this.win();
-      else this.lose(`终点砖不够 ${this.bricks}/${this.cfg.gateCost}`);
-    }
+    if (z >= this.levelDef.gateZ - 0.5) this.win(); // 原版规则：到达终点即过关（星级按用时/余砖）
   }
 
   // ---------------- 状态切换 ----------------

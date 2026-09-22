@@ -31,6 +31,12 @@ export interface Cfg {
   curveFreq?: number;      // 弯曲频率(每米弧度)
   curvePhase?: number;     // 相位(每关不同,弯形不重样)
 
+  // ---- 自由铺板捷径(原版核心机制,离开主路持续耗板铺路) ----
+  plankCostPerMeter?: number; // 离开主路后每米消耗板子
+  plankStride?: number;       // 每多少米留一块板(视觉)
+  offRoadBoost?: number;      // 铺捷径加速倍率(赌板子换速度)
+  plankPoolMax?: number;      // 板子视觉池上限
+
   // ---- v4 道具(加砖门/倍数门/加速鞋,母本 bridge-rules v4) ----
   enableItems?: boolean;   // true 时由 GameApp 走 LevelCurve.itemsFor 分带;缺省关闭=输出与 v3 逐字节一致
 

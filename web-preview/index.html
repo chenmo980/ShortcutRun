@@ -1027,6 +1027,12 @@ function checkGates(prevZ, z) {
   }
 }
 // （v3 起：断崖自动扣费桥已废弃，改为持续自由铺板机制，见下方 updateShortcut）
+window.addEventListener('error', (e) => {
+  const d = document.createElement('div');
+  d.textContent = '运行错误: ' + (e.message || e.type);
+  d.style.cssText = 'position:fixed;left:8px;bottom:8px;right:8px;background:#c62828;color:#fff;font:13px monospace;padding:10px;border-radius:8px;z-index:99;white-space:pre-wrap;';
+  document.body.appendChild(d);
+});
 // ===== 自由铺板捷径（原版 Shortcut Run 核心机制） =====
 // 规则：脚在主路上（半宽内且非缺口）= 免费；离开主路即进入铺板模式——
 // 每前进 1 米消耗 plankCostPerMeter 块板，脚下持续生成板子（视觉轨迹），
