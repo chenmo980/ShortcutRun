@@ -348,17 +348,26 @@ const app = document.getElementById('app');
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true; // art-pack PCFSoft：仅主角/板堆投影、路面接收（微信 1024 线）
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 app.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87a5c8);
-scene.fog = new THREE.Fog(0x87a5c8, 40, 170);
+scene.fog = new THREE.FogExp2(0x87a5c8, 0.007); // art-pack FogExp2(sky, 0.007)
 
 const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 400);
 
 scene.add(new THREE.HemisphereLight(0xffffff, 0x334455, 1.0));
 const sun = new THREE.DirectionalLight(0xffffff, 0.7);
 sun.position.set(8, 20, 6);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+sun.shadow.camera.near = 1;
+sun.shadow.camera.far = 150;
+sun.shadow.camera.left = -30; sun.shadow.camera.right = 30;
+sun.shadow.camera.top = 30; sun.shadow.camera.bottom = -30;
+sun.shadow.bias = -0.0005;
 scene.add(sun);
 
 const BOX = new THREE.BoxGeometry(1, 1, 1);
@@ -420,11 +429,12 @@ function cycleTheme() {
   return themeKey;
 }
 
-function box(mat, sx, sy, sz, x, y, z) {
+function box(mat, sx, sy, sz, x, y, z, parent) {
   const m = new THREE.Mesh(BOX, mat);
   m.scale.set(sx, sy, sz);
   m.position.set(x, y, z);
-  scene.add(m);
+  if (parent) { m.castShadow = true; parent.add(m); }
+  else { m.receiveShadow = true; scene.add(m); } // art-pack：路面接收，不投影
   return m;
 }
 
@@ -497,6 +507,7 @@ const CHAR_MATS = {
 function buildChar() {
   const M = CHAR_MATS;
   const root = player;
+  root.traverse(() => {}); // 占位：网格在子节点创建后统一 castShadow（见 buildChar 末）
   const torsoGroup = new THREE.Group();
   torsoGroup.name = 'Torso'; // 克隆体(AI 对手)靠名字找回关节，必须命名
   torsoGroup.position.set(0, 0.72, 0);
@@ -625,6 +636,7 @@ function buildChar() {
   plankMount.position.set(0, 0.58, 0.62);
   torsoGroup.add(plankMount);
 
+  root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; } }); // art-pack：仅主角投影
   return { root, torso: torsoGroup, head: headGroup, headbandRibbon, leftArm, rightArm, leftLeg, rightLeg, plankMount };
 }
 const char = buildChar();
@@ -1004,6 +1016,37 @@ function lose(reason) {
   }, 700); // 等掉落动画演完再弹面板
   console.log(`[ShortcutRun] LOSE: ${reason}. 换图重试第 ${levelNum} 关`);
 }
+// 吃板粒子（art-pack）：Box 碎片+重力，上限 24
+const particles = [];
+function spawnPickupBurst(wx, wy, wz, mat) {
+  const n = Math.min(8, 24 - particles.length);
+  for (let i = 0; i < n; i++) {
+    const m = new THREE.Mesh(BOX, mat);
+    const sc = 0.12 + Math.random() * 0.14;
+    m.scale.set(sc, sc, sc);
+    m.position.set(wx + (Math.random() - 0.5) * 0.4, wy + Math.random() * 0.3, wz + (Math.random() - 0.5) * 0.4);
+    m.castShadow = false;
+    scene.add(m);
+    particles.push({
+      m, life: 0.55 + Math.random() * 0.25,
+      vx: (Math.random() - 0.5) * 3.5, vy: 2.5 + Math.random() * 2.5, vz: (Math.random() - 0.5) * 3.5,
+    });
+  }
+}
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= dt;
+    p.vy -= 12 * dt;
+    p.m.position.x += p.vx * dt;
+    p.m.position.y += p.vy * dt;
+    p.m.position.z += p.vz * dt;
+    if (p.life <= 0 || p.m.position.y < -0.5) {
+      scene.remove(p.m);
+      particles.splice(i, 1);
+    }
+  }
+}
 function checkPickups(x, prevZ, z) {
   for (const p of pickups) {
     if (p.taken) continue;
@@ -1017,6 +1060,7 @@ function checkPickups(x, prevZ, z) {
           floatText('加速 ×1.35！', '#ffee58');
         } else {
           bricks += cfg.brickCluster;
+          spawnPickupBurst(p.mesh.position.x, p.mesh.position.y, p.mesh.position.z, MAT.brick);
         }
         setBricksUI(bricks);
         sfx.pickup();
@@ -1234,6 +1278,7 @@ let slowT = 0; // 失败慢动作剩余时间
 function loop() {
   requestAnimationFrame(loop);
   const raw = clock.getDelta();
+  updateParticles(raw);
   if (slowT > 0) slowT -= raw;
   const dt = Math.min(raw * (slowT > 0 ? 0.35 : 1), 0.05);
   elapsed += dt;
