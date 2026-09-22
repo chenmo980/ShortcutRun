@@ -91,3 +91,4 @@
 | 资产 | 来源 | 规格 | 状态 |
 |---|---|---|---|
 | box.prefab（灰盒） | 编辑器手搓 | 1x1x1 | 使用中 |
+| art-studio（3D美术工作台） | AI Studio | React + Three.js 独立子目录 | 使用中（主干落地 CharacterRig.ts + web-preview） |
