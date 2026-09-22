@@ -49,6 +49,7 @@
 
 - 预览 `restart(lv)` 是 QA 后门，会伪造连胜刷 best——统计侧按 `seed` 反推
   （seed=level*1000+attempt 合法区间外的一律剔除），telemetry 加 `qa:true` 标更好，你们选一种。
+- 预览 `qaSession` 是**粘性**标记：`restart()`/`resetProgress()` 之后连正常玩的局也带 qa:true（宁多剔不漏剔，方向安全）。规程：**真人正式采样前先 F5 刷新页面**（标记归零），否则真数据被过剔。
 - 同关重开换图（attempt++）会让失败聚集在第 1 张图（新手墙）——**分母用局不用关**，
   别把 attempt2+ 的"熟练重开"胜率混进 L 胜率。
 - 星级计时是 `elapsed-runT0`，场景加载/暂停不计时，Cocos 侧接线务必同口径，

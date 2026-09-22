@@ -57,38 +57,35 @@ s = await page.evaluate(() => window.__game.getState());
 // 手性修正（Qoder 2026-09-21）：Three.js 屏幕右 = 世界 -X，右拖/按 D 应得 x < 0
 check('steer-input', s.x < -0.2, `x=${s.x.toFixed(2)}`);
 
-// 4. 铺桥路径：重开 + 99 砖 → 第一个断崖被自动桥接，状态保持 run（事件等待，无时序假设）
+// 4. 铺捷径路径：重开 + 99 砖 + 按住 D 冲出主路 → offRoad=true、持续耗板、板子轨迹生成
 await page.evaluate(() => window.__game.restart(1));
 await sleep(300);
 await page.evaluate(() => window.__game.setBricks(99));
 await page.mouse.move(450, 300);
 await page.mouse.down();
 await page.mouse.up();
-await page.waitForFunction(() => window.__game.getState().gapList[0].bridged, null, { timeout: 10000 });
-s = await page.evaluate(() => window.__game.getState());
-check('bridge-pass', s.state === 'run' && s.gapList[0].bridged === true, `state=${s.state} bridged=${s.gapList[0].bridged} z=${s.z.toFixed(1)}`);
-await page.screenshot({ path: `${SHOTS}/03-bridged.png` });
+await page.keyboard.down('d');
+await page.waitForFunction(() => window.__game.getState().offRoad === true, null, { timeout: 8000 });
+const b1 = (await page.evaluate(() => window.__game.getState())).bricks;
+await sleep(1200);
+const s2 = await page.evaluate(() => window.__game.getState());
+await page.keyboard.up('d');
+check('shortcut-pass', s2.offRoad && b1 - s2.bricks > 2 && s2.planksLaid > 3,
+  `offRoad=${s2.offRoad} 耗板 ${(b1 - s2.bricks).toFixed(1)} 板子=${s2.planksLaid}`);
+await page.screenshot({ path: `${SHOTS}/03-shortcut.png` });
 
-// 5. 掉落路径：重开 + 零砖 + 切到没有拾取物的车道 → 到断崖掉下去
+// 5. 坠落路径：重开 + 0 砖 + 冲出主路 → 最后一跃后坠落
 await page.evaluate(() => window.__game.restart(1));
-await sleep(400);
+await sleep(300);
 await page.evaluate(() => window.__game.setBricks(0));
-const safeX = await page.evaluate(() => {
-  const st = window.__game.getState();
-  const early = st.pickupList.filter((p) => p.z < 8 && !p.taken);
-  const rightClear = early.every((p) => Math.abs(p.x - 2.15) > 0.95);
-  return rightClear ? 2.15 : -2.15;
-});
 await page.mouse.move(450, 300);
 await page.mouse.down();
-await page.mouse.move(450 + (safeX > 0 ? 110 : -110), 300, { steps: 5 });
 await page.mouse.up();
-await page.waitForFunction(
-  () => { const s = window.__game.getState(); return s.state === 'fall' || s.state === 'lose'; },
-  null, { timeout: 8000 }
-);
+await page.keyboard.down('d');
+await page.waitForFunction(() => window.__game.getState().state === 'fall', null, { timeout: 10000 });
+await page.keyboard.up('d');
 s = await page.evaluate(() => window.__game.getState());
-check('fall-state', s.state === 'fall' || s.state === 'lose', `state=${s.state} y=${s.y.toFixed(1)} safeX=${safeX}`);
+check('fall-state', s.state === 'fall', `bricks=${s.bricks} z=${s.z.toFixed(1)}`);
 await page.screenshot({ path: `${SHOTS}/04-fall.png` });
 
 // 6. 胜利路径：重开 + 99 砖 → 冲到终点门

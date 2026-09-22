@@ -77,12 +77,17 @@ const CFG = {
   levelLength: 150, gapWidthMin: 2.5, gapWidthMax: 4.5,
   gapIntervalMin: 16, gapIntervalMax: 26,
   brickCluster: 4, gateCost: 14, brickUnit: 0.3,
+  // 自由铺板捷径（原版核心机制）
+  plankCostPerMeter: 1,  // 离开主路后每米消耗板子
+  plankStride: 0.6,      // 每多少米留一块板（视觉）
+  offRoadBoost: 1.15,    // 铺捷径加速倍率（赌板子换速度）
+  plankPoolMax: 300,     // 板子视觉池上限
   camOffsetY: 6.8, camOffsetZ: -8.8, camLerp: 6, camXFactor: 0.6,
 };
 
 let cfg = { ...CFG }; // 按关卡切换（LevelCurve），全局代码只读 cfg
 let levelNum = 1, attempt = 1, runT0 = 0;
-let speedDip = 0; // 铺桥瞬间轻微减速（J4 手感）
+let speedDip = 0; // 铺桥瞬间轻微减速（J4 手感，v3 起铺板改持续机制后停用）
 let runCycle = 0, fell = false; // 角色动画相位 / 是否坠落死亡
 let bridgeT = 0; // 铺桥推掷动作剩余时间（v2 增强）
 
@@ -844,7 +849,7 @@ addEventListener('keyup', (e) => {
   if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') heldLeft = false;
   if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') heldRight = false;
 });
-function clampTarget() { const m = cfg.trackHalfWidth - 0.45; targetX = Math.max(-m, Math.min(m, targetX)); }
+function clampTarget() { const m = cfg.trackHalfWidth + 3.5; targetX = Math.max(-m, Math.min(m, targetX)); } // 允许横移出主路铺捷径（超出主路半宽即耗板）
 
 // ============ HUD ============
 const brickEl = document.getElementById('brickText');
@@ -1021,34 +1026,83 @@ function checkGates(prevZ, z) {
     }
   }
 }
-function checkGaps(prevZ, z) {
-  for (const g of level.gaps) {
-    if (g.bridged) continue;
-    if (z >= g.zStart && prevZ < g.zEnd + 0.5) {
-      if (bricks >= g.cost) {
-        bricks -= g.cost;
-        g.bridged = true;
-        setBricksUI(bricks);
-        const w = cfg.trackHalfWidth * 2 + 0.6;
-        const b = levelBox(MAT.bridge, w, 0.4, g.zEnd - g.zStart, 0, 4, (g.zStart + g.zEnd) / 2);
-        tweenTo(b.position, 'y', -0.2, 0.25);
-        sfx.bridge();
-        shake(0.22, 0.25); // 落桥震屏
-        speedDip = 0.35;   // 铺桥瞬间轻微减速（J4 手感）
-        bridgeT = 0.4;     // 铺桥推掷动作窗（v2 增强）
-        console.log(`[ShortcutRun] 铺桥 -${g.cost} 砖，剩余 ${bricks}`);
-      } else {
-        enterFall();
-      }
-      return;
+// （v3 起：断崖自动扣费桥已废弃，改为持续自由铺板机制，见下方 updateShortcut）
+// ===== 自由铺板捷径（原版 Shortcut Run 核心机制） =====
+// 规则：脚在主路上（半宽内且非缺口）= 免费；离开主路即进入铺板模式——
+// 每前进 1 米消耗 plankCostPerMeter 块板，脚下持续生成板子（视觉轨迹），
+// 并获得 offRoadBoost 加速（赌板子换速度，原版铺捷径加速）；板子耗尽时
+// 有 leapGrace 米的最后一跃，落到主路上则生还，否则坠落。
+const plankMat = new THREE.MeshLambertMaterial({ color: 0xb08968 });
+const planks = [];               // 已铺板子（含池）
+let plankCursor = 0;               // 池 round-robin
+let plankAcc = 0;                  // 累计铺板距离（米）
+let offRoad = false;               // 当前是否在主路外
+let leapGrace = 0;                 // 剩余最后一跃距离（米），>0 表示飞跃中不耗板
+let inGapZone = false;             // 主路缺口提示（供 UI/音效）
+
+function isOnMainRoad(x, z) {
+  if (z >= level.gateZ - 0.5) return true;
+  const half = cfg.trackHalfWidth;
+  if (Math.abs(x - bendX(z)) > half) return false;
+  for (const g of level.gaps) if (z >= g.zStart - 0.15 && z <= g.zEnd + 0.15) return false;
+  return true;
+}
+
+function updateShortcut(x, z, adv) {
+  const onRoad = isOnMainRoad(x, z);
+  // 主路缺口提示（音效/UI 用）
+  const inGap = !onRoad && level.gaps.some((g) => z >= g.zStart - 0.15 && z <= g.zEnd + 0.15);
+  if (inGap !== inGapZone) inGapZone = inGap;
+
+  // 最后一跃：优先于 onRoad 清零（否则 leapGrace 被立即清掉永坠不了）
+  if (leapGrace > 0) {
+    if (onRoad) { leapGrace = 0; offRoad = false; return; } // 落到主路=生还
+    leapGrace -= adv;
+    if (leapGrace <= 0) { enterFall(); return; }
+    return;
+  }
+
+  if (onRoad) { offRoad = false; return; }
+
+  // --- 铺板模式 ---
+  if (!offRoad) {
+    offRoad = true;
+    plankAcc = 0;
+    console.log('[ShortcutRun] 离开主路，开始铺板捷径');
+    sfx.bridge();
+  }
+  bridgeT = 0.25; // 铺板推掷动作窗（v2 增强）
+  shake(0.05, 0.1);
+
+  if (bricks <= 0) { leapGrace = 1.2; return; } // 触发最后一跃
+
+  plankAcc += adv;
+  const cost = cfg.plankCostPerMeter * adv;
+  bricks = Math.max(0, bricks - cost);
+  setBricksUI(Math.floor(bricks));
+
+  // 每 plankStride 米在脚下留一块板（未满池时新增，满后循环复用最老的）
+  if (plankAcc >= cfg.plankStride) {
+    plankAcc = 0;
+    const h = headingAt(z);
+    const px = bendX(z) + x * Math.cos(h) + (Math.random() - 0.5) * 0.15;
+    let plank;
+    if (planks.length < cfg.plankPoolMax) {
+      plank = new THREE.Mesh(BOX, plankMat);
+      plank.scale.set(1.5, 0.1, cfg.plankStride * 0.95);
+      scene.add(plank);
+      planks.push(plank);
+    } else {
+      plank = planks[plankCursor];
+      plankCursor = (plankCursor + 1) % cfg.plankPoolMax;
     }
+    plank.position.set(px, 0.02, z - 0.2);
+    plank.rotation.y = h;
   }
 }
+
 function checkGate(z) {
-  if (z >= level.gateZ - 0.5) {
-    if (bricks >= cfg.gateCost) win();
-    else lose(`终点砖不够 ${bricks}/${cfg.gateCost}`);
-  }
+  if (z >= level.gateZ - 0.5) win(); // 原版规则：到达终点即过关（星级按用时/余砖）
 }
 
 // ============ 主循环 ============
@@ -1076,11 +1130,13 @@ function loop() {
       if (shoeT > 0) shoeT -= dt;
       if (speedDip > 0) speedDip -= dt;
       if (bridgeT > 0) bridgeT -= dt;
-      speed = Math.min(cfg.maxSpeed, cfg.runSpeed + bricks * cfg.speedPerBrick) * (shoeT > 0 ? 1.35 : 1) * (speedDip > 0 ? 0.55 : 1);
-      z += speed * dt;
+      speed = Math.min(cfg.maxSpeed, cfg.runSpeed + bricks * cfg.speedPerBrick) * (shoeT > 0 ? 1.35 : 1) * (offRoad ? cfg.offRoadBoost : 1);
+      const adv = speed * dt; // 本帧前进距离（米）
+      z += adv;
       const k = 1 - Math.exp(-cfg.steerSpeed * dt);
       x += (targetX - x) * k;
       playerY = 0;
+      updateShortcut(x, z, adv); // 自由铺板核心：离开主路即脚下耗板铺路
     } else if (state === 'fall') {
       fallVel += 22 * dt;
       playerY -= fallVel * dt;
@@ -1100,7 +1156,6 @@ function loop() {
 
     if (state === 'run') {
       checkPickups(x, prevZ, z);
-      checkGaps(prevZ, z);
       checkGates(prevZ, z);
       checkGate(z);
     }
@@ -1172,6 +1227,7 @@ window.__game = {
     playerColor: THEMES[themeKey].player, shoeT,
     pickupList: pickups.map((p) => ({ x: p.def.x, z: p.def.z, taken: p.taken, kind: p.def.kind || 'brick' })),
     gapList: level.gaps.map((g) => ({ zStart: g.zStart, zEnd: g.zEnd, cost: g.cost, bridged: !!g.bridged })),
+    offRoad, planksLaid: planks.length,
     gateList: (level.gates || []).map((g) => ({ z: g.z, type: g.type, v: g.v, used: !!g.used })),
   }),
   setBricks: (n) => { bricks = n; setBricksUI(n); },
