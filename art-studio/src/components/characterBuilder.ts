@@ -198,6 +198,32 @@ export function buildArticulatedCharacter(
     const emblemMesh = new THREE.Mesh(emblemGeo, emblemMat);
     emblemMesh.position.set(0, 0.58, 0.385);
     torsoGroup.add(emblemMesh);
+
+    // 齐天大圣 战甲下摆/战袍龙鳞裙 (Battle Tassets & War Skirt)
+    const skirtMat = new THREE.MeshStandardMaterial({ color: '#DC2626', roughness: 0.4 });
+    const goldTrimMat = new THREE.MeshStandardMaterial({ color: '#F59E0B', metalness: 0.9, roughness: 0.18 });
+
+    // 前襟战袍甲裙
+    const frontSkirtGeo = new THREE.BoxGeometry(0.3, 0.28, 0.05);
+    const frontSkirt = new THREE.Mesh(frontSkirtGeo, skirtMat);
+    frontSkirt.position.set(0, 0.2, 0.2);
+    frontSkirt.rotation.x = 0.18;
+    torsoGroup.add(frontSkirt);
+
+    // 金边祥云腰牌
+    const buckleGeo = new THREE.CylinderGeometry(0.09, 0.09, 0.04, 8);
+    buckleGeo.rotateX(Math.PI / 2);
+    const buckle = new THREE.Mesh(buckleGeo, goldTrimMat);
+    buckle.position.set(0, 0.34, 0.32);
+    torsoGroup.add(buckle);
+
+    // 两侧战甲护胯裙片
+    for (const sx of [-1, 1]) {
+      const sideSkirt = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.26, 0.24), goldTrimMat);
+      sideSkirt.position.set(sx * 0.24, 0.18, 0);
+      sideSkirt.rotation.z = sx * 0.18;
+      torsoGroup.add(sideSkirt);
+    }
   } else if (type === 'nezha') {
     // 纯金乾坤圈: 斜挎胸前环绕，金光闪烁
     const ringGeo = new THREE.TorusGeometry(0.26, 0.032, 8, 24);
@@ -848,6 +874,27 @@ export function buildArticulatedCharacter(
     const capMesh = new THREE.Mesh(capGeo, materials.skin);
     shoulder.add(capMesh);
 
+    // 齐天大圣 凤翅金甲护肩 / 兽面肩吞
+    if (type === 'wukong') {
+      const pauldronGeo = new THREE.SphereGeometry(0.16, 8, 8);
+      pauldronGeo.scale(1.2, 0.7, 1.1);
+      const pauldronMat = new THREE.MeshStandardMaterial({
+        color: '#F59E0B',
+        metalness: 0.9,
+        roughness: 0.15,
+      });
+      const pauldron = new THREE.Mesh(pauldronGeo, pauldronMat);
+      pauldron.position.set(side * 0.05, 0.06, 0);
+      shoulder.add(pauldron);
+
+      const wingGeo = new THREE.BoxGeometry(0.14, 0.04, 0.22);
+      const wingMat = new THREE.MeshStandardMaterial({ color: '#DC2626', roughness: 0.3 });
+      const wing = new THREE.Mesh(wingGeo, wingMat);
+      wing.position.set(side * 0.1, 0.09, 0);
+      wing.rotation.z = side * 0.35;
+      shoulder.add(wing);
+    }
+
     // Upper Arm
     const upperGeo = new THREE.CylinderGeometry(0.09, 0.08, 0.34, 7);
     upperGeo.translate(0, -0.17, 0);
@@ -1043,27 +1090,43 @@ export function animateCharacter(
   const footRollR = -stride > 0 ? (-stride > 0.4 ? 0.28 : -0.1) : stride * 0.45;
   char.rightLeg.foot.rotation.x = THREE.MathUtils.lerp(char.rightLeg.foot.rotation.x, footRollR, delta * 16);
 
-  // 5. Arms, Carrying & Bridging Push Actions
-  if (carriedPlanks > 0) {
-    // When placing planks over water, perform rapid rhythmic downward push action!
-    const bridgeThrust = state === 'bridging' ? Math.sin(runCycle * 3.5) * 0.22 : 0;
+  // 5. Arms, Carrying & Bridging Push Actions (单手环抱护垛 + 单手探前捞拾动态动作)
+  const pickupPhase = Math.sin(Math.min(1.0, pickupPulse) * Math.PI); // 0 -> 1 -> 0 捞拾曲线
+  const bridgeThrust = state === 'bridging' ? Math.sin(runCycle * 3.5) * 0.22 : 0;
 
-    // Carrying posture: arms cradling the front load
-    // Left Arm
-    char.leftArm.shoulder.rotation.x = 0.56 + Math.sin(runCycle) * 0.06 + bridgeThrust;
-    char.leftArm.shoulder.rotation.z = 0.24 + loadFactor * 0.08; // tighten inward when heavy
-    char.leftArm.shoulder.rotation.y = -0.28;
-    char.leftArm.elbow.rotation.x = -1.28 + bridgeThrust * 0.6;
-    char.leftArm.hand.rotation.x = -0.15 + bridgeThrust;
+  if (carriedPlanks > 0 || pickupPulse > 0.04) {
+    // 左手：始终环抱、紧扣胸前砖垛（单手抱住物品）
+    char.leftArm.shoulder.rotation.x = 0.65 + Math.sin(runCycle) * 0.04 + bridgeThrust;
+    char.leftArm.shoulder.rotation.z = 0.38 + loadFactor * 0.1; // 往胸前内扣环抱
+    char.leftArm.shoulder.rotation.y = -0.32;
+    char.leftArm.elbow.rotation.x = -1.48 + bridgeThrust * 0.4; // 肘部弯曲90度横托在垛下
+    char.leftArm.hand.rotation.x = -0.22;
+    char.leftArm.hand.rotation.y = 0.35; // 掌心向上托住砖垛
 
-    // Right Arm
-    char.rightArm.shoulder.rotation.x = 0.56 - Math.sin(runCycle) * 0.06 + bridgeThrust;
-    char.rightArm.shoulder.rotation.z = -0.24 - loadFactor * 0.08;
-    char.rightArm.shoulder.rotation.y = 0.28;
-    char.rightArm.elbow.rotation.x = -1.28 + bridgeThrust * 0.6;
-    char.rightArm.hand.rotation.x = -0.15 + bridgeThrust;
+    // 右手：如果有拾取触发（pickupPulse > 0.02），手臂大开大合下探捞拾；否则辅助扶持/摆臂
+    if (pickupPulse > 0.02) {
+      // 探手拾取动作：大臂向前下探、小臂向前探伸捞砖，随即回缩拍入砖垛
+      char.rightArm.shoulder.rotation.x = THREE.MathUtils.lerp(0.48, 1.35, pickupPhase);
+      char.rightArm.shoulder.rotation.y = THREE.MathUtils.lerp(0.22, -0.22, pickupPhase);
+      char.rightArm.shoulder.rotation.z = THREE.MathUtils.lerp(-0.22, -0.42, pickupPhase);
+      char.rightArm.elbow.rotation.x = THREE.MathUtils.lerp(-1.25, -0.32, pickupPhase);
+      char.rightArm.hand.rotation.x = THREE.MathUtils.lerp(-0.15, 0.55, pickupPhase);
+    } else if (carriedPlanks > 0) {
+      // 平常跑步抱着时：右手轻扶砖垛右侧，随跑步轻微呼吸浮动
+      char.rightArm.shoulder.rotation.x = 0.48 - Math.sin(runCycle) * 0.08 + bridgeThrust;
+      char.rightArm.shoulder.rotation.z = -0.22 - loadFactor * 0.08;
+      char.rightArm.shoulder.rotation.y = 0.22;
+      char.rightArm.elbow.rotation.x = -1.22 + bridgeThrust * 0.5;
+      char.rightArm.hand.rotation.x = -0.15 + bridgeThrust;
+    } else {
+      char.rightArm.shoulder.rotation.x = stride * 0.85;
+      char.rightArm.shoulder.rotation.z = -0.16;
+      char.rightArm.shoulder.rotation.y = 0;
+      char.rightArm.elbow.rotation.x = -0.65;
+      char.rightArm.hand.rotation.x = 0;
+    }
   } else {
-    // High-speed athletic sprint arm swing when empty-handed
+    // 空手冲刺摆臂
     char.leftArm.shoulder.rotation.x = -stride * 0.85;
     char.leftArm.shoulder.rotation.z = 0.16;
     char.leftArm.shoulder.rotation.y = 0;

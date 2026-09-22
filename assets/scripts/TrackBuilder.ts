@@ -240,10 +240,10 @@ export class TrackBuilder extends Component {
   }
 
   // 角色动画（AI Studio 母本移植，零动画资产）
-  syncRig(state: string, runCycle: number, steerVel: number, planks: number, dt: number): void {
+  syncRig(state: string, runCycle: number, steerVel: number, planks: number, dt: number, pickupPulse = 0): void {
     if (!this.rig) return;
     const s: CharState = state === 'stand' ? 'idle' : (state as CharState);
-    animateCharacter(this.rig, runCycle, steerVel, planks, s, dt);
+    animateCharacter(this.rig, runCycle, steerVel, planks, s, dt, pickupPulse);
   }
 
   syncStack(count: number): void {

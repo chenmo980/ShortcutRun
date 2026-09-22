@@ -191,6 +191,19 @@ export function applyRigSkin(r: CharRig, skin: CharSkinType = activeSkin): void 
       // 锁子黄金甲护心镜
       const plate = spawnBox(skinAccTorso, 'limb', 0.24, 0.24, 0.06, 0, 0.55, 0.34, 'Breastplate');
       plate.getComponent(MeshRenderer)!.material = mats.gold;
+      // 凤翅金甲双护肩 (Pauldrons)
+      for (const sx of [-1, 1]) {
+        const pauldron = spawnBox(skinAccTorso, 'limb', 0.2, 0.12, 0.18, sx * 0.38, 0.72, 0, sx < 0 ? 'PauldronL' : 'PauldronR');
+        pauldron.getComponent(MeshRenderer)!.material = mats.gold;
+        pauldron.eulerAngles = new Vec3(0, 0, sx * -15);
+      }
+      // 战袍下摆战裙 (WarSkirt)
+      const skirt = spawnBox(skinAccTorso, 'limb', 0.28, 0.26, 0.05, 0, 0.2, 0.18, 'WarSkirt');
+      skirt.getComponent(MeshRenderer)!.material = mats.red;
+      skirt.eulerAngles = new Vec3(12, 0, 0);
+      // 金色祥云腰扣
+      const beltBuckle = spawnBox(skinAccTorso, 'limb', 0.12, 0.08, 0.04, 0, 0.32, 0.32, 'BeltBuckle');
+      beltBuckle.getComponent(MeshRenderer)!.material = mats.gold;
     }
   } else if (skin === 'nezha') {
     if (band) band.active = false;
@@ -391,7 +404,7 @@ function rot(n: Node, x: number, y = 0, z = 0): void {
   n.eulerAngles = new Vec3(x, y, z);
 }
 
-export function animateCharacter(r: CharRig, runCycle: number, steerVel: number, planks: number, state: CharState, dt: number): void {
+export function animateCharacter(r: CharRig, runCycle: number, steerVel: number, planks: number, state: CharState, dt: number, pickupPulse = 0): void {
   if (state === 'drowned') {
     r.root.eulerAngles = new Vec3(lerp(r.root.eulerAngles.x, Math.PI / 2, dt * 5), r.root.eulerAngles.y, lerp(r.root.eulerAngles.z, 0.6, dt * 4));
     r.torso.setPosition(new Vec3(r.torso.position.x, lerp(r.torso.position.y, -0.8, dt * 3), r.torso.position.z));
@@ -450,11 +463,29 @@ export function animateCharacter(r: CharRig, runCycle: number, steerVel: number,
   r.rightLeg.foot.eulerAngles = new Vec3(lerp(r.rightLeg.foot.eulerAngles.x, rollR, dt * 16), 0, 0);
   // 铺桥推掷（v2）：bridging 时双臂高频下推
   const thrust = state === 'bridging' ? Math.sin(runCycle * 3.5) * 0.22 : 0;
-  if (planks > 0) {
-    r.leftArm.shoulder.eulerAngles = new Vec3(0.56 + Math.sin(runCycle) * 0.06 + thrust, -0.28, 0.24 + loadFactor * 0.08);
-    r.leftArm.elbow.eulerAngles = new Vec3(-1.28 + thrust * 0.6, 0, 0);
-    r.rightArm.shoulder.eulerAngles = new Vec3(0.56 - Math.sin(runCycle) * 0.06 + thrust, 0.28, -0.24 - loadFactor * 0.08);
-    r.rightArm.elbow.eulerAngles = new Vec3(-1.28 + thrust * 0.6, 0, 0);
+  const pickupPhase = Math.sin(Math.min(1.0, pickupPulse) * Math.PI);
+  const pulseSquash = pickupPulse * 0.08;
+
+  if (planks > 0 || pickupPulse > 0.04) {
+    // 左手：始终环抱、紧扣胸前砖垛（单手抱住物品）
+    r.leftArm.shoulder.eulerAngles = new Vec3(0.65 + Math.sin(runCycle) * 0.04 + thrust, -0.32, 0.38 + loadFactor * 0.1);
+    r.leftArm.elbow.eulerAngles = new Vec3(-1.48 + thrust * 0.4, 0, 0);
+
+    // 右手：拾取时触发下探捞拾动作，平常辅助扶持
+    if (pickupPulse > 0.02) {
+      r.rightArm.shoulder.eulerAngles = new Vec3(
+        lerp(0.48, 1.35, pickupPhase),
+        lerp(0.22, -0.22, pickupPhase),
+        lerp(-0.22, -0.42, pickupPhase),
+      );
+      r.rightArm.elbow.eulerAngles = new Vec3(lerp(-1.22, -0.32, pickupPhase), 0, 0);
+    } else if (planks > 0) {
+      r.rightArm.shoulder.eulerAngles = new Vec3(0.48 - Math.sin(runCycle) * 0.06 + thrust, 0.22, -0.22 - loadFactor * 0.08);
+      r.rightArm.elbow.eulerAngles = new Vec3(-1.22 + thrust * 0.5, 0, 0);
+    } else {
+      rot(r.rightArm.shoulder, stride * 0.8, 0, -0.15);
+      rot(r.rightArm.elbow, -0.6);
+    }
   } else {
     rot(r.leftArm.shoulder, -stride * 0.8, 0, 0.15);
     rot(r.leftArm.elbow, -0.6);

@@ -67,6 +67,7 @@ export class GameApp extends Component {
   private elapsed = 0;
   private runT0 = 0;
   private runCycle = 0; // 角色步态相位
+  private pickupPulse = 0; // 拾取爆发脉冲（触发单手探前下捞拾取）
   private fell = false;  // 是否坠落死亡（决定 lose 姿势：旋水 or 站立）
   private bridgeT = 0;   // 铺板推掷动作剩余时间（v2 增强）
   private offRoad = false; // 当前是否在主路外（铺板模式）
@@ -334,7 +335,8 @@ export class GameApp extends Component {
     const charState = this.state === 'fall' ? 'drowned'
       : this.state === 'run' ? (this.bridgeT > 0 ? 'bridging' : 'running')
       : (this.fell ? 'drowned' : 'stand');
-    this.track.syncRig(charState, this.runCycle, this.targetX - x, this.bricks, dt);
+    this.pickupPulse = Math.max(0, this.pickupPulse - dt * 4.5);
+    this.track.syncRig(charState, this.runCycle, this.targetX - x, this.bricks, dt, this.pickupPulse);
     this.ui?.setProgress(z, this.levelDef.gateZ);
     // J1：速度因子喂相机（FOV 冲刺）；弯道：相机锚在路径后方 + 逻辑侧向偏移
     const span = Math.max(0.1, this.cfg.maxSpeed - this.cfg.runSpeed);
@@ -355,6 +357,7 @@ export class GameApp extends Component {
           this.shoeT = 3.5;
         } else {
           this.bricks += this.cfg.brickCluster;
+          this.pickupPulse = 1.0;
         }
         this.ui?.setBricks(this.bricks);
         this.audio?.play('pickup');
@@ -371,6 +374,7 @@ export class GameApp extends Component {
         g.used = true;
         if (g.type === 'add') this.bricks += g.v;
         else this.bricks *= g.v;
+        this.pickupPulse = 1.0;
         this.ui?.setBricks(this.bricks);
         this.audio?.play('pickup');
         console.log(`[ShortcutRun] 道具门 ${g.type === 'add' ? '+' + g.v : '×' + g.v}，现有 ${this.bricks} 砖`);

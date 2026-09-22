@@ -778,6 +778,19 @@ function applySkin(c, skinKey) {
     const plate = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.24, 0.06), circletMat);
     plate.position.set(0, 0.55, 0.34);
     accT.add(plate);
+    for (const sx of [-1, 1]) {
+      const pauldron = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.12, 0.18), circletMat);
+      pauldron.position.set(sx * 0.38, 0.72, 0);
+      pauldron.rotation.z = sx * -0.25;
+      accT.add(pauldron);
+    }
+    const skirt = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.26, 0.05), plumeMat);
+    skirt.position.set(0, 0.2, 0.18);
+    skirt.rotation.x = 0.2;
+    accT.add(skirt);
+    const beltBuckle = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.04), circletMat);
+    beltBuckle.position.set(0, 0.32, 0.32);
+    accT.add(beltBuckle);
   } else if (s.id === 'nezha' && accH && accT) {
     const bunMat = new THREE.MeshLambertMaterial({ color: 0x0f172a });
     const bunRibbonMat = new THREE.MeshLambertMaterial({ color: 0xdc2626 });
@@ -855,7 +868,7 @@ const charBadgeEl = document.getElementById('charBadge');
 if (charBadgeEl) charBadgeEl.onclick = () => { cycleSkin(); };
 
 // 动画（移植自母本 animateCharacter）：跑步步态/前倾/转弯侧倾/头带飘动/胜利/落水
-function animateChar(char, runCycle, steerVelocity, carriedPlanks, state, delta) {
+function animateChar(char, runCycle, steerVelocity, carriedPlanks, state, delta, pickupPulse = 0) {
   if (!char || !char.root || !char.torso || !char.head || !char.headbandRibbon || !char.plankMount || !char.leftArm || !char.leftArm.shoulder || !char.leftArm.elbow || !char.rightArm || !char.rightArm.shoulder || !char.rightArm.elbow || !char.leftLeg || !char.leftLeg.hip || !char.leftLeg.knee || !char.leftLeg.foot || !char.rightLeg || !char.rightLeg.hip || !char.rightLeg.knee || !char.rightLeg.foot) return; // Polle clone missing joints
   const lerp = (a, b, t) => a + (b - a) * Math.min(1, Math.max(0, t));
   if (state === 'drowned') {
@@ -917,15 +930,31 @@ function animateChar(char, runCycle, steerVelocity, carriedPlanks, state, delta)
   char.rightLeg.foot.rotation.x = lerp(char.rightLeg.foot.rotation.x, footRollR, delta * 16);
   // 铺桥推掷（v2 增强）：bridging 状态下双臂高频下推
   const bridgeThrust = state === 'bridging' ? Math.sin(runCycle * 3.5) * 0.22 : 0;
-  if (carriedPlanks > 0) {
-    char.leftArm.shoulder.rotation.x = 0.56 + Math.sin(runCycle) * 0.06 + bridgeThrust;
-    char.leftArm.shoulder.rotation.z = 0.24 + loadFactor * 0.08; // 负重内收
-    char.leftArm.shoulder.rotation.y = -0.28;
-    char.leftArm.elbow.rotation.x = -1.28 + bridgeThrust * 0.6;
-    char.rightArm.shoulder.rotation.x = 0.56 - Math.sin(runCycle) * 0.06 + bridgeThrust;
-    char.rightArm.shoulder.rotation.z = -0.24 - loadFactor * 0.08;
-    char.rightArm.shoulder.rotation.y = 0.28;
-    char.rightArm.elbow.rotation.x = -1.28 + bridgeThrust * 0.6;
+  const pickupPhase = Math.sin(Math.min(1.0, pickupPulse) * Math.PI);
+  if (carriedPlanks > 0 || pickupPulse > 0.04) {
+    // 左手：始终环抱、紧扣胸前砖垛（单手抱住物品）
+    char.leftArm.shoulder.rotation.x = 0.65 + Math.sin(runCycle) * 0.04 + bridgeThrust;
+    char.leftArm.shoulder.rotation.z = 0.38 + loadFactor * 0.1;
+    char.leftArm.shoulder.rotation.y = -0.32;
+    char.leftArm.elbow.rotation.x = -1.48 + bridgeThrust * 0.4;
+
+    // 右手：拾取时下探捞拾动作，平常辅助扶持
+    if (pickupPulse > 0.02) {
+      char.rightArm.shoulder.rotation.x = lerp(0.48, 1.35, pickupPhase);
+      char.rightArm.shoulder.rotation.y = lerp(0.22, -0.22, pickupPhase);
+      char.rightArm.shoulder.rotation.z = lerp(-0.22, -0.42, pickupPhase);
+      char.rightArm.elbow.rotation.x = lerp(-1.25, -0.32, pickupPhase);
+    } else if (carriedPlanks > 0) {
+      char.rightArm.shoulder.rotation.x = 0.48 - Math.sin(runCycle) * 0.08 + bridgeThrust;
+      char.rightArm.shoulder.rotation.z = -0.22 - loadFactor * 0.08;
+      char.rightArm.shoulder.rotation.y = 0.22;
+      char.rightArm.elbow.rotation.x = -1.22 + bridgeThrust * 0.5;
+    } else {
+      char.rightArm.shoulder.rotation.x = stride * 0.8;
+      char.rightArm.shoulder.rotation.z = -0.15;
+      char.rightArm.shoulder.rotation.y = 0;
+      char.rightArm.elbow.rotation.x = -0.6;
+    }
   } else {
     char.leftArm.shoulder.rotation.x = -stride * 0.8;
     char.leftArm.shoulder.rotation.z = 0.15;
@@ -941,7 +970,7 @@ function animateChar(char, runCycle, steerVelocity, carriedPlanks, state, delta)
   char.plankMount.rotation.z = lerp(char.plankMount.rotation.z, -steerVelocity * inertia, delta * 10);
   char.plankMount.rotation.x = 0.04 + Math.sin(runCycle * 2) * 0.04;
 }
-let level, state = 'ready', bricks = 0, speed = cfg.runSpeed;
+let level, state = 'ready', bricks = 0, speed = cfg.runSpeed, pickupPulse = 0;
 let playerX = 0, targetX = 0, playerY = 0, fallVel = 0;
 let pickups = [], gateWalls = [], stackMeshes = [], anims = [];
 let curSeed = 1, shoeT = 0, itemMeshes = []; // v4：本局种子 / 加速鞋剩余时间 / 道具专属网格（plane 等，需显式清理）
@@ -1292,6 +1321,7 @@ function checkPickups(x, prevZ, z) {
           floatText('加速 ×1.35！', '#ffee58');
         } else {
           bricks += cfg.brickCluster;
+          pickupPulse = 1.0;
           spawnPickupBurst(p.mesh.position.x, p.mesh.position.y, p.mesh.position.z, MAT.brick);
         }
         setBricksUI(bricks);
@@ -1306,7 +1336,7 @@ function checkGates(prevZ, z) {
     if (g.used) continue;
     if (z >= g.z && prevZ < g.z) {
       g.used = true;
-      if (g.type === 'add') { bricks += g.v; floatText(`+${g.v} 砖`, '#64b5f6'); }
+      pickupPulse = 1.0; if (g.type === 'add') { bricks += g.v; floatText(`+${g.v} 砖`, '#64b5f6'); }
       else { bricks *= g.v; floatText(`×${g.v} 砖`, '#ff8a80'); }
       setBricksUI(bricks);
       sfx.pickup();
@@ -1477,7 +1507,7 @@ function updateOpponents(dt) {
       if (speed > o.speed * 1.02) {
         knockOut(o, ' 被你撞飞');
         const loot = Math.min(Math.floor(o.bricks), 6);
-        if (loot > 0) { bricks += loot; setBricksUI(Math.floor(bricks)); floatText(`抢板 +${loot}`, '#ff8a80'); }
+        if (loot > 0) { bricks += loot; pickupPulse = 1.0; setBricksUI(Math.floor(bricks)); floatText(`抢板 +${loot}`, '#ff8a80'); }
       } else if (o.speed > speed * 1.02) {
         knockOut(o, ' 对手撞飞了你'); // 对手继续跑
         enterFall();
@@ -1551,7 +1581,8 @@ function loop() {
       : state === 'fall' ? 'drowned'
       : state === 'win' ? 'finished'
       : (fell ? 'drowned' : 'idle'); // lose：掉下去的旋水，够砖差一步的站着
-    animateChar(char, runCycle, targetX - x, bricks, charState, dt);
+    pickupPulse = Math.max(0, pickupPulse - dt * 4.5);
+    animateChar(char, runCycle, targetX - x, bricks, charState, dt, pickupPulse);
 
     if (state === 'run') {
       checkPickups(x, prevZ, z);
