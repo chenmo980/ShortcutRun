@@ -43,6 +43,7 @@
 <body>
 <div id="app"></div>
 <div id="levelBadge">第 1 关</div>
+<div id="charBadge" class="hud" style="left:14px; top:42px; cursor:pointer; background:rgba(15,23,42,0.7); border:1px solid rgba(255,255,255,0.25); border-radius:12px; padding:3px 10px; font-size:12px; font-weight:bold; color:#fff; display:flex; align-items:center; gap:4px; z-index:10; user-select:none;" title="点击或按 C 键切换国风角色预设">🐵 孙悟空 (按C换装)</div>
 <div id="brick" class="hud"><span class="brickIcon"></span><span id="brickText">砖块 0</span></div>
 <div id="progbar"><div id="progfill"></div></div>
 <div id="hint" class="hud" style="display:none"></div>
@@ -55,7 +56,7 @@
     <div class="bestline" id="startBest">最高进度：第 1 关</div>
     <div class="goalline" id="startGoal"></div>
     <button class="btn" id="startBtn">开始游戏</button>
-    <div class="help">拖动鼠标 / A D 转向 · 吃砖铺路过断崖<br>T 换肤 · M 音效开关</div>
+    <div class="help">拖动鼠标 / A D 转向 · 吃砖铺路过断崖<br>T 场景换肤 · C 切换国风角色 · M 音效开关</div>
   </div>
 </div>
 
@@ -409,11 +410,20 @@ function applyTheme() {
   scene.background.setHex(t.sky);
   scene.fog.color.setHex(t.sky);
   for (const k of Object.keys(MAT)) MAT[k].color.setHex(t[k]);
-  // 角色配色跟随主题（AI Studio 角色系统适配）
-  CHAR_MATS.clothTop.color.setHex(t.player);
-  CHAR_MATS.clothBottom.color.setHex(t.limb);
-  CHAR_MATS.skin.color.setHex(t.skin);
-  CHAR_MATS.accent.color.setHex(t.gate);
+  // 角色配色跟随主题（若为 runner 模式跟随主题；若为国风角色则保持国风识别色）
+  if (typeof currentSkinKey !== 'undefined' && currentSkinKey === 'runner') {
+    CHAR_MATS.clothTop.color.setHex(t.player);
+    CHAR_MATS.clothBottom.color.setHex(t.limb);
+    CHAR_MATS.skin.color.setHex(t.skin);
+    CHAR_MATS.accent.color.setHex(t.gate);
+  } else if (typeof SKINS !== 'undefined' && typeof currentSkinKey !== 'undefined' && SKINS[currentSkinKey]) {
+    const s = SKINS[currentSkinKey];
+    CHAR_MATS.clothTop.color.setHex(s.clothTop);
+    CHAR_MATS.clothBottom.color.setHex(s.clothBottom);
+    CHAR_MATS.skin.color.setHex(s.skin);
+    CHAR_MATS.accent.color.setHex(s.accent);
+    CHAR_MATS.hair.color.setHex(s.hair);
+  }
 }
 // 固定色（不随主题）：道路边线 + 断崖警示条纹
 const MAT_FIX = {
@@ -637,10 +647,189 @@ function buildChar() {
   torsoGroup.add(plankMount);
 
   root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; } }); // art-pack：仅主角投影
-  return { root, torso: torsoGroup, head: headGroup, headbandRibbon, leftArm, rightArm, leftLeg, rightLeg, plankMount };
+  const skinAccHead = new THREE.Group();
+  skinAccHead.name = 'SkinAccHead';
+  headGroup.add(skinAccHead);
+
+  const skinAccTorso = new THREE.Group();
+  skinAccTorso.name = 'SkinAccTorso';
+  torsoGroup.add(skinAccTorso);
+
+  return { root, torso: torsoGroup, head: headGroup, headbandRibbon, leftArm, rightArm, leftLeg, rightLeg, plankMount, skinAccHead, skinAccTorso };
 }
+
+// ============ 国风与经典角色预设（AI Studio 独家优势移植） ============
+const SKINS = {
+  wukong: {
+    id: 'wukong',
+    name: '齐天大圣·孙悟空',
+    badge: '🐵 孙悟空',
+    clothTop: 0xdc2626,
+    clothBottom: 0xf59e0b,
+    skin: 0xfbd0a2,
+    accent: 0xf59e0b,
+    hair: 0x78350f,
+  },
+  nezha: {
+    id: 'nezha',
+    name: '三坛海会·莲花哪吒',
+    badge: '🔥 哪吒',
+    clothTop: 0xdc2626,
+    clothBottom: 0x10b981,
+    skin: 0xffedd5,
+    accent: 0xf59e0b,
+    hair: 0x0f172a,
+  },
+  guofeng: {
+    id: 'guofeng',
+    name: '青莲剑客·少年侠客',
+    badge: '⚔️ 少侠',
+    clothTop: 0xf8fafc,
+    clothBottom: 0x1e293b,
+    skin: 0xffedd5,
+    accent: 0xdc2626,
+    hair: 0x0f172a,
+  },
+  panda: {
+    id: 'panda',
+    name: '神州大侠·功夫熊猫',
+    badge: '🐼 熊猫',
+    clothTop: 0xdc2626,
+    clothBottom: 0x0f172a,
+    skin: 0xffffff,
+    accent: 0xfbbf24,
+    hair: 0x0f172a,
+  },
+  ninja: {
+    id: 'ninja',
+    name: '暗影行者·国潮刺客',
+    badge: '🥷 忍者',
+    clothTop: 0x1e293b,
+    clothBottom: 0x0f172a,
+    skin: 0xfbd0a2,
+    accent: 0xe11d48,
+    hair: 0x0f172a,
+  },
+  runner: {
+    id: 'runner',
+    name: '热血飞人·经典主角',
+    badge: '🏃 经典',
+    clothTop: 0x0288d1,
+    clothBottom: 0x1e293b,
+    skin: 0xfbd0a2,
+    accent: 0xef4444,
+    hair: 0x452a18,
+  },
+};
+let currentSkinKey = 'wukong';
+
+function applySkin(c, skinKey) {
+  if (!c || !c.head || !c.torso) return;
+  const s = SKINS[skinKey] || SKINS.wukong;
+  currentSkinKey = s.id;
+  const accH = c.skinAccHead || c.head.getObjectByName('SkinAccHead');
+  const accT = c.skinAccTorso || c.torso.getObjectByName('SkinAccTorso');
+  if (accH) while (accH.children.length > 0) accH.remove(accH.children[0]);
+  if (accT) while (accT.children.length > 0) accT.remove(accT.children[0]);
+
+  CHAR_MATS.clothTop.color.setHex(s.clothTop);
+  CHAR_MATS.clothBottom.color.setHex(s.clothBottom);
+  CHAR_MATS.skin.color.setHex(s.skin);
+  CHAR_MATS.accent.color.setHex(s.accent);
+  CHAR_MATS.hair.color.setHex(s.hair);
+
+  if (s.id === 'wukong' && accH && accT) {
+    const circletMat = new THREE.MeshLambertMaterial({ color: 0xf59e0b });
+    const circlet = new THREE.Mesh(new THREE.TorusGeometry(0.335, 0.022, 6, 16), circletMat);
+    circlet.rotation.x = Math.PI / 2 + 0.1;
+    circlet.position.set(0, 0.12, 0.02);
+    accH.add(circlet);
+    const plumeMat = new THREE.MeshLambertMaterial({ color: 0xdc2626 });
+    for (const sx of [-1, 1]) {
+      const plume = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.018, 0.75), plumeMat);
+      plume.name = sx < 0 ? 'PlumeL' : 'PlumeR';
+      plume.position.set(sx * 0.12, 0.35, -0.15);
+      plume.rotation.set(-0.65, sx * 0.18, sx * 0.12);
+      accH.add(plume);
+    }
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.24, 0.06), circletMat);
+    plate.position.set(0, 0.55, 0.34);
+    accT.add(plate);
+  } else if (s.id === 'nezha' && accH && accT) {
+    const bunMat = new THREE.MeshLambertMaterial({ color: 0x0f172a });
+    const bunRibbonMat = new THREE.MeshLambertMaterial({ color: 0xdc2626 });
+    for (const sx of [-1, 1]) {
+      const bun = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), bunMat);
+      bun.position.set(sx * 0.22, 0.38, 0);
+      accH.add(bun);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.02, 6, 12), bunRibbonMat);
+      ring.position.set(sx * 0.22, 0.34, 0);
+      ring.rotation.x = Math.PI / 2;
+      accH.add(ring);
+    }
+    const ringMat = new THREE.MeshLambertMaterial({ color: 0xf59e0b });
+    const qiankun = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.028, 8, 16), ringMat);
+    qiankun.position.set(0, 0.55, 0.12);
+    qiankun.rotation.set(0.35, 0.45, 0.2);
+    accT.add(qiankun);
+    const silkMat = new THREE.MeshLambertMaterial({ color: 0xdc2626 });
+    for (const sx of [-1, 1]) {
+      const silk = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.02, 0.8), silkMat);
+      silk.name = sx < 0 ? 'SilkL' : 'SilkR';
+      silk.position.set(sx * 0.28, 0.65, -0.15);
+      silk.rotation.set(-0.4, sx * 0.15, sx * 0.1);
+      accT.add(silk);
+    }
+  } else if (s.id === 'guofeng' && accH && accT) {
+    const ponyMat = new THREE.MeshLambertMaterial({ color: 0x0f172a });
+    const pony = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.55, 6), ponyMat);
+    pony.position.set(0, 0.42, -0.22);
+    pony.rotation.x = -1.1;
+    accH.add(pony);
+    const redRibbon = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.02, 0.45), new THREE.MeshLambertMaterial({ color: 0xdc2626 }));
+    redRibbon.name = 'PonyRibbon';
+    redRibbon.position.set(0, 0.28, -0.32);
+    redRibbon.rotation.x = -0.7;
+    accH.add(redRibbon);
+    const sash = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.33, 0.12, 8), new THREE.MeshLambertMaterial({ color: 0xdc2626 }));
+    sash.position.set(0, 0.24, 0);
+    accT.add(sash);
+  } else if (s.id === 'panda' && accH) {
+    const earMat = new THREE.MeshLambertMaterial({ color: 0x0f172a });
+    for (const sx of [-1, 1]) {
+      const ear = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 8), earMat);
+      ear.position.set(sx * 0.25, 0.32, -0.05);
+      accH.add(ear);
+    }
+  } else if (s.id === 'ninja' && accH) {
+    const mask = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.16, 0.22), new THREE.MeshLambertMaterial({ color: 0x0f172a }));
+    mask.position.set(0, -0.08, 0.2);
+    accH.add(mask);
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.08, 0.02), new THREE.MeshLambertMaterial({ color: 0xe2e8f0 }));
+    plate.position.set(0, 0.12, 0.335);
+    accH.add(plate);
+  }
+
+  if (c.root) c.root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; } });
+
+  const badge = document.getElementById('charBadge');
+  if (badge) badge.innerText = `${s.badge} (按C换装)`;
+  console.log(`[ShortcutRun] 切换国风角色：${s.name}`);
+}
+
+function cycleSkin() {
+  const keys = Object.keys(SKINS);
+  const nextIdx = (keys.indexOf(currentSkinKey) + 1) % keys.length;
+  currentSkinKey = keys[nextIdx];
+  applySkin(char, currentSkinKey);
+  return currentSkinKey;
+}
+
 const char = buildChar();
 applyTheme(); // 初始配色（须在 MAT/CHAR_MATS/char 都就绪后）
+applySkin(char, currentSkinKey); // 初始装配国风角色（齐天大圣）
+const charBadgeEl = document.getElementById('charBadge');
+if (charBadgeEl) charBadgeEl.onclick = () => { cycleSkin(); };
 
 // 动画（移植自母本 animateCharacter）：跑步步态/前倾/转弯侧倾/头带飘动/胜利/落水
 function animateChar(char, runCycle, steerVelocity, carriedPlanks, state, delta) {
@@ -675,6 +864,25 @@ function animateChar(char, runCycle, steerVelocity, carriedPlanks, state, delta)
   char.head.rotation.y = -char.torso.rotation.y * 0.5;
   char.headbandRibbon.rotation.x = -0.35 + Math.sin(runCycle * 2.5) * 0.22;
   char.headbandRibbon.rotation.y = Math.cos(runCycle * 2) * 0.15;
+  // 额外国风饰品动力学（翎毛/发带/混天绫随风摆动）
+  if (char.head) {
+    const plumeL = char.head.getObjectByName('PlumeL');
+    const plumeR = char.head.getObjectByName('PlumeR');
+    if (plumeL && plumeR) {
+      const pw = Math.sin(runCycle * 2.8) * 0.15;
+      plumeL.rotation.x = -0.65 + pw;
+      plumeR.rotation.x = -0.65 + pw;
+    }
+  }
+  if (char.torso) {
+    const silkL = char.torso.getObjectByName('SilkL');
+    const silkR = char.torso.getObjectByName('SilkR');
+    if (silkL && silkR) {
+      const sw = Math.sin(runCycle * 2.6) * 0.25;
+      silkL.rotation.x = -0.4 + sw;
+      silkR.rotation.x = -0.4 + sw;
+    }
+  }
   char.leftLeg.hip.rotation.x = stride * 0.82;
   char.leftLeg.knee.rotation.x = stride > 0 ? 0.1 : Math.max(0, -stride * 1.35);
   char.rightLeg.hip.rotation.x = -stride * 0.82;
@@ -866,7 +1074,8 @@ addEventListener('keydown', (e) => {
   startRun();
   if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') heldLeft = true;
   if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') heldRight = true;
-  if (e.key === 't' || e.key === 'T') { cycleTheme(); syncLevel(); } // 换肤
+  if (e.key === 't' || e.key === 'T') { cycleTheme(); syncLevel(); } // 场景换肤
+  if (e.key === 'c' || e.key === 'C') { cycleSkin(); } // 切换国风与经典角色
   if (e.key === 'm' || e.key === 'M') { muted = !muted; console.log(`[ShortcutRun] 音效 ${muted ? '关' : '开'}`); }
 });
 addEventListener('keyup', (e) => {
@@ -1403,6 +1612,9 @@ window.__game = {
   setBricks: (n) => { bricks = n; setBricksUI(n); },
   setTheme: (k) => { if (THEMES[k]) { themeKey = k; applyTheme(); } },
   setPlayerColor: (hex) => { MAT.player.color.setHex(hex); CHAR_MATS.clothTop.color.setHex(hex); }, // QA 用：像素检测 marker 色（新角色用 clothTop）
+  getSkin: () => currentSkinKey,
+  setSkin: (k) => { if (SKINS[k]) { currentSkinKey = k; applySkin(char, k); } },
+  skinList: () => Object.keys(SKINS),
   restart: (lv) => {
     qaSession = true; // QA 后门局：后续 pushEvent 带 qa:true，避免污染真人统计
     prog.reset();

@@ -68,8 +68,98 @@ initMat(mats.white, 0xffffff);
 initMat(mats.blush, 0xff8a80, 220);
 initMat(mats.smile, 0x991b1b);
 
-// 换主题：只改色，不重建（材质是共享引用）
+// ---------- 国风与经典角色预设（AI Studio 优势移植） ----------
+export type CharSkinType = 'runner' | 'wukong' | 'nezha' | 'guofeng' | 'panda' | 'ninja';
+
+export interface SkinDef {
+  id: CharSkinType;
+  name: string;
+  clothTop: number;
+  clothBottom: number;
+  skin: number;
+  accent: number;
+  hair: number;
+}
+
+export const CHAR_SKINS: Record<CharSkinType, SkinDef> = {
+  wukong: {
+    id: 'wukong',
+    name: '齐天大圣·孙悟空',
+    clothTop: 0xdc2626,
+    clothBottom: 0xf59e0b,
+    skin: 0xfbd0a2,
+    accent: 0xf59e0b,
+    hair: 0x78350f,
+  },
+  nezha: {
+    id: 'nezha',
+    name: '三坛海会·莲花哪吒',
+    clothTop: 0xdc2626,
+    clothBottom: 0x10b981,
+    skin: 0xffedd5,
+    accent: 0xf59e0b,
+    hair: 0x0f172a,
+  },
+  guofeng: {
+    id: 'guofeng',
+    name: '青莲剑客·少年侠客',
+    clothTop: 0xf8fafc,
+    clothBottom: 0x1e293b,
+    skin: 0xffedd5,
+    accent: 0xdc2626,
+    hair: 0x0f172a,
+  },
+  panda: {
+    id: 'panda',
+    name: '神州大侠·功夫熊猫',
+    clothTop: 0xdc2626,
+    clothBottom: 0x0f172a,
+    skin: 0xffffff,
+    accent: 0xfbbf24,
+    hair: 0x0f172a,
+  },
+  ninja: {
+    id: 'ninja',
+    name: '暗影行者·国潮刺客',
+    clothTop: 0x1e293b,
+    clothBottom: 0x0f172a,
+    skin: 0xfbd0a2,
+    accent: 0xe11d48,
+    hair: 0x0f172a,
+  },
+  runner: {
+    id: 'runner',
+    name: '热血飞人·经典主角',
+    clothTop: 0x0288d1,
+    clothBottom: 0x1e293b,
+    skin: 0xfbd0a2,
+    accent: 0xef4444,
+    hair: 0x452a18,
+  },
+};
+
+let activeSkin: CharSkinType = 'runner';
+
+export function setCharacterSkin(skin: CharSkinType): void {
+  activeSkin = skin;
+  applyCharTheme();
+}
+
+export function getCharacterSkin(): CharSkinType {
+  return activeSkin;
+}
+
+// 换主题/换皮肤：只改色，不重建（材质是共享引用）
 export function applyCharTheme(): void {
+  if (activeSkin !== 'runner' && CHAR_SKINS[activeSkin]) {
+    const s = CHAR_SKINS[activeSkin];
+    initMat(mats.clothTop, s.clothTop);
+    initMat(mats.clothBottom, s.clothBottom);
+    initMat(mats.skin, s.skin);
+    initMat(mats.accent, s.accent);
+    initMat(mats.hair, s.hair);
+    return;
+  }
   const t = currentTheme();
   initMat(mats.clothTop, t.player);
   initMat(mats.clothBottom, t.limb);

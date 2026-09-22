@@ -13,6 +13,7 @@ import {
 import {
   COCOS_WATER_SHADER_CODE,
   MIXAMO_GUIDE,
+  MIXAMO_CHINESE_MODELS,
   AI_PROMPTS,
 } from '../data/themes';
 import { ColorPalette } from '../types';
@@ -252,29 +253,62 @@ export const CocosToolkitModal: React.FC<CocosToolkitModalProps> = ({
 
           {/* TAB 3: Mixamo */}
           {activeTab === 'mixamo' && (
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div>
-                <h4 className="text-xs font-bold text-slate-200">Mixamo 免商用动作标准清单</h4>
-                <p className="text-[11px] text-slate-400">
-                  访问 mixamo.com，上传任意 T-Pose 角色低模，搜索并下载以下对应动作（FBX for Unity / Cocos）：
+                <h4 className="text-xs font-bold text-slate-200">Mixamo 中国化角色库与动作流水线</h4>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  你可以在 mixamo.com 浏览免费商用模型与动作库，或使用本工作台自主生产的 3D 中国风模型（美猴王/国潮少侠/功夫熊猫）：
                 </p>
               </div>
 
-              <div className="space-y-2">
-                {MIXAMO_GUIDE.map((g, idx) => (
-                  <div
-                    key={idx}
-                    className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs"
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-bold text-slate-200">{g.action}</span>
-                      <code className="text-amber-400 font-mono text-[11px] bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
-                        {g.mixamoName}
-                      </code>
+              {/* Chinese Model Matching Recommendations */}
+              <div className="bg-slate-950/70 p-3 rounded-xl border border-rose-500/20">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <span className="text-rose-400 text-xs font-bold">🇨🇳 Mixamo 官方角色库中的中国风/东方风格模型推荐</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {MIXAMO_CHINESE_MODELS.map((m, idx) => (
+                    <div key={idx} className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-[11px]">
+                      <div className="flex items-center justify-between mb-1">
+                        <strong className="text-slate-200">{m.name}</strong>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-300 font-medium">
+                          {m.category}
+                        </span>
+                      </div>
+                      <p className="text-slate-400 text-[10px] mb-1">{m.desc}</p>
+                      <div className="text-[10px] text-slate-500 flex justify-between">
+                        <span>搜索词: <code className="text-amber-400 font-mono">{m.searchKeyword}</code></span>
+                        <span>{m.mixamoPath}</span>
+                      </div>
                     </div>
-                    <p className="text-[11px] text-slate-400">{g.notes}</p>
-                  </div>
-                ))}
+                  ))}
+                </div>
+              </div>
+
+              {/* Standard Actions */}
+              <div>
+                <h5 className="text-[11px] font-bold text-slate-300 mb-2">核心跑步与落水动画清单</h5>
+                <div className="space-y-2">
+                  {MIXAMO_GUIDE.map((g, idx) => (
+                    <div
+                      key={idx}
+                      className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs"
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-bold text-slate-200">{g.action}</span>
+                        <code className="text-amber-400 font-mono text-[11px] bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                          {g.mixamoName}
+                        </code>
+                      </div>
+                      <p className="text-[11px] text-slate-400">{g.notes}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Mini game export tip */}
+              <div className="p-2.5 rounded-xl bg-amber-950/20 border border-amber-500/30 text-[11px] text-amber-200 leading-relaxed">
+                <strong>微信小游戏导出建议</strong>：从 Mixamo 导出 FBX 后，先在 Blender 中添加 <code>Decimate</code> 减面修改器将面数降至 2,500 ~ 3,500 三角面，并合并骨骼材质，可保证在千元低端手机上 60FPS 流畅运行。
               </div>
             </div>
           )}

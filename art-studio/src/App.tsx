@@ -12,8 +12,8 @@ export default function App() {
 
   const [settings, setSettings] = useState<VisualSettings>({
     paletteId: THEME_PALETTES[0].id,
-    characterType: 'runner_boy',
-    plankStyle: 'wood_plank',
+    characterType: 'wukong',
+    plankStyle: 'bamboo_raft',
     waterWaves: true,
     waterFoam: true,
     planarShadows: true,

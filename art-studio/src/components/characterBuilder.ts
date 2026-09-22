@@ -61,7 +61,39 @@ export function buildArticulatedCharacter(
   let shoesHex = '#0F172A';
   let hairHex = '#3B2414';
 
-  if (type === 'chibi_ninja') {
+  if (type === 'wukong') {
+    // 齐天大圣 / 美猴王: 金毛、大红锦袍、虎皮战裙、纯金紧箍与护臂
+    skinHex = '#FCD34D';
+    topHex = '#DC2626';
+    bottomHex = '#B45309';
+    accentHex = '#F59E0B'; // 璀璨纯金
+    shoesHex = '#1E293B'; // 藕丝步云履
+    hairHex = '#92400E'; // 琥珀金棕毛发
+  } else if (type === 'nezha') {
+    // 灵珠化身 / 莲花哪吒: 白皙粉润玉肌、大红金边肚兜、碧翠荷叶短裳、纯金乾坤圈、赤红红绣履
+    skinHex = '#FED7AA';
+    topHex = '#E11D48'; // 烈火朱红肚兜
+    bottomHex = '#059669'; // 碧翠荷叶短裳
+    accentHex = '#F59E0B'; // 纯金乾坤项圈与手镯
+    shoesHex = '#DC2626'; // 莲花红绣履
+    hairHex = '#09090B'; // 乌黑发丝
+  } else if (type === 'guofeng_hero') {
+    // 国潮少侠 / 少年剑客: 温润玉色、月白汉服交领、玄黑剑裤、赤红剑带
+    skinHex = '#FDE68A';
+    topHex = '#F8FAFC'; // 月白织锦
+    bottomHex = '#0F172A'; // 玄黑行脚
+    accentHex = '#DC2626'; // 丹砂朱红发带
+    shoesHex = '#18181B'; // 千层底布鞋
+    hairHex = '#09090B'; // 水墨纯黑
+  } else if (type === 'panda_hero') {
+    // 功夫国宝 / 熊猫大侠: 纯白毛绒躯干、大红功夫肚兜、玄黑武术裤、金腰带
+    skinHex = '#FFFFFF';
+    topHex = '#E11D48'; // 烈火朱砂红
+    bottomHex = '#0F172A';
+    accentHex = '#FBBF24'; // 功夫金带
+    shoesHex = '#0F172A';
+    hairHex = '#0F172A'; // 纯黑圆耳与眼圈
+  } else if (type === 'chibi_ninja') {
     topHex = '#1E222D';
     bottomHex = '#0F172A';
     accentHex = '#DC2626'; // Vibrant red ninja headband
@@ -105,6 +137,9 @@ export function buildArticulatedCharacter(
   torsoGroup.position.set(0, 0.72, 0);
   root.add(torsoGroup);
 
+  // Dynamic ribbons, plumes, and silks that sway in the wind
+  const headbandRibbons: THREE.Mesh[] = [];
+
   // Pelvis / Running Shorts
   const pelvisGeo = new THREE.CylinderGeometry(0.33, 0.3, 0.32, 8);
   const pelvisMesh = new THREE.Mesh(pelvisGeo, materials.clothBottom);
@@ -131,18 +166,116 @@ export function buildArticulatedCharacter(
   chestMesh.castShadow = true;
   torsoGroup.add(chestMesh);
 
-  // Jersey collar trim
+  // Jersey collar / Hanfu collar
   if (type !== 'stickman') {
+    const collarColor =
+      type === 'wukong' || type === 'guofeng_hero' || type === 'nezha' ? '#DC2626' : '#FFFFFF';
     const collarGeo = new THREE.TorusGeometry(0.24, 0.035, 6, 12);
     collarGeo.rotateX(Math.PI / 2);
-    const collarMat = new THREE.MeshBasicMaterial({ color: '#FFFFFF' });
+    const collarMat = new THREE.MeshBasicMaterial({ color: collarColor });
     const collarMesh = new THREE.Mesh(collarGeo, collarMat);
     collarMesh.position.set(0, 0.81, 0.05);
     torsoGroup.add(collarMesh);
   }
 
-  // Race Number Bib on Chest
-  if (type !== 'stickman') {
+  // Chest Attire: Bib for modern runners, Golden Breastplate for Wukong, Hanfu Lapel for Swordsman, Qiankun Ring for Nezha
+  if (type === 'wukong') {
+    // 黄金锁子护心甲
+    const armorGeo = new THREE.BoxGeometry(0.28, 0.28, 0.06);
+    const armorMat = new THREE.MeshStandardMaterial({
+      color: '#F59E0B',
+      metalness: 0.85,
+      roughness: 0.2,
+    });
+    const armorMesh = new THREE.Mesh(armorGeo, armorMat);
+    armorMesh.position.set(0, 0.58, 0.35);
+    torsoGroup.add(armorMesh);
+
+    // 金甲中心兽面浮雕微盘
+    const emblemGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.04, 8);
+    emblemGeo.rotateX(Math.PI / 2);
+    const emblemMat = new THREE.MeshStandardMaterial({ color: '#DC2626', metalness: 0.5 });
+    const emblemMesh = new THREE.Mesh(emblemGeo, emblemMat);
+    emblemMesh.position.set(0, 0.58, 0.385);
+    torsoGroup.add(emblemMesh);
+  } else if (type === 'nezha') {
+    // 纯金乾坤圈: 斜挎胸前环绕，金光闪烁
+    const ringGeo = new THREE.TorusGeometry(0.26, 0.032, 8, 24);
+    const ringMat = new THREE.MeshStandardMaterial({
+      color: '#F59E0B',
+      metalness: 0.95,
+      roughness: 0.12,
+    });
+    const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+    ringMesh.position.set(0, 0.58, 0.22);
+    ringMesh.rotation.x = 0.35;
+    ringMesh.rotation.y = 0.45;
+    torsoGroup.add(ringMesh);
+
+    // 混天绫: 仙家赤红丝帛披帛，绕肩并在身后延展两条灵动长飘带
+    const silkMat = new THREE.MeshStandardMaterial({
+      color: '#DC2626',
+      roughness: 0.3,
+      side: THREE.DoubleSide,
+    });
+
+    // 绕肩横拱
+    const silkArchGeo = new THREE.TorusGeometry(0.42, 0.04, 6, 16, Math.PI);
+    const silkArch = new THREE.Mesh(silkArchGeo, silkMat);
+    silkArch.position.set(0, 0.72, -0.1);
+    silkArch.rotation.x = -Math.PI / 3;
+    torsoGroup.add(silkArch);
+
+    // 混天绫左长仙飘带 (随风后展)
+    const silkGeoL = new THREE.BoxGeometry(0.12, 0.02, 1.05);
+    silkGeoL.translate(0, 0, -0.52);
+    const silkMeshL = new THREE.Mesh(silkGeoL, silkMat);
+    silkMeshL.position.set(-0.32, 0.65, -0.15);
+    silkMeshL.rotation.y = -0.22;
+    silkMeshL.rotation.x = -0.2;
+    torsoGroup.add(silkMeshL);
+    headbandRibbons.push(silkMeshL);
+
+    // 混天绫右长仙飘带
+    const silkGeoR = new THREE.BoxGeometry(0.12, 0.02, 1.05);
+    silkGeoR.translate(0, 0, -0.52);
+    const silkMeshR = new THREE.Mesh(silkGeoR, silkMat);
+    silkMeshR.position.set(0.32, 0.65, -0.15);
+    silkMeshR.rotation.y = 0.22;
+    silkMeshR.rotation.x = -0.2;
+    torsoGroup.add(silkMeshR);
+    headbandRibbons.push(silkMeshR);
+
+    // 莲花红肚兜金边
+    const lotusBorderGeo = new THREE.CylinderGeometry(0.24, 0.28, 0.24, 6, 1, true);
+    const lotusBorderMat = new THREE.MeshBasicMaterial({ color: '#F59E0B' });
+    const lotusBorder = new THREE.Mesh(lotusBorderGeo, lotusBorderMat);
+    lotusBorder.position.set(0, 0.52, 0.16);
+    torsoGroup.add(lotusBorder);
+  } else if (type === 'guofeng_hero') {
+    // 汉服右衽斜襟交领饰条
+    const lapelGeo = new THREE.PlaneGeometry(0.3, 0.32);
+    const lapelMat = new THREE.MeshBasicMaterial({ color: '#FFFFFF', side: THREE.DoubleSide });
+    const lapelMesh = new THREE.Mesh(lapelGeo, lapelMat);
+    lapelMesh.position.set(0.02, 0.58, 0.355);
+    lapelMesh.rotation.z = -0.35;
+    torsoGroup.add(lapelMesh);
+
+    // 朱砂红腰封细带
+    const sashGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.08, 10, 1, true);
+    const sashMat = new THREE.MeshBasicMaterial({ color: '#DC2626' });
+    const sashMesh = new THREE.Mesh(sashGeo, sashMat);
+    sashMesh.position.set(0, 0.34, 0);
+    torsoGroup.add(sashMesh);
+  } else if (type === 'panda_hero') {
+    // 功夫练功肚兜金色祥云印记
+    const emblemGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.03, 8);
+    emblemGeo.rotateX(Math.PI / 2);
+    const emblemMat = new THREE.MeshBasicMaterial({ color: '#FBBF24' });
+    const emblemMesh = new THREE.Mesh(emblemGeo, emblemMat);
+    emblemMesh.position.set(0, 0.56, 0.355);
+    torsoGroup.add(emblemMesh);
+  } else if (type !== 'stickman') {
     const bibGeo = new THREE.PlaneGeometry(0.26, 0.22);
     const bibMat = new THREE.MeshBasicMaterial({ color: '#FFFFFF', side: THREE.DoubleSide });
     const bibMesh = new THREE.Mesh(bibGeo, bibMat);
@@ -174,7 +307,6 @@ export function buildArticulatedCharacter(
   headMesh.castShadow = true;
   headGroup.add(headMesh);
 
-  const headbandRibbons: THREE.Mesh[] = [];
   let hairGroup: THREE.Group | undefined;
 
   if (type !== 'stickman') {
@@ -237,6 +369,41 @@ export function buildArticulatedCharacter(
     blushR.position.set(0.19, -0.06, 0.25);
     blushR.rotation.y = -0.55;
     headGroup.add(blushR);
+
+    // Panda Hero Iconic Eye Patches & Cute Black Nose
+    if (type === 'panda_hero') {
+      const patchGeo = new THREE.SphereGeometry(0.088, 8, 8);
+      const patchMat = new THREE.MeshBasicMaterial({ color: '#0F172A' });
+      const patchL = new THREE.Mesh(patchGeo, patchMat);
+      patchL.scale.set(1.15, 1.35, 0.35);
+      patchL.position.set(-0.125, 0.04, 0.275);
+      patchL.rotation.z = -0.22;
+      headGroup.add(patchL);
+
+      const patchR = new THREE.Mesh(patchGeo, patchMat);
+      patchR.scale.set(1.15, 1.35, 0.35);
+      patchR.position.set(0.125, 0.04, 0.275);
+      patchR.rotation.z = 0.22;
+      headGroup.add(patchR);
+
+      // Black panda button nose
+      const noseGeo = new THREE.SphereGeometry(0.038, 6, 6);
+      const noseMat = new THREE.MeshBasicMaterial({ color: '#0F172A' });
+      const nose = new THREE.Mesh(noseGeo, noseMat);
+      nose.scale.set(1.2, 0.8, 0.8);
+      nose.position.set(0, -0.045, 0.32);
+      headGroup.add(nose);
+    }
+
+    if (type === 'nezha') {
+      // 哪吒额前朱砂神火印 (Divine Fire Vermilion Mark)
+      const markGeo = new THREE.ConeGeometry(0.038, 0.09, 4);
+      const markMat = new THREE.MeshBasicMaterial({ color: '#DC2626' });
+      const mark = new THREE.Mesh(markGeo, markMat);
+      mark.position.set(0, 0.13, 0.34);
+      mark.rotation.x = 0.22;
+      headGroup.add(mark);
+    }
 
     // C. Confident Runner Smile
     const smileGeo = new THREE.TorusGeometry(0.065, 0.016, 4, 8, Math.PI);
@@ -375,6 +542,201 @@ export function buildArticulatedCharacter(
       antMesh.position.set(0.24, 0.36, -0.05);
       antMesh.rotation.z = -0.3;
       headGroup.add(antMesh);
+    } else if (type === 'wukong') {
+      // 齐天大圣 / 美猴王: 紧箍咒、凤翅紫金冠雉翎双飘带、金色毛发鬃毛
+      const crownGeo = new THREE.ConeGeometry(0.38, 0.44, 7);
+      const crownMesh = new THREE.Mesh(crownGeo, materials.hair);
+      crownMesh.position.set(0, 0.22, -0.06);
+      crownMesh.rotation.x = -0.32;
+      hairGroup.add(crownMesh);
+
+      // 金毛发簇
+      const spikeGeo = new THREE.ConeGeometry(0.12, 0.36, 5);
+      const spike1 = new THREE.Mesh(spikeGeo, materials.hair);
+      spike1.position.set(-0.1, 0.34, -0.02);
+      spike1.rotation.z = 0.2;
+      hairGroup.add(spike1);
+
+      const spike2 = new THREE.Mesh(spikeGeo, materials.hair);
+      spike2.position.set(0.1, 0.35, -0.02);
+      spike2.rotation.z = -0.2;
+      hairGroup.add(spike2);
+
+      const spike3 = new THREE.Mesh(spikeGeo, materials.hair);
+      spike3.position.set(0, 0.38, -0.1);
+      spike3.rotation.x = -0.4;
+      hairGroup.add(spike3);
+
+      // 紧箍圈 (Golden Circlet)
+      const circletGeo = new THREE.TorusGeometry(0.34, 0.026, 8, 20);
+      circletGeo.rotateX(Math.PI / 2);
+      const circletMat = new THREE.MeshStandardMaterial({
+        color: '#F59E0B',
+        metalness: 0.92,
+        roughness: 0.15,
+      });
+      const circletMesh = new THREE.Mesh(circletGeo, circletMat);
+      circletMesh.position.set(0, 0.1, 0.02);
+      headGroup.add(circletMesh);
+
+      // 额前紧箍祥云月牙饰件
+      const curlGeo = new THREE.TorusGeometry(0.055, 0.018, 6, 12, Math.PI * 1.4);
+      const curlMesh = new THREE.Mesh(curlGeo, circletMat);
+      curlMesh.position.set(0, 0.13, 0.35);
+      curlMesh.rotation.z = Math.PI;
+      headGroup.add(curlMesh);
+
+      // 凤翅紫金冠 - 双雉鸡翎超长灵动翎羽 (Fluttering Phoenix Plumes)
+      const plumeMat = new THREE.MeshStandardMaterial({
+        color: '#DC2626',
+        roughness: 0.3,
+      });
+
+      const plumeGeoL = new THREE.BoxGeometry(0.08, 0.025, 0.95);
+      plumeGeoL.translate(0, 0, -0.48);
+      const plumeL = new THREE.Mesh(plumeGeoL, plumeMat);
+      plumeL.position.set(-0.08, 0.25, -0.25);
+      plumeL.rotation.y = -0.15;
+      plumeL.rotation.x = -0.25;
+      headGroup.add(plumeL);
+      headbandRibbons.push(plumeL);
+
+      const plumeGeoR = new THREE.BoxGeometry(0.08, 0.025, 0.95);
+      plumeGeoR.translate(0, 0, -0.48);
+      const plumeR = new THREE.Mesh(plumeGeoR, plumeMat);
+      plumeR.position.set(0.08, 0.25, -0.25);
+      plumeR.rotation.y = 0.15;
+      plumeR.rotation.x = -0.25;
+      headGroup.add(plumeR);
+      headbandRibbons.push(plumeR);
+    } else if (type === 'guofeng_hero') {
+      // 国潮少侠 / 少年剑客: 高马尾发髻、红丝发带、水墨鬓发
+      const bunBaseGeo = new THREE.CylinderGeometry(0.18, 0.24, 0.15, 8);
+      const bunBase = new THREE.Mesh(bunBaseGeo, materials.hair);
+      bunBase.position.set(0, 0.35, -0.1);
+      bunBase.rotation.x = -0.3;
+      hairGroup.add(bunBase);
+
+      // 高耸马尾束发
+      const ponyGeo = new THREE.ConeGeometry(0.14, 0.46, 7);
+      ponyGeo.rotateX(-Math.PI / 2.5);
+      const ponyMesh = new THREE.Mesh(ponyGeo, materials.hair);
+      ponyMesh.position.set(0, 0.42, -0.25);
+      hairGroup.add(ponyMesh);
+
+      // 朱红发带发箍
+      const ribbonBandGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.06, 8);
+      const ribbonBand = new THREE.Mesh(ribbonBandGeo, materials.accent);
+      ribbonBand.position.set(0, 0.41, -0.12);
+      hairGroup.add(ribbonBand);
+
+      // 飘逸剑侠红发带 (随风后摆)
+      const ribGeo1 = new THREE.BoxGeometry(0.09, 0.025, 0.85);
+      ribGeo1.translate(0, 0, -0.42);
+      const rib1 = new THREE.Mesh(ribGeo1, materials.accent);
+      rib1.position.set(-0.04, 0.38, -0.15);
+      headGroup.add(rib1);
+      headbandRibbons.push(rib1);
+
+      const ribGeo2 = new THREE.BoxGeometry(0.08, 0.022, 0.78);
+      ribGeo2.translate(0, 0, -0.38);
+      const rib2 = new THREE.Mesh(ribGeo2, materials.accent);
+      rib2.position.set(0.04, 0.36, -0.15);
+      headGroup.add(rib2);
+      headbandRibbons.push(rib2);
+
+      // 额前刘海与两鬓青丝
+      const fringeGeo = new THREE.BoxGeometry(0.3, 0.1, 0.16);
+      const fringe = new THREE.Mesh(fringeGeo, materials.hair);
+      fringe.position.set(0, 0.26, 0.2);
+      fringe.rotation.x = 0.3;
+      hairGroup.add(fringe);
+
+      const sideLockL = new THREE.CylinderGeometry(0.03, 0.015, 0.3, 5);
+      const lockL = new THREE.Mesh(sideLockL, materials.hair);
+      lockL.position.set(-0.28, 0.02, 0.12);
+      lockL.rotation.z = -0.1;
+      hairGroup.add(lockL);
+
+      const sideLockR = new THREE.CylinderGeometry(0.03, 0.015, 0.3, 5);
+      const lockR = new THREE.Mesh(sideLockR, materials.hair);
+      lockR.position.set(0.28, 0.02, 0.12);
+      lockR.rotation.z = 0.1;
+      hairGroup.add(lockR);
+    } else if (type === 'nezha') {
+      // 灵珠哪吒: 经典双丸子冲天抓髻 (双包包头) + 束发红带与额前齐刘海
+      const bunGeo = new THREE.SphereGeometry(0.135, 8, 8);
+
+      // 左丸子
+      const bunL = new THREE.Mesh(bunGeo, materials.hair);
+      bunL.position.set(-0.24, 0.32, 0.02);
+      hairGroup.add(bunL);
+
+      // 右丸子
+      const bunR = new THREE.Mesh(bunGeo, materials.hair);
+      bunR.position.set(0.24, 0.32, 0.02);
+      hairGroup.add(bunR);
+
+      // 束发红发绳
+      const tieGeo = new THREE.TorusGeometry(0.11, 0.024, 6, 12);
+      const tieMat = new THREE.MeshBasicMaterial({ color: '#DC2626' });
+      const tieL = new THREE.Mesh(tieGeo, tieMat);
+      tieL.position.set(-0.24, 0.26, 0.02);
+      tieL.rotation.x = Math.PI / 2;
+      hairGroup.add(tieL);
+
+      const tieR = new THREE.Mesh(tieGeo, tieMat);
+      tieR.position.set(0.24, 0.26, 0.02);
+      tieR.rotation.x = Math.PI / 2;
+      hairGroup.add(tieR);
+
+      // 双丸子垂下的红发带
+      const ribGeoL = new THREE.BoxGeometry(0.065, 0.02, 0.65);
+      ribGeoL.translate(0, 0, -0.32);
+      const ribL = new THREE.Mesh(ribGeoL, tieMat);
+      ribL.position.set(-0.25, 0.26, -0.05);
+      ribL.rotation.y = -0.2;
+      headGroup.add(ribL);
+      headbandRibbons.push(ribL);
+
+      const ribGeoR = new THREE.BoxGeometry(0.065, 0.02, 0.65);
+      ribGeoR.translate(0, 0, -0.32);
+      const ribR = new THREE.Mesh(ribGeoR, tieMat);
+      ribR.position.set(0.25, 0.26, -0.05);
+      ribR.rotation.y = 0.2;
+      headGroup.add(ribR);
+      headbandRibbons.push(ribR);
+
+      // 额前灵动齐刘海
+      const bangsGeo = new THREE.BoxGeometry(0.28, 0.09, 0.13);
+      const bangs = new THREE.Mesh(bangsGeo, materials.hair);
+      bangs.position.set(0, 0.24, 0.24);
+      bangs.rotation.x = 0.28;
+      hairGroup.add(bangs);
+    } else if (type === 'panda_hero') {
+      // 功夫国宝 / 熊猫大侠: 呆萌圆黑耳
+      const earGeo = new THREE.SphereGeometry(0.095, 8, 8);
+      const earMat = new THREE.MeshStandardMaterial({ color: '#0F172A', roughness: 0.6 });
+
+      const earL = new THREE.Mesh(earGeo, earMat);
+      earL.position.set(-0.25, 0.28, 0.02);
+      headGroup.add(earL);
+
+      const earR = new THREE.Mesh(earGeo, earMat);
+      earR.position.set(0.25, 0.28, 0.02);
+      headGroup.add(earR);
+
+      // 功夫红色发绳
+      const kungfuHeadbandGeo = new THREE.CylinderGeometry(0.342, 0.342, 0.06, 12, 1, true);
+      const kungfuHeadband = new THREE.Mesh(kungfuHeadbandGeo, materials.clothTop);
+      kungfuHeadband.position.y = 0.14;
+      headGroup.add(kungfuHeadband);
+
+      // 小巧红结
+      const knotGeo = new THREE.BoxGeometry(0.08, 0.08, 0.04);
+      const knot = new THREE.Mesh(knotGeo, materials.accent);
+      knot.position.set(0, 0.14, 0.35);
+      headGroup.add(knot);
     }
   }
 
@@ -402,7 +764,11 @@ export function buildArticulatedCharacter(
     // Calf / Shin
     const calfGeo = new THREE.CylinderGeometry(0.095, 0.08, 0.38, 7);
     calfGeo.translate(0, -0.19, 0);
-    const calfMesh = new THREE.Mesh(calfGeo, materials.skin);
+    const calfMat =
+      type === 'guofeng_hero' || type === 'panda_hero' || type === 'wukong' || type === 'chibi_ninja'
+        ? materials.clothBottom
+        : materials.skin;
+    const calfMesh = new THREE.Mesh(calfGeo, calfMat);
     calfMesh.castShadow = true;
     knee.add(calfMesh);
 
@@ -411,24 +777,41 @@ export function buildArticulatedCharacter(
     foot.position.set(0, -0.36, 0.04);
     knee.add(foot);
 
-    // Running Sneaker Body
+    // Running Sneaker / Chinese Kung Fu Shoes / Cloud Boots Body
     const shoeGeo = new THREE.BoxGeometry(0.19, 0.15, 0.34);
     shoeGeo.translate(0, -0.065, 0.04);
     const shoeMesh = new THREE.Mesh(shoeGeo, materials.shoes);
     shoeMesh.castShadow = true;
     foot.add(shoeMesh);
 
-    // Sneaker Laces & Tongue Accent
-    if (type !== 'stickman') {
+    // Sneaker Laces & Tongue Accent (Only modern runners)
+    const isChinese =
+      type === 'wukong' || type === 'nezha' || type === 'guofeng_hero' || type === 'panda_hero';
+    if (type !== 'stickman' && !isChinese) {
       const laceGeo = new THREE.PlaneGeometry(0.14, 0.16);
       const laceMat = new THREE.MeshBasicMaterial({ color: '#FFFFFF', side: THREE.DoubleSide });
       const laceMesh = new THREE.Mesh(laceGeo, laceMat);
       laceMesh.position.set(0, 0.015, 0.08);
       laceMesh.rotation.x = -Math.PI / 3;
       foot.add(laceMesh);
+    } else if (type === 'wukong') {
+      // 藕丝步云履金边卷头
+      const toeGeo = new THREE.BoxGeometry(0.18, 0.08, 0.08);
+      const toeMat = new THREE.MeshStandardMaterial({ color: '#F59E0B', metalness: 0.8, roughness: 0.2 });
+      const toeMesh = new THREE.Mesh(toeGeo, toeMat);
+      toeMesh.position.set(0, -0.04, 0.2);
+      foot.add(toeMesh);
+    } else if (type === 'nezha') {
+      // 哪吒脚腕纯金乾坤金刚镯
+      const ankletGeo = new THREE.TorusGeometry(0.1, 0.022, 6, 14);
+      ankletGeo.rotateX(Math.PI / 2);
+      const ankletMat = new THREE.MeshStandardMaterial({ color: '#F59E0B', metalness: 0.92, roughness: 0.15 });
+      const anklet = new THREE.Mesh(ankletGeo, ankletMat);
+      anklet.position.set(0, 0.04, 0.04);
+      foot.add(anklet);
     }
 
-    // High-Contrast White Rubber Sneaker Midsole
+    // High-Contrast White Rubber Sneaker Midsole / Traditional Kung Fu White Sole (千层底白边)
     const soleGeo = new THREE.BoxGeometry(0.205, 0.065, 0.36);
     soleGeo.translate(0, -0.135, 0.04);
     const soleMat = new THREE.MeshBasicMaterial({ color: '#FFFFFF' });
@@ -436,7 +819,7 @@ export function buildArticulatedCharacter(
     foot.add(soleMesh);
 
     // Heel Bumper Reflector Tab
-    if (type !== 'stickman') {
+    if (type !== 'stickman' && !isChinese) {
       const heelGeo = new THREE.BoxGeometry(0.14, 0.06, 0.03);
       const heelMat = new THREE.MeshBasicMaterial({ color: accentHex });
       const heelMesh = new THREE.Mesh(heelGeo, heelMat);
@@ -489,6 +872,16 @@ export function buildArticulatedCharacter(
     const hand = new THREE.Group();
     hand.position.set(side * -0.04, -0.02, 0.35);
     elbow.add(hand);
+
+    // 金手镯/护腕 (哪吒/孙悟空)
+    if (type === 'nezha' || type === 'wukong') {
+      const bangleGeo = new THREE.TorusGeometry(0.08, 0.02, 6, 12);
+      bangleGeo.rotateX(Math.PI / 2);
+      const bangleMat = new THREE.MeshStandardMaterial({ color: '#F59E0B', metalness: 0.92, roughness: 0.15 });
+      const bangle = new THREE.Mesh(bangleGeo, bangleMat);
+      bangle.position.set(0, 0, 0.12);
+      elbow.add(bangle);
+    }
 
     // Palm Block
     const palmGeo = new THREE.BoxGeometry(0.13, 0.08, 0.12);
@@ -622,15 +1015,14 @@ export function animateCharacter(
     char.hairGroup.position.y = Math.abs(stride) * 0.02;
   }
 
-  // Dual Headband Ribbon Wave in Headwind
+  // Multi-Ribbon & Headband / Plumes Wave in Headwind
   if (char.headbandRibbons && char.headbandRibbons.length > 0) {
     const waveSpeed = runCycle * 2.8;
-    char.headbandRibbons[0].rotation.x = -0.38 + Math.sin(waveSpeed) * 0.22;
-    char.headbandRibbons[0].rotation.y = Math.cos(waveSpeed * 0.8) * 0.16;
-
-    if (char.headbandRibbons[1]) {
-      char.headbandRibbons[1].rotation.x = -0.35 + Math.sin(waveSpeed + 1.2) * 0.24;
-      char.headbandRibbons[1].rotation.y = -Math.cos(waveSpeed * 0.8 + 0.8) * 0.14;
+    for (let i = 0; i < char.headbandRibbons.length; i++) {
+      const ribbon = char.headbandRibbons[i];
+      const phase = (i * Math.PI) / 2;
+      ribbon.rotation.x = -0.36 + Math.sin(waveSpeed + phase) * 0.22;
+      ribbon.rotation.y = (i % 2 === 0 ? -1 : 1) * (0.16 + Math.cos(waveSpeed * 0.8 + phase) * 0.14);
     }
   }
 

@@ -187,8 +187,35 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         roughness: 0.5,
       }),
       plank: new THREE.MeshStandardMaterial({
-        color: new THREE.Color(palette.plankColor),
-        roughness: 0.35,
+        color:
+          settings.plankStyle === 'bamboo_raft'
+            ? new THREE.Color('#22C55E')
+            : settings.plankStyle === 'jade_slab'
+            ? new THREE.Color('#10B981')
+            : settings.plankStyle === 'gold_bar'
+            ? new THREE.Color('#F59E0B')
+            : settings.plankStyle === 'neon_crystal'
+            ? new THREE.Color('#00F5D4')
+            : new THREE.Color(palette.plankColor),
+        roughness:
+          settings.plankStyle === 'jade_slab'
+            ? 0.15
+            : settings.plankStyle === 'bamboo_raft'
+            ? 0.28
+            : settings.plankStyle === 'neon_crystal'
+            ? 0.1
+            : 0.35,
+        metalness:
+          settings.plankStyle === 'gold_bar'
+            ? 0.85
+            : settings.plankStyle === 'jade_slab'
+            ? 0.15
+            : 0.0,
+        emissive:
+          settings.plankStyle === 'neon_crystal'
+            ? new THREE.Color('#00A896')
+            : new THREE.Color(0x000000),
+        emissiveIntensity: settings.plankStyle === 'neon_crystal' ? 0.45 : 0.0,
       }),
       player: new THREE.MeshStandardMaterial({
         color: new THREE.Color(palette.playerColor),

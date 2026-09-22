@@ -16,8 +16,18 @@ export interface ColorPalette {
   isGraybox?: boolean;
 }
 
-export type CharacterModelType = 'runner_boy' | 'chibi_ninja' | 'beach_dude' | 'voxel_bot' | 'stickman';
-export type PlankStyleType = 'wood_plank' | 'neon_crystal' | 'gold_bar';
+export type CharacterModelType =
+  | 'wukong'
+  | 'nezha'
+  | 'guofeng_hero'
+  | 'panda_hero'
+  | 'runner_boy'
+  | 'chibi_ninja'
+  | 'beach_dude'
+  | 'voxel_bot'
+  | 'stickman';
+
+export type PlankStyleType = 'bamboo_raft' | 'jade_slab' | 'wood_plank' | 'neon_crystal' | 'gold_bar';
 
 export interface VisualSettings {
   paletteId: string;
