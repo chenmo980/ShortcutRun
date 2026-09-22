@@ -763,7 +763,7 @@ function buildLevel(cur) {
   playerX = 0; targetX = 0; playerY = 0; fallVel = 0;
   heldLeft = false; heldRight = false; dragging = false;
   fell = false; bridgeT = 0;
-  player.position.set(0, 0, 0);
+  player.position.set(bendX(0), 0, 0);
   player.rotation.set(0, 0, 0);
   for (const m of stackMeshes) m.visible = false;
   camInited = false;
@@ -1069,11 +1069,10 @@ function loop() {
     clampTarget();
 
     const prevZ = player.position.z;
-    let z = prevZ, x = player.position.x;
+    let z = prevZ;
+    let x = playerX; // 逻辑横坐标（非世界 x；世界 x 含 bendX，回读会正反馈甩飞）
 
     if (state === 'run') {
-      if (shoeT > 0) shoeT -= dt;
-      // 提速鞋：终速 ×1.35（可短暂超 maxSpeed，提速感优先）
       if (shoeT > 0) shoeT -= dt;
       if (speedDip > 0) speedDip -= dt;
       if (bridgeT > 0) bridgeT -= dt;
@@ -1087,6 +1086,7 @@ function loop() {
       playerY -= fallVel * dt;
       if (playerY < -8) { lose('掉落！'); }
     }
+    playerX = x;
 
     player.position.set(bendX(z) + x * Math.cos(headingAt(z)), playerY, z); // 根节点在脚底，随弯道
     player.rotation.y = headingAt(z); // 朝向=切线
@@ -1112,14 +1112,15 @@ function loop() {
   } else if (state === 'ready') {
     // 待机轻浮动
     player.position.y = Math.sin(elapsed * 3) * 0.03;
+    player.position.x = bendX(0) + playerX * Math.cos(headingAt(0));
     player.rotation.y = headingAt(0);
     animateChar(char, 0, 0, 0, 'idle', dt);
   }
 
-  // 相机跟随（锚在弯道路径上：身后一点沿切线后移，俯视追尾）
+  // 相机跟随（锚在弯道路径上：身后一点沿路径中心线 + 逻辑侧向×xFactor）
   const t = player.position;
   const camAnchorZ = t.z + cfg.camOffsetZ;
-  const dx = bendX(camAnchorZ) + t.x * cfg.camXFactor;
+  const dx = bendX(camAnchorZ) + playerX * cfg.camXFactor;
   const dy = Math.max(t.y, 0) * 0.35 + cfg.camOffsetY;
   const dz = camAnchorZ;
   if (!camInited) { camera.position.set(dx, dy, dz); camInited = true; }
@@ -1165,7 +1166,7 @@ loop();
 // ============ 调试接口（供自动化验证用） ============
 window.__game = {
   getState: () => ({
-    state, bricks, x: player.position.x, y: player.position.y, z: player.position.z, speed,
+    state, bricks, x: playerX, y: player.position.y, z: player.position.z, speed,
     pickups: pickups.length, gaps: level.gaps.length, gateZ: level.gateZ,
     level: levelNum, theme: themeKey, themeName: THEMES[themeKey].name, sky: THEMES[themeKey].sky,
     playerColor: THEMES[themeKey].player, shoeT,

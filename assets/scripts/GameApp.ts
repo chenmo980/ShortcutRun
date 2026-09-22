@@ -57,6 +57,7 @@ export class GameApp extends Component {
   private speed = 0;
   private shoeT = 0; // v4 加速鞋剩余时间（秒），<=0 未加速
   private targetX = 0;
+  private laneX = 0; // 跑道逻辑横坐标（与 targetX 同空间）；禁止用世界 x 回读做插值
   private fallVel = 0;
   private dragging = false;
   private dragLastX = 0;
@@ -126,12 +127,15 @@ export class GameApp extends Component {
     this.camFollow.offsetZ = this.cfg.camOffsetZ;
     this.camFollow.xFactor = this.cfg.camXFactor;
     this.camFollow.lerp = this.cfg.camLerp;
+    this.camFollow.pathAnchorX = bendX(this.cfg.camOffsetZ, this.curve);
+    this.camFollow.lateral = 0;
 
     this.state = 'ready';
     this.bricks = 0;
     this.speed = this.cfg.runSpeed;
     this.shoeT = 0;
     this.targetX = 0;
+    this.laneX = 0;
     this.fallVel = 0;
     this.heldLeft = false;
     this.heldRight = false;
@@ -257,9 +261,10 @@ export class GameApp extends Component {
     if (this.heldRight) this.targetX += this.cfg.keySteerSpeed * dt;
     this.clampTarget();
 
-    const p = this.player.position;
-    const prevZ = p.z; // 扫掠检测用：低端机帧抖动时一帧可能移动数米，必须按区间判定
-    let x = p.x, y = p.y, z = p.z;
+    const prevZ = this.player.position.z; // 扫掠检测用：低端机帧抖动时一帧可能移动数米，必须按区间判定
+    let y = this.player.position.y;
+    let z = prevZ;
+    let x = this.laneX; // 逻辑横坐标（非世界 x）
 
     if (this.state === 'run') {
       if (this.shoeT > 0) this.shoeT -= dt;
@@ -277,6 +282,7 @@ export class GameApp extends Component {
       y -= this.fallVel * dt;
       if (y < -8) { this.lose('掉落！'); return; }
     }
+    this.laneX = x;
 
     this.player.setPosition(new Vec3(
       bendX(z, this.curve) + x * Math.cos(headingAt(z, this.curve)), y, z)); // rig 根节点在脚底，随弯道
@@ -297,10 +303,11 @@ export class GameApp extends Component {
       : (this.fell ? 'drowned' : 'stand');
     this.track.syncRig(charState, this.runCycle, this.targetX - x, this.bricks, dt);
     this.ui?.setProgress(z, this.levelDef.gateZ);
-    // J1：速度因子喂相机（FOV 冲刺）；弯道：切线角喂相机（贴路径后方）
+    // J1：速度因子喂相机（FOV 冲刺）；弯道：相机锚在路径后方 + 逻辑侧向偏移
     const span = Math.max(0.1, this.cfg.maxSpeed - this.cfg.runSpeed);
     this.camFollow.speedFactor = Math.max(0, Math.min(1, (this.speed - this.cfg.runSpeed) / span));
-    this.camFollow.targetHeading = headingAt(z, this.curve);
+    this.camFollow.pathAnchorX = bendX(z + this.cfg.camOffsetZ, this.curve);
+    this.camFollow.lateral = x;
   }
 
   // 拾取判定：本帧位移区间 [prevZ, z] 与拾取点区间相交即吃到（防高帧移动量穿透）

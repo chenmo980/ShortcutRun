@@ -11,7 +11,8 @@ export class CameraFollow extends Component {
   xFactor = 0.6;   // 横向不完全跟随，保留跑道视野
   lerp = 6;
   speedFactor = 0; // 0~1，由 GameApp 每帧喂入（速度占比），驱动 FOV 冲刺
-  targetHeading = 0; // 路径切线角（弯道）：offset 绕 Y 旋转，相机贴路径后方
+  pathAnchorX = 0; // 弯道中心线在相机锚点 z 处的世界 X（GameApp 每帧喂入）
+  lateral = 0;     // 玩家逻辑横坐标（非世界 x），相机部分跟随
   private cam: Camera | null = null;
   private baseFov = 45;
   private shakeT = 0;
@@ -35,12 +36,11 @@ export class CameraFollow extends Component {
   lateUpdate(dt: number): void {
     if (!this.target) return;
     const t = this.target.worldPosition;
-    // offset (0, offsetY, offsetZ) 绕 Y 旋转 targetHeading → 相机贴在弯道路径后方
-    const ox = this.offsetZ * Math.sin(this.targetHeading);
-    const oz = this.offsetZ * Math.cos(this.targetHeading);
-    const dx = t.x * this.xFactor + ox;
+    // 相机锚在路径后方（offsetZ 为负=身后）：路径中心线 + 逻辑侧向×xFactor
+    // 禁止把世界 t.x 再乘 xFactor（会把 bendX 打折/叠加，弯道上镜头乱甩）
+    const dz = t.z + this.offsetZ;
+    const dx = this.pathAnchorX + this.lateral * this.xFactor;
     const dy = Math.max(t.y, 0) * 0.35 + this.offsetY;
-    const dz = t.z + oz;
 
     if (!this._inited) {
       this.node.setWorldPosition(new Vec3(dx, dy, dz));

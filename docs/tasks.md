@@ -42,6 +42,7 @@
 - [x] K2 投递收货：docs/k2/（ad-spec / bundle-budget / device-matrix / README）入仓；回执=K4-K8 待补实存、广告事件隔离、统计母本唯一
 - [x] 四门回归：tsc 0 错（本地 TS 5.9.3）/ smoke / sim 38/38 / verify-web 13/13
 - [x] package.json 增 devDependencies.typescript + package-lock；.gitignore 补 node_modules/
+- [x] **P0 弯道乱飞修复**：世界 x 回读当逻辑 x → 正反馈甩飞；laneX/playerX 分离 + 相机改路径锚点+逻辑侧向（双端）
 
 ## 时间预期（说实话）
 

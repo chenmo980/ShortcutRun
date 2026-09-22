@@ -69,7 +69,24 @@ Cocos Dashboard → **导入** → 选择本目录 `shortcut-run`。
 ## 7. 测试
 
 ```bash
-node tools/smoke.ts          # 关卡生成器：parity + 200 种子不变量 + bot 通关率 + 曲线漂移 + progression + 道具
-node tools/verify-web.mjs    # 浏览器版端到端 13 项断言（含道具门/换肤/marker 像素检测）
-node docs/qoder/sim.mjs      # 规则母本验收套件（Qoder 维护，35 项）
+node tools/smoke.ts          # 关卡生成器：parity + 200 种子不变量 + bot 通关率 + progression
+node tools/verify-web.mjs    # 浏览器版端到端 13 项断言
+node docs/qoder/sim.mjs      # 规则母本验收套件（Qoder 维护）
 ```
+
+## 8. 构建微信小游戏（V5 已实测通过）
+
+命令行一键构建（编辑器无头模式，约 1-2 分钟）：
+
+```bash
+& "E:\Program Files (x86)\CocosDashboard\CocosCreator.exe" --project "E:\WorkSpaces\WxSoftWare\shortcut-run" --build "platform=wechatgame"
+```
+
+产物在 `build/wechatgame/`（当前 **1.96MB / 24 文件**，低于 4MB 主包上限）。已验证：全部 21 个脚本打入 `assets/main/index.js`，game.js/game.json 齐全。
+
+**真机预览**：打开微信开发者工具 → 导入 `build/wechatgame` → 项目类型选**小游戏** → 点预览扫码真机试玩。
+
+工程要点：
+- `settings/v2/packages/project.json` 已配竖屏 720×1280 + 起始场景
+- `settings/v2/packages/engine.json` 已裁掉物理/spine/龙骨等未用模块（4.42MB → 1.96MB）
+- `assets/scenes/game.scene` 只含 Bootstrap 节点（相机由代码运行时自建）——手写场景若带手抄的 Camera/DirectionalLight 组件会导致构建期反序列化失败
