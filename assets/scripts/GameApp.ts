@@ -66,6 +66,7 @@ export class GameApp extends Component {
   private speedDip = 0; // 铺桥瞬间轻微减速（J4 手感）
   private runCycle = 0; // 角色步态相位
   private fell = false;  // 是否坠落死亡（决定 lose 姿势：旋水 or 站立）
+  private bridgeT = 0;   // 铺桥推掷动作剩余时间（v2 增强）
 
   onLoad(): void {
     if (!this.boxPrefab) {
@@ -133,6 +134,7 @@ export class GameApp extends Component {
     this.heldRight = false;
     this.dragging = false;
     this.fell = false;
+    this.bridgeT = 0;
     this.ui?.setBricks(0);
     this.ui?.setLevel(cur.level);
     this.ui?.hideResult();
@@ -276,6 +278,7 @@ export class GameApp extends Component {
     this.player.setPosition(new Vec3(x, y, z)); // rig 根节点在脚底
     // 角色姿势由 CharacterRig 接管（含转向侧倾/落水），这里不再手动旋转根节点
     if (this.state === 'run') this.runCycle += dt * (8 + this.speed * 0.7);
+    if (this.bridgeT > 0) this.bridgeT -= dt;
 
     if (this.state === 'run') {
       this.checkPickups(x, prevZ, z);
@@ -284,7 +287,9 @@ export class GameApp extends Component {
       this.checkGate(z);
     }
     this.track.syncStack(this.bricks);
-    const charState = this.state === 'fall' ? 'drowned' : (this.fell ? 'drowned' : 'stand');
+    const charState = this.state === 'fall' ? 'drowned'
+      : this.state === 'run' ? (this.bridgeT > 0 ? 'bridging' : 'running')
+      : (this.fell ? 'drowned' : 'stand');
     this.track.syncRig(charState, this.runCycle, this.targetX - x, this.bricks, dt);
     this.ui?.setProgress(z, this.levelDef.gateZ);
     // J1：速度因子喂相机（FOV 冲刺）
@@ -339,6 +344,7 @@ export class GameApp extends Component {
           this.ui?.setBricks(this.bricks);
           this.audio?.play('bridge');
           this.speedDip = 0.35;                 // J4：落桥停顿
+          this.bridgeT = 0.4;                    // v2：铺桥推掷动作窗
           this.camFollow.addShake(0.22, 0.25);  // J1：落桥震屏
           console.log(`[ShortcutRun] 铺桥 -${g.cost} 砖，剩余 ${this.bricks}`);
         } else {

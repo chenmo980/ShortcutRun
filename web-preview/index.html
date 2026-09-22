@@ -84,6 +84,7 @@ let cfg = { ...CFG }; // 按关卡切换（LevelCurve），全局代码只读 cf
 let levelNum = 1, attempt = 1, runT0 = 0;
 let speedDip = 0; // 铺桥瞬间轻微减速（J4 手感）
 let runCycle = 0, fell = false; // 角色动画相位 / 是否坠落死亡
+let bridgeT = 0; // 铺桥推掷动作剩余时间（v2 增强）
 
 // ===== 关卡推进（移植自 docs/qoder/progression.mjs 母本，localStorage 持久化） =====
 const SR_KEY = 'shortcut_run_progress_v1';
@@ -489,13 +490,35 @@ function buildChar() {
   const headbandRibbon = new THREE.Mesh(ribbonGeo, M.accent);
   headbandRibbon.position.set(0, 0.12, -0.32);
   headGroup.add(headbandRibbon);
-  // 头发（锥帽 + 刘海）
-  const hair = new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.35, 7), M.hair);
-  hair.position.set(0, 0.2, -0.04); hair.rotation.x = -0.2; headGroup.add(hair);
-  const fringe = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.12, 0.22), M.hair);
-  fringe.position.set(0, 0.24, 0.15); fringe.rotation.x = 0.25; headGroup.add(fringe);
+  // 表情：腮红 + 微笑（AI Studio v2 增强）
+  const blushGeo = new THREE.PlaneGeometry(0.11, 0.06);
+  const blushMat = new THREE.MeshBasicMaterial({ color: 0xff8a80, transparent: true, opacity: 0.85 });
+  const blushL = new THREE.Mesh(blushGeo, blushMat);
+  blushL.position.set(-0.19, -0.06, 0.25); blushL.rotation.y = 0.55; headGroup.add(blushL);
+  const blushR = new THREE.Mesh(blushGeo, blushMat);
+  blushR.position.set(0.19, -0.06, 0.25); blushR.rotation.y = -0.55; headGroup.add(blushR);
+  const smileGeo = new THREE.TorusGeometry(0.065, 0.016, 4, 8, Math.PI);
+  smileGeo.rotateX(Math.PI);
+  const smile = new THREE.Mesh(smileGeo, new THREE.MeshBasicMaterial({ color: 0x991b1b }));
+  smile.position.set(0, -0.12, 0.29); smile.rotation.x = -0.2; headGroup.add(smile);
+  // 立体碎发：主发团 + 三根风缕刺 + 层叠刘海 + 双鬓发簇（AI Studio v2 增强）
+  const hairGroup = new THREE.Group();
+  headGroup.add(hairGroup);
+  const crown = new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.42, 7), M.hair);
+  crown.position.set(0, 0.22, -0.05); crown.rotation.x = -0.32; hairGroup.add(crown);
+  const spikeGeo = new THREE.ConeGeometry(0.14, 0.35, 5);
+  spikeGeo.rotateX(-0.5);
+  const spike1 = new THREE.Mesh(spikeGeo, M.hair); spike1.position.set(-0.1, 0.32, -0.02); hairGroup.add(spike1);
+  const spike2 = new THREE.Mesh(spikeGeo, M.hair); spike2.position.set(0.1, 0.33, -0.04); spike2.rotation.z = -0.2; hairGroup.add(spike2);
+  const spike3 = new THREE.Mesh(spikeGeo, M.hair); spike3.position.set(0, 0.36, -0.12); spike3.rotation.x = -0.4; hairGroup.add(spike3);
+  const bang = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.14, 0.2), M.hair);
+  bang.position.set(0, 0.25, 0.16); bang.rotation.x = 0.32; hairGroup.add(bang);
+  const tuftGeo = new THREE.ConeGeometry(0.12, 0.28, 5);
+  tuftGeo.rotateZ(0.6);
+  const tuftL = new THREE.Mesh(tuftGeo, M.hair); tuftL.position.set(-0.25, 0.12, 0.05); hairGroup.add(tuftL);
+  const tuftR = new THREE.Mesh(tuftGeo, M.hair); tuftR.position.set(0.25, 0.12, 0.05); tuftR.rotation.z = -0.6; hairGroup.add(tuftR);
 
-  // 腿：髋 → 大腿 → 膝 → 小腿 → 鞋
+  // 腿：髋 → 大腿 → 膝 → 小腿 → 踝(脚步滚动) → 鞋
   const createLeg = (isLeft) => {
     const side = isLeft ? -1 : 1;
     const hip = new THREE.Group();
@@ -510,11 +533,20 @@ function buildChar() {
     const calfGeo = new THREE.CylinderGeometry(0.09, 0.075, 0.38, 6);
     calfGeo.translate(0, -0.19, 0);
     knee.add(new THREE.Mesh(calfGeo, M.skin));
-    const shoeGeo = new THREE.BoxGeometry(0.18, 0.14, 0.34);
-    shoeGeo.translate(0, -0.07, 0.06);
-    const foot = new THREE.Mesh(shoeGeo, M.shoes);
+    // 踝关节：脚掌俯仰（脚跟触地 +0.28 / 脚尖蹬地 -0.45）
+    const foot = new THREE.Group();
     foot.position.set(0, -0.36, 0);
     knee.add(foot);
+    const shoeGeo = new THREE.BoxGeometry(0.18, 0.14, 0.34);
+    shoeGeo.translate(0, -0.07, 0.06);
+    foot.add(new THREE.Mesh(shoeGeo, M.shoes));
+    const soleGeo = new THREE.BoxGeometry(0.19, 0.05, 0.36);
+    soleGeo.translate(0, -0.135, 0.06);
+    foot.add(new THREE.Mesh(soleGeo, CHAR_MATS.white));
+    // 后跟反光提环（ accent 色）
+    const heel = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.06, 0.03), M.accent);
+    heel.position.set(0, -0.07, -0.135);
+    foot.add(heel);
     return { hip, knee, foot };
   };
   const leftLeg = createLeg(true);
@@ -576,7 +608,9 @@ function animateChar(char, runCycle, steerVelocity, carriedPlanks, state, delta)
     return;
   }
   const stride = Math.sin(runCycle);
-  char.torso.rotation.x = 0.16 + (carriedPlanks > 15 ? 0.06 : 0);
+  // 负重反作用平衡（v2 增强）：搬得越多躯干抗压后仰、手臂内收、砖垛甩尾更重
+  const loadFactor = Math.min(carriedPlanks / 25, 1.0);
+  char.torso.rotation.x = 0.18 - loadFactor * 0.08;
   char.torso.rotation.y = Math.sin(runCycle) * 0.08;
   char.torso.rotation.z = lerp(char.torso.rotation.z, -steerVelocity * 0.32, delta * 12);
   char.torso.position.y = 0.72 + Math.abs(stride) * 0.12;
@@ -588,15 +622,22 @@ function animateChar(char, runCycle, steerVelocity, carriedPlanks, state, delta)
   char.leftLeg.knee.rotation.x = stride > 0 ? 0.1 : Math.max(0, -stride * 1.35);
   char.rightLeg.hip.rotation.x = -stride * 0.82;
   char.rightLeg.knee.rotation.x = -stride > 0 ? 0.1 : Math.max(0, stride * 1.35);
+  // 脚踝滚动（v2 增强）：前摆脚跟触地仰 +0.28，后摆脚尖蹬地 -0.45
+  const footRollL = stride > 0 ? (stride > 0.4 ? 0.28 : -0.1) : -stride * 0.45;
+  const footRollR = -stride > 0 ? (-stride > 0.4 ? 0.28 : -0.1) : stride * 0.45;
+  char.leftLeg.foot.rotation.x = lerp(char.leftLeg.foot.rotation.x, footRollL, delta * 16);
+  char.rightLeg.foot.rotation.x = lerp(char.rightLeg.foot.rotation.x, footRollR, delta * 16);
+  // 铺桥推掷（v2 增强）：bridging 状态下双臂高频下推
+  const bridgeThrust = state === 'bridging' ? Math.sin(runCycle * 3.5) * 0.22 : 0;
   if (carriedPlanks > 0) {
-    char.leftArm.shoulder.rotation.x = 0.58 + Math.sin(runCycle) * 0.08;
-    char.leftArm.shoulder.rotation.z = 0.22;
+    char.leftArm.shoulder.rotation.x = 0.56 + Math.sin(runCycle) * 0.06 + bridgeThrust;
+    char.leftArm.shoulder.rotation.z = 0.24 + loadFactor * 0.08; // 负重内收
     char.leftArm.shoulder.rotation.y = -0.28;
-    char.leftArm.elbow.rotation.x = -1.25;
-    char.rightArm.shoulder.rotation.x = 0.58 - Math.sin(runCycle) * 0.08;
-    char.rightArm.shoulder.rotation.z = -0.22;
+    char.leftArm.elbow.rotation.x = -1.28 + bridgeThrust * 0.6;
+    char.rightArm.shoulder.rotation.x = 0.56 - Math.sin(runCycle) * 0.06 + bridgeThrust;
+    char.rightArm.shoulder.rotation.z = -0.24 - loadFactor * 0.08;
     char.rightArm.shoulder.rotation.y = 0.28;
-    char.rightArm.elbow.rotation.x = -1.25;
+    char.rightArm.elbow.rotation.x = -1.28 + bridgeThrust * 0.6;
   } else {
     char.leftArm.shoulder.rotation.x = -stride * 0.8;
     char.leftArm.shoulder.rotation.z = 0.15;
@@ -607,7 +648,9 @@ function animateChar(char, runCycle, steerVelocity, carriedPlanks, state, delta)
     char.rightArm.shoulder.rotation.y = 0;
     char.rightArm.elbow.rotation.x = -0.6;
   }
-  char.plankMount.rotation.z = lerp(char.plankMount.rotation.z, -steerVelocity * 0.42, delta * 10);
+  // 砖垛惯性：越重甩尾越猛（v2 增强）
+  const inertia = 0.4 + loadFactor * 0.4;
+  char.plankMount.rotation.z = lerp(char.plankMount.rotation.z, -steerVelocity * inertia, delta * 10);
   char.plankMount.rotation.x = 0.04 + Math.sin(runCycle * 2) * 0.04;
 }
 let level, state = 'ready', bricks = 0, speed = cfg.runSpeed;
@@ -687,7 +730,7 @@ function buildLevel(cur) {
   state = 'ready'; bricks = 0; speed = cfg.runSpeed; shoeT = 0;
   playerX = 0; targetX = 0; playerY = 0; fallVel = 0;
   heldLeft = false; heldRight = false; dragging = false;
-  fell = false;
+  fell = false; bridgeT = 0;
   player.position.set(0, 0, 0);
   player.rotation.set(0, 0, 0);
   for (const m of stackMeshes) m.visible = false;
@@ -957,6 +1000,7 @@ function checkGaps(prevZ, z) {
         sfx.bridge();
         shake(0.22, 0.25); // 落桥震屏
         speedDip = 0.35;   // 铺桥瞬间轻微减速（J4 手感）
+        bridgeT = 0.4;     // 铺桥推掷动作窗（v2 增强）
         console.log(`[ShortcutRun] 铺桥 -${g.cost} 砖，剩余 ${bricks}`);
       } else {
         enterFall();
@@ -997,6 +1041,7 @@ function loop() {
       // 提速鞋：终速 ×1.35（可短暂超 maxSpeed，提速感优先）
       if (shoeT > 0) shoeT -= dt;
       if (speedDip > 0) speedDip -= dt;
+      if (bridgeT > 0) bridgeT -= dt;
       speed = Math.min(cfg.maxSpeed, cfg.runSpeed + bricks * cfg.speedPerBrick) * (shoeT > 0 ? 1.35 : 1) * (speedDip > 0 ? 0.55 : 1);
       z += speed * dt;
       const k = 1 - Math.exp(-cfg.steerSpeed * dt);
@@ -1011,7 +1056,7 @@ function loop() {
     player.position.set(x, playerY, z); // 根节点在脚底
     if (state === 'run') runCycle += dt * (8 + speed * 0.7); // 步频随速度
     const charState = state === 'ready' ? 'idle'
-      : state === 'run' ? 'running'
+      : state === 'run' ? (bridgeT > 0 ? 'bridging' : 'running')
       : state === 'fall' ? 'drowned'
       : state === 'win' ? 'finished'
       : (fell ? 'drowned' : 'idle'); // lose：掉下去的旋水，够砖差一步的站着
