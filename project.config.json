@@ -14,7 +14,7 @@
     "useCompilerPlugins": false
   },
   "compileType": "game",
-  "miniprogramRoot": "build/wechatgame/",
+  "miniprogramRoot": "build/wechatgame-001/",
   "simulatorPluginLibVersion": {},
   "packOptions": {
     "ignore": [],

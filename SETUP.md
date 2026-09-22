@@ -86,6 +86,17 @@ node docs/qoder/sim.mjs      # 规则母本验收套件（Qoder 维护）
 
 **真机预览**：打开微信开发者工具 → 导入 `build/wechatgame` → 项目类型选**小游戏** → 点预览扫码真机试玩。
 
+### 已知坑：基础库灰度导致启动崩溃
+
+若真机/模拟器报 `Cannot set property window of #<Window> which has only a getter`（`__initApp` 崩）：
+**是微信开发者工具开了“灰度基础库”**，与 Cocos 适配层冲突。修复（30 秒，永久）：
+1. 开发者工具右上角 **详情** → **本地设置**
+2. 取消勾选 **“使用灰度基础库”**（或把基础库版本选回正式版）
+3. 点**编译**重新运行
+
+控制台里 `[jsbridge] invoke getSystemInfo fail: jsbridge not ready` 是启动早期正常噪音，不用管。
+多机器统一可用 `node tools/patch-wechat-lib.mjs <正式版版本号>` 钉死构建产物的 libVersion。
+
 工程要点：
 - `settings/v2/packages/project.json` 已配竖屏 720×1280 + 起始场景
 - `settings/v2/packages/engine.json` 已裁掉物理/spine/龙骨等未用模块（4.42MB → 1.96MB）
