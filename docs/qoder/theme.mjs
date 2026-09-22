@@ -195,3 +195,14 @@ export const ARTSTUDIO = {
     gate: 0x9b5de5, pillar: 0x050517,
   },
 };
+
+// CLI：node theme.mjs → 打印规范盘+修复盘+ARTSTUDIO 全表验光结果，有不过者 exit 1
+if (process.argv[1] && process.argv[1].split('\\').join('/').endsWith('theme.mjs')) {
+  const r = verifyAll();
+  let bad = 0;
+  for (const [k, v] of Object.entries(r)) {
+    console.log(v.length ? `FAIL ${k}: ${v.join(' ; ')}` : `PASS ${k}`);
+    bad += v.length ? 1 : 0;
+  }
+  process.exit(bad ? 1 : 0);
+}

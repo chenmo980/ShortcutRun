@@ -357,7 +357,11 @@ const N = 2000;
   let badTs = '';
   for (let lv = 1; lv <= 60 && !badTs; lv++) {
     const m = cfgForLevel(lv), t = tsCfg(lv);
-    for (const k of Object.keys(m)) if (Math.abs(t[k] - m[k]) > 1e-9) { badTs = `L${lv}.${k}: ts=${t[k]} master=${m[k]}`; break; }
+    // 只比关卡曲线键；camOffset*/curve* 是我方表现层扩展(相机/弯道)，不参与曲线漂移
+    for (const k of Object.keys(m)) {
+      if (k.startsWith('cam') || k.startsWith('curve')) continue;
+      if (Math.abs(t[k] - m[k]) > 1e-9) { badTs = `L${lv}.${k}: ts=${t[k]} master=${m[k]}`; break; }
+    }
   }
   check('curve-drift lock: assets/LevelCurve.ts', !badTs, badTs);
 
@@ -368,6 +372,7 @@ const N = 2000;
     grab(/const CURVE = \[[\s\S]*?\];/, 'CURVE'),
     grab(/function marginFor\(level\)[^\n]*\n/, 'marginFor'),
     grab(/function ratioFor\(level\)[^\n]*\n/, 'ratioFor'),
+    grab(/function curveFor\(level\) \{[\s\S]*?\n\}/, 'curveFor'),
     grab(/function cfgForLevel\(level\) \{[\s\S]*?\n\}/, 'cfgForLevel'),
     'this.f = cfgForLevel;',
   ].join('\n');
@@ -377,7 +382,11 @@ const N = 2000;
   let badPv = '';
   for (let lv = 1; lv <= 60 && !badPv; lv++) {
     const m = cfgForLevel(lv), t = sb.f(lv);
-    for (const k of Object.keys(m)) if (Math.abs(t[k] - m[k]) > 1e-9) { badPv = `L${lv}.${k}: pv=${t[k]} master=${m[k]}`; break; }
+    // 同 TS 半边：camOffset*/curve* 是我方表现层扩展，不参与曲线漂移
+    for (const k of Object.keys(m)) {
+      if (k.startsWith('cam') || k.startsWith('curve')) continue;
+      if (Math.abs(t[k] - m[k]) > 1e-9) { badPv = `L${lv}.${k}: pv=${t[k]} master=${m[k]}`; break; }
+    }
   }
   check('curve-drift lock: web-preview inline', !badPv, badPv);
 }

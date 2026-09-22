@@ -2,6 +2,7 @@
 // 数值依据见 docs/drafts/balance-v1.md；验收带：真人 ≈ bot × 0.6~0.8
 // 注意：本文件零运行时 import（Cfg 仅作类型），tools/smoke.ts 可直接 import 做漂移断言
 import type { Cfg } from './config';
+import { CFG } from './config';
 
 // [length, gateCost, gwMin, gwMax, giMin, giMax, runSpeed, maxSpeed, speedPerBrick]
 const CURVE: Array<[number, number, number, number, number, number, number, number, number]> = [
@@ -36,7 +37,14 @@ export function ratioFor(level: number): number {
 
 // 饱和版（2026-09-21 Qoder 重做）：加深只跑两个 loop 然后收敛——
 // 实测 f/k 越过饱和点后供给崩成 3~13% 胜率墙；终局平台 ≈35~55% 胜率 + 每 loop 地图更长更新
-export function cfgForLevel(level: number, base: Cfg): Cfg {
+// 弯道曲线（我方表现层扩展，母本无此字段；L1-3 直道，之后渐弯——原版 Shortcut Run 的 S 弯）
+export function curveFor(level: number): { curveAmp: number; curveFreq: number; curvePhase: number } {
+  const l = ((Math.max(1, level) - 1) % 10) + 1;
+  if (l <= 3) return { curveAmp: 0, curveFreq: 0.12, curvePhase: 0 };
+  return { curveAmp: l <= 6 ? 2.2 : 3.2, curveFreq: 0.12, curvePhase: level * 1.7 };
+}
+
+export function cfgForLevel(level: number, base: Cfg = CFG): Cfg {
   const idx = (Math.max(1, level) - 1) % CURVE.length;
   const loop = Math.floor((Math.max(1, level) - 1) / CURVE.length);
   const f = 1 + Math.min(loop, 1) * 0.1;
@@ -53,6 +61,7 @@ export function cfgForLevel(level: number, base: Cfg): Cfg {
     supplyMargin: marginFor(level),
     // 人形有效拾取率≈0.62，k 低于 1/0.62≈1.6 后密度越高越饿死；1.5=实测终局平台下限
     supplyRatio: Math.max(1.5, ratioFor(level) - loop * 0.1),
+    ...curveFor(level), // 弯道（表现层，L1-3 直道）
   };
 }
 

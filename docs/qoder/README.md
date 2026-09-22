@@ -96,6 +96,8 @@ v4 开启道具时追加：`gates:[{z,type:'add'|'mul',v}]`（按 z 升序），
 
 17. **美术规格包（art-pack.md，2026-09-22）**：用户 force-push 了 React+three 美工工作台到 origin/main（零共同历史，主工程远端 15 提交暂不可见，本地完好+bundle 备份）。工作台产出四调色板全部过 Q5 规范（theme.mjs 新增 `ARTSTUDIO` 入 verifyAll 常绿锁 + **verifyTheme 新增 night 豁免通道**：夜/昏盘跳过天空亮度与天路明暗序，配对检查不减免）；角色=程序化五皮肤+抱板姿遮挡修复+跑步公式；渲染=FogExp2 0.007/PCFSoft 1024/55° 跟拍；附 Cocos 卡通水 shader 完整 effect 代码与 Mixamo 选型表。移植参数全在 art-pack.md，等 step-5 认领。
 
+18. **G1 汇总脚本已交付（telemetry-report.mjs，2026-09-22）**：读 `sr_telemetry_v1` 导出的事件数组，离线推导 failGapIdx/死因细分（seed 确定性重建关卡，采集侧零改动），输出每关 n/胜率/t中位/余砖中位/short数/断崖命中榜 + §2 触发器点名。三份合成集自测通过（609 局主集含 QA 后门与 short 注入：剔除 1/1、判级 8/8；全 short 集出行2、全高余砖集出行3）。自测纠偏一处：**症状判定用点胜率（n≥50），Wilson 下界仅作报告置信参考**——下界对带会双重扣噪声（n=60 时 87% 对 95% 带也常亮红灯），g1-tuning §1 同步改准；低胜率三亚型互斥（short主导→动门 / 集中断崖→动间距 / 散布→动 k），符合"一次一旋钮"铁律。
+
 ## 移植要求（给 step-5）
 
 - **移植目标 = `genLevelV3`**（一次到位，含 v2 前缀修复 + v2.1 间距 + tailSafe + margin）。你们已移植的 TS 版 genLevelV2 与母本 v2.1/v3 输出已有逐 seed 差异，替换后按 §1 口径重跑 parity（v1 基线永不变，可作为移植正确性的锚）。

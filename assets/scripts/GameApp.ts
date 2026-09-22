@@ -14,6 +14,7 @@ import { createProgress, ProgressStore } from './Progression';
 import { cycleTheme, currentTheme } from './Theme';
 import { applyTheme } from './BoxFactory';
 import { applyCharTheme } from './CharacterRig';
+import { curveFromCfg, bendX, headingAt, CurveState } from './CurvePath';
 import { AudioMgr } from './AudioMgr';
 import { TrackBuilder, RuntimePickup } from './TrackBuilder';
 import { CameraFollow } from './CameraFollow';
@@ -67,6 +68,7 @@ export class GameApp extends Component {
   private runCycle = 0; // 角色步态相位
   private fell = false;  // 是否坠落死亡（决定 lose 姿势：旋水 or 站立）
   private bridgeT = 0;   // 铺桥推掷动作剩余时间（v2 增强）
+  private curve: CurveState = { amp: 0, freq: 0.12, phase: 0 }; // 弯道（表现层）
 
   onLoad(): void {
     if (!this.boxPrefab) {
@@ -104,8 +106,8 @@ export class GameApp extends Component {
     const cur = this.prog.current((lv) => cfgForLevel(lv, CFG));
     this.levelNum = cur.level;
     this.attempt = Math.floor(cur.seed % 1000);
-    this.curSeed = cur.seed;
     this.cfg = cur.cfg;
+    this.curve = curveFromCfg(cur.cfg); // 弯道（表现层）
     // v4 道具：itemsFor 分带（L1-2 无道具），关闭时输出与 v3 逐字节一致
     this.levelDef = genLevelV3(cur.seed, this.cfg, { items: itemsFor(cur.level) ?? undefined });
     console.log(
@@ -116,9 +118,10 @@ export class GameApp extends Component {
     this.track.build(this.levelDef, this.cfg, cur.seed);
     this.pickups = this.track.pickups;
     this.player = this.track.buildPlayer(this.cfg);
-    this.player.setPosition(new Vec3(0, 0, 0));
-    this.player.eulerAngles = new Vec3(0, 0, 0);
+    this.player.setPosition(new Vec3(bendX(0, this.curve), 0, 0));
+    this.player.eulerAngles = new Vec3(0, headingAt(0, this.curve), 0);
     this.camFollow.target = this.player;
+    this.camFollow.reset();
     this.camFollow.offsetY = this.cfg.camOffsetY;
     this.camFollow.offsetZ = this.cfg.camOffsetZ;
     this.camFollow.xFactor = this.cfg.camXFactor;
@@ -275,7 +278,9 @@ export class GameApp extends Component {
       if (y < -8) { this.lose('掉落！'); return; }
     }
 
-    this.player.setPosition(new Vec3(x, y, z)); // rig 根节点在脚底
+    this.player.setPosition(new Vec3(
+      bendX(z, this.curve) + x * Math.cos(headingAt(z, this.curve)), y, z)); // rig 根节点在脚底，随弯道
+    this.player.eulerAngles = new Vec3(0, headingAt(z, this.curve), 0); // 朝向=切线
     // 角色姿势由 CharacterRig 接管（含转向侧倾/落水），这里不再手动旋转根节点
     if (this.state === 'run') this.runCycle += dt * (8 + this.speed * 0.7);
     if (this.bridgeT > 0) this.bridgeT -= dt;
@@ -292,9 +297,10 @@ export class GameApp extends Component {
       : (this.fell ? 'drowned' : 'stand');
     this.track.syncRig(charState, this.runCycle, this.targetX - x, this.bricks, dt);
     this.ui?.setProgress(z, this.levelDef.gateZ);
-    // J1：速度因子喂相机（FOV 冲刺）
+    // J1：速度因子喂相机（FOV 冲刺）；弯道：切线角喂相机（贴路径后方）
     const span = Math.max(0.1, this.cfg.maxSpeed - this.cfg.runSpeed);
     this.camFollow.speedFactor = Math.max(0, Math.min(1, (this.speed - this.cfg.runSpeed) / span));
+    this.camFollow.targetHeading = headingAt(z, this.curve);
   }
 
   // 拾取判定：本帧位移区间 [prevZ, z] 与拾取点区间相交即吃到（防高帧移动量穿透）

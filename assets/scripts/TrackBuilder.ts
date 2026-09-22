@@ -1,6 +1,7 @@
 // 场景搭建器：用同一个灰盒实例化出跑道/断崖/砖块/终点门/玩家
 // 零装配模式：不指定 boxPrefab 时用 BoxFactory 程序化造盒（默认）
 // 换皮模式：指定 boxPrefab 后改用 prefab，几何逻辑一行不用改
+// 弯道：所有关卡空间物件走 lbox()（bend 表现层变换）；LevelGen 数据不变
 const { ccclass, property } = _decorator;
 import { _decorator, Component, Node, Prefab, Vec3, instantiate } from 'cc';
 import type { Cfg } from './config';
@@ -8,6 +9,7 @@ import type { LevelDef, GapDef, PickupDef, ItemGateDef } from './LevelGen';
 import { tweenPos, tweenScale, clamp } from './util';
 import { spawnBox, BoxKind } from './BoxFactory';
 import { buildCharacter, animateCharacter, CharRig, CharState } from './CharacterRig';
+import { curveFromCfg, bendX, headingAt, secant, CurveState } from './CurvePath';
 
 export interface RuntimePickup {
   node: Node;
@@ -23,6 +25,7 @@ export class TrackBuilder extends Component {
   level!: LevelDef;
   cfg!: Cfg;
   pickups: RuntimePickup[] = [];
+  curve: CurveState = { amp: 0, freq: 0.12, phase: 0 };
 
   private gateWalls: Node[] = [];
   private stackNodes: Node[] = [];
@@ -39,13 +42,27 @@ export class TrackBuilder extends Component {
     return spawnBox(parent, kind, scale.x, scale.y, scale.z, pos.x, pos.y, pos.z);
   }
 
+  // 弯道空间盒：pos 为 level-space (x,y,z)，位置/朝向随弯道；z 长度按斜率补偿
+  private lbox(kind: BoxKind, scale: Vec3, pos: Vec3): Node {
+    const h = headingAt(pos.z, this.curve);
+    const n = this.box(
+      kind,
+      new Vec3(scale.x, scale.y, scale.z * secant(pos.z, this.curve)),
+      new Vec3(bendX(pos.z, this.curve) + pos.x * Math.cos(h), pos.y, pos.z),
+      this.node,
+    );
+    n.eulerAngles = new Vec3(0, h, 0);
+    return n;
+  }
+
   build(level: LevelDef, cfg: Cfg, seed = 1): void {
     this.level = level;
     this.cfg = cfg;
+    this.curve = curveFromCfg(cfg);
     this.node.removeAllChildren();
     this.gateWalls = [];
     this.stackNodes = [];
-    // 地面（跑道下面的绿地，给纵深参照）
+    // 地面（跑道下面的绿地，给纵深参照；世界空间居中，不随弯道）
     this.box('ground', new Vec3(60, 0.4, cfg.levelLength + 80), new Vec3(0, -0.6, level.length / 2 - 10), this.node);
     this.buildRoad();
     this.buildPickups();
@@ -66,12 +83,14 @@ export class TrackBuilder extends Component {
   }
 
   private road(z0: number, z1: number, w: number): void {
-    const len = z1 - z0;
-    if (len <= 0.1) return;
-    this.box('road', new Vec3(w, 0.4, len), new Vec3(0, -0.2, (z0 + z1) / 2), this.node);
-    // 白色边线（道路边界可读性，J2）
-    for (const sx of [-1, 1]) {
-      this.box('edge', new Vec3(0.12, 0.08, len - 0.2), new Vec3(sx * (w / 2 - 0.12), 0.02, (z0 + z1) / 2), this.node);
+    // 弯道：道路按 2m 块随弯道排布（直道时块间无缝）
+    const CH = 2;
+    for (let zz = z0; zz < z1 - 0.1; zz += CH) {
+      const len = Math.min(CH, z1 - zz);
+      this.lbox('road', new Vec3(w, 0.4, len), new Vec3(0, -0.2, zz + len / 2));
+      for (const sx of [-1, 1]) {
+        this.lbox('edge', new Vec3(0.12, 0.08, len - 0.2), new Vec3(sx * (w / 2 - 0.12), 0.02, zz + len / 2));
+      }
     }
   }
 
@@ -80,8 +99,8 @@ export class TrackBuilder extends Component {
     const w = this.cfg.trackHalfWidth * 2 + 0.6;
     for (const g of this.level.gaps) {
       for (let i = 0; i < 3; i++) {
-        this.box(i % 2 === 0 ? 'warn1' : 'warn2',
-          new Vec3(w - 0.4, 0.06, 0.4), new Vec3(0, 0.03, g.zStart - 1.3 + i * 0.42), this.node);
+        this.lbox(i % 2 === 0 ? 'warn1' : 'warn2',
+          new Vec3(w - 0.4, 0.06, 0.4), new Vec3(0, 0.03, g.zStart - 1.3 + i * 0.42));
       }
     }
   }
@@ -98,8 +117,8 @@ export class TrackBuilder extends Component {
       const z = 3 + (i / n) * (this.level.gateZ - 6);
       const h = 2.5 + r1 * 7;
       const bw = 1.5 + r2 * 2;
-      this.box(r3 < 0.5 ? 'building1' : 'building2',
-        new Vec3(bw, h, bw), new Vec3(side * (6.5 + r3 * 8), h / 2 - 0.5, z), this.node);
+      this.lbox(r3 < 0.5 ? 'building1' : 'building2',
+        new Vec3(bw, h, bw), new Vec3(side * (6.5 + r3 * 8), h / 2 - 0.5, z));
     }
   }
 
@@ -109,14 +128,15 @@ export class TrackBuilder extends Component {
       if (def.kind === 'shoe') {
         const g = new Node('Shoe');
         g.parent = this.node;
-        g.setPosition(new Vec3(def.x, 0.05, def.z));
+        const h = headingAt(def.z, this.curve);
+        g.setPosition(new Vec3(bendX(def.z, this.curve) + def.x, 0.05, def.z));
         g.setRotationFromEuler(new Vec3(0, 34, 0));
         this.box('shoe', new Vec3(0.5, 0.14, 0.26), new Vec3(0, 0.07, 0), g);
         this.box('shoe', new Vec3(0.3, 0.2, 0.24), new Vec3(-0.08, 0.24, 0), g);
         return { node: g, def, taken: false };
       }
       const s = this.cfg.brickUnit;
-      const node = this.box('brick', new Vec3(s, s, s), new Vec3(def.x, s / 2 + 0.05, def.z), this.node);
+      const node = this.lbox('brick', new Vec3(s, s, s), new Vec3(def.x, s / 2 + 0.05, def.z));
       return { node, def, taken: false };
     });
   }
@@ -132,9 +152,9 @@ export class TrackBuilder extends Component {
 
   private buildItemGate(g: ItemGateDef, halfW: number): void {
     const kind: BoxKind = g.type === 'add' ? 'gateAdd' : 'gateMul';
-    this.box('pillar', new Vec3(0.4, 2.4, 0.4), new Vec3(-halfW, 1.2, g.z), this.node);
-    this.box('pillar', new Vec3(0.4, 2.4, 0.4), new Vec3(halfW, 1.2, g.z), this.node);
-    this.box(kind, new Vec3(halfW * 2 + 0.4, 0.7, 0.35), new Vec3(0, 2.55, g.z), this.node);
+    this.lbox('pillar', new Vec3(0.4, 2.4, 0.4), new Vec3(-halfW, 1.2, g.z));
+    this.lbox('pillar', new Vec3(0.4, 2.4, 0.4), new Vec3(halfW, 1.2, g.z));
+    this.lbox(kind, new Vec3(halfW * 2 + 0.4, 0.7, 0.35), new Vec3(0, 2.55, g.z));
   }
 
   takePickup(p: RuntimePickup): void {
@@ -147,11 +167,11 @@ export class TrackBuilder extends Component {
     const wallW = (halfW * 2) / 3;
     for (let i = -1; i <= 1; i++) {
       this.gateWalls.push(
-        this.box('gate', new Vec3(wallW, 1.4, 0.4), new Vec3(i * wallW, 0.7, this.level.gateZ), this.node)
+        this.lbox('gate', new Vec3(wallW, 1.4, 0.4), new Vec3(i * wallW, 0.7, this.level.gateZ))
       );
     }
     for (const sx of [-1, 1]) {
-      this.box('pillar', new Vec3(0.5, 2.8, 0.5), new Vec3(sx * (halfW + 0.35), 1.4, this.level.gateZ), this.node);
+      this.lbox('pillar', new Vec3(0.5, 2.8, 0.5), new Vec3(sx * (halfW + 0.35), 1.4, this.level.gateZ));
     }
   }
 
@@ -160,8 +180,8 @@ export class TrackBuilder extends Component {
     const w = this.cfg.trackHalfWidth * 2 + 0.6;
     const len = g.zEnd - g.zStart;
     const zc = (g.zStart + g.zEnd) / 2;
-    const b = this.box('bridge', new Vec3(w, 0.4, len), new Vec3(0, 4, zc), this.node);
-    tweenPos(b, 0.25, new Vec3(0, -0.2, zc));
+    const b = this.lbox('bridge', new Vec3(w, 0.4, len), new Vec3(0, 4, zc));
+    tweenPos(b, 0.25, new Vec3(b.position.x, -0.2, zc));
   }
 
   openGate(): void {
@@ -181,7 +201,7 @@ export class TrackBuilder extends Component {
     }
     this.rig = buildCharacter(player);
 
-    // 头顶砖垛：携带量可视化（挂 plankMount，最多 12 块）
+    // 胸前手抱砖垛：携带量可视化（挂 plankMount，最多 12 块）
     for (let i = 0; i < 12; i++) {
       const s = cfg.brickUnit * 0.85;
       const brick = this.box('brick', new Vec3(s, s, s), new Vec3(0, 0.08 + i * s * 0.92, 0.04), this.rig.plankMount);

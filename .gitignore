@@ -2,3 +2,5 @@ library/
 temp/
 profiles/
 *.log
+
+.tmp-*

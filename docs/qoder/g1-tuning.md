@@ -11,14 +11,15 @@
   t,                 // 局内计时（预览口径 elapsed-runT0，与 PAR/bot t 同单位）
   bricksLeft,        // 到门/失败瞬间存量（win=门前余量，与 botRun 语义一致，不扣 gateCost）
   failZ, failGapIdx, // 失败位置 + 第几个断崖（win 时 null）
-  pickupsTotal }     // 图上砖簇拾取总数（=level.pickups 无 kind 计数）
+  pickupsTotal }     // 图上拾取物总数（=level.pickups.length 全量含鞋，双端实况一致；不进 §2 触发器，仅图密度参考）
 ```
 
 -  web-preview：`__game` 已暴露 `progress()`；建议 win()/lose() 各加一行 push 进
   `localStorage['sr_telemetry_v1']` 环形数组（封顶 500 条），我出汇总脚本读它。
 - Cocos/真机：同一 schema 走 `wx.reportEvent`（键名一致），别自建字段。
 - 样本门槛：**每关 ≥50 局**才允许进回调判断；不足就只看趋势不动数值。
-- 胜率比较一律用 Wilson 95% 区间下界对带（30 局里 ±15pt 都是噪声）。
+- 症状判定（§2 触发）用**点胜率**对带且 n≥50；Wilson 95% 下界仅作报告里的置信参考——一律用下界对带会双重扣噪声，n=60 时 87% 对 95% 带也常亮红灯（telemetry-report 自测实证）。
+- 汇总脚本**已交付**：`docs/qoder/telemetry-report.mjs`（cc-free）。导出 `sr_telemetry_v1` 的 JSON 数组 → `node docs/qoder/telemetry-report.mjs events.json`，出每关 n/胜率/下界/t中位/余砖中位/short数/断崖命中榜 + §2 触发器点名（低胜率三亚型互斥：short主导→行2，集中断崖→行4，散布→行1）。failGapIdx/死因分类离线推导，采集侧零改动。
 
 ## 2. 回调公式（症状 → 单旋钮，全部改 levels.mjs，不改生成器结构）
 

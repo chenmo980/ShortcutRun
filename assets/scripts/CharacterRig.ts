@@ -178,8 +178,8 @@ export function buildCharacter(root: Node): CharRig {
   const leftArm = createArm(true);
   const rightArm = createArm(false);
 
-  // 砖垛挂点：头顶（追尾相机可见；母本胸前方案会遮挡追尾视角）
-  const plankMount = joint(torso, 0, 1.45, 0.02, 'PlankMount');
+  // 砖垛挂点：胸前手抱位（AI Studio 母本方案；相机已调高成俯视追尾使其可见）
+  const plankMount = joint(torso, 0, 0.58, 0.62, 'PlankMount');
 
   return { root, torso, head, ribbon, leftArm, rightArm, leftLeg, rightLeg, plankMount };
 }
@@ -194,7 +194,7 @@ function rot(n: Node, x: number, y = 0, z = 0): void {
 
 export function animateCharacter(r: CharRig, runCycle: number, steerVel: number, planks: number, state: CharState, dt: number): void {
   if (state === 'drowned') {
-    r.root.eulerAngles = new Vec3(lerp(r.root.eulerAngles.x, Math.PI / 2, dt * 5), 0, lerp(r.root.eulerAngles.z, 0.6, dt * 4));
+    r.root.eulerAngles = new Vec3(lerp(r.root.eulerAngles.x, Math.PI / 2, dt * 5), r.root.eulerAngles.y, lerp(r.root.eulerAngles.z, 0.6, dt * 4));
     r.torso.setPosition(new Vec3(r.torso.position.x, lerp(r.torso.position.y, -0.8, dt * 3), r.torso.position.z));
     return;
   }

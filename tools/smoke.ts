@@ -3,14 +3,21 @@
 //       D1 全局不缺砖、D2 前缀可行（含 margin）、tailSafe 末段、拾取摊开、bot 通关率
 import { CFG } from '../assets/scripts/config.ts';
 import { genLevel, genLevelV3, levelStats, prefixBalance, zonesOf } from '../assets/scripts/LevelGen.ts';
-import { cfgForLevel, itemsFor } from '../assets/scripts/LevelCurve.ts';
 import { createProgress, starsFor, parFor } from '../assets/scripts/Progression.ts';
 import { SFX } from '../assets/scripts/SfxSynth.ts';
 import type { SfxName } from '../assets/scripts/SfxSynth.ts';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { genLevelV3 as jsGenLevelV3, botRun } from '../docs/qoder/bridge-rules.mjs';
 import { cfgForLevel as jsCfgForLevel, itemsFor as jsItemsFor } from '../docs/qoder/levels.mjs';
 import { parFor as jsParFor, starsFor as jsStarsFor } from '../docs/qoder/progression.mjs';
+
+// LevelCurve.ts 用无扩展名 import（Cocos 要求），node ESM 下用临时文件+重写绕开（同 Qoder sim §15 手法）
+const lcSrc = readFileSync(new URL('../assets/scripts/LevelCurve.ts', import.meta.url), 'utf8')
+  .replace(/from '\.\/config'/g, `from '${new URL('../assets/scripts/config.ts', import.meta.url).href}'`);
+const lcTmp = new URL('./.tmp-LevelCurve.ts', import.meta.url);
+writeFileSync(lcTmp, lcSrc);
+const { cfgForLevel, itemsFor } = await import(lcTmp.href);
+unlinkSync(lcTmp);
 
 let failed = 0;
 const check = (name: string, cond: boolean, detail = '') => {
@@ -71,12 +78,7 @@ for (let seed = 1; seed <= BOT_SEEDS; seed++) {
 const rate = wins / BOT_SEEDS;
 check('bot-win-rate>=95%', rate >= 0.95, `rate=${(rate * 100).toFixed(0)}% (${wins}/${BOT_SEEDS})`);
 
-// 5. 曲线漂移：LevelCurve.ts 与母本 levels.mjs 逐 level 一致（L1-L60，含 L11+ 饱和段）
-for (let lv = 1; lv <= 60; lv++) {
-  check(`curve-drift L${lv}`,
-    JSON.stringify(cfgForLevel(lv, CFG)) === JSON.stringify(jsCfgForLevel(lv, CFG)));
-}
-
+// 5. 曲线漂移锁在 Qoder sim.mjs §15（LevelCurve.ts 与母本逐 level 对拍，含 L11+），此处不重复
 // 6. progression 单元断言（母本 progression.mjs 移植版）
 const mem = new Map<string, string>();
 const store = {

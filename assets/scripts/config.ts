@@ -26,6 +26,11 @@ export interface Cfg {
   supplyMargin?: number;   // 每个前缀点至少剩余砖数(真人容错余量)
   supplyRatio?: number;    // 累计供给 >= k × 累计需求(漏吃 25% 时的溢出倍率)
 
+  // ---- 弯道(我方表现层扩展,见 CurvePath.ts;amp=0 为直道) ----
+  curveAmp?: number;       // 弯曲幅度(米)
+  curveFreq?: number;      // 弯曲频率(每米弧度)
+  curvePhase?: number;     // 相位(每关不同,弯形不重样)
+
   // ---- v4 道具(加砖门/倍数门/加速鞋,母本 bridge-rules v4) ----
   enableItems?: boolean;   // true 时由 GameApp 走 LevelCurve.itemsFor 分带;缺省关闭=输出与 v3 逐字节一致
 
@@ -63,8 +68,8 @@ export const CFG: Cfg = {
 
   brickUnit: 0.3,
 
-  camOffsetY: 5.2,
-  camOffsetZ: -7.5,
+  camOffsetY: 6.8,
+  camOffsetZ: -8.8,
   camLerp: 6,
   camXFactor: 0.6,
 };

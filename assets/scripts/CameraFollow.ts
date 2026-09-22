@@ -6,11 +6,12 @@ import { _decorator, Component, Node, Vec3, Camera } from 'cc';
 @ccclass('CameraFollow')
 export class CameraFollow extends Component {
   target: Node | null = null;
-  offsetY = 5.2;
-  offsetZ = -7.5;
+  offsetY = 6.8;
+  offsetZ = -8.8;
   xFactor = 0.6;   // 横向不完全跟随，保留跑道视野
   lerp = 6;
   speedFactor = 0; // 0~1，由 GameApp 每帧喂入（速度占比），驱动 FOV 冲刺
+  targetHeading = 0; // 路径切线角（弯道）：offset 绕 Y 旋转，相机贴路径后方
   private cam: Camera | null = null;
   private baseFov = 45;
   private shakeT = 0;
@@ -21,6 +22,11 @@ export class CameraFollow extends Component {
     if (this.cam) this.baseFov = this.cam.fov;
   }
 
+  // 换关时调用：重新 snap 到目标身后
+  reset(): void {
+    this._inited = false;
+  }
+
   addShake(mag: number, dur: number): void {
     this.shakeMag = Math.max(this.shakeMag, mag);
     this.shakeT = Math.max(this.shakeT, dur);
@@ -29,9 +35,12 @@ export class CameraFollow extends Component {
   lateUpdate(dt: number): void {
     if (!this.target) return;
     const t = this.target.worldPosition;
-    const dx = t.x * this.xFactor;
+    // offset (0, offsetY, offsetZ) 绕 Y 旋转 targetHeading → 相机贴在弯道路径后方
+    const ox = this.offsetZ * Math.sin(this.targetHeading);
+    const oz = this.offsetZ * Math.cos(this.targetHeading);
+    const dx = t.x * this.xFactor + ox;
     const dy = Math.max(t.y, 0) * 0.35 + this.offsetY;
-    const dz = t.z + this.offsetZ;
+    const dz = t.z + oz;
 
     if (!this._inited) {
       this.node.setWorldPosition(new Vec3(dx, dy, dz));
@@ -57,7 +66,7 @@ export class CameraFollow extends Component {
         p.z,
       ));
     }
-    this.node.lookAt(new Vec3(t.x, t.y + 0.8, t.z));
+    this.node.lookAt(new Vec3(t.x, t.y + 1.05, t.z)); // 略高于胸，俯视追尾
 
     // FOV 冲刺：基础 45 → +8（速度感）
     if (this.cam) {
