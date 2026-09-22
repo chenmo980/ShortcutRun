@@ -138,3 +138,8 @@ G1 门禁：用户试玩“还想再来一把”= 立项。门禁不过，谁都
   ② **art-studio 工作台同步更新**：合并入 `chinesePresets.ts`（国风角色元数据与 Mixamo FBX 自动映射生成器）、最新 `characterBuilder.ts`、`ArtStudioPanel.tsx`、`themes.ts` 及 `docs/ART-SPEC.md`。
   ③ **Cocos 侧 CharacterRig.ts 接入预设契约**：导出 `CharSkinType`、`CHAR_SKINS` 及 `setCharacterSkin()/getCharacterSkin()`，主题变更与角色换装兼容，100% 保持向后兼容。
   ④ **自动化验证全绿**：`smoke.ts` 零错误 / `sim.mjs` 38/38 全项通过（含 curve-drift、progression-parity、whole-page compile lock 全绿）。
+- 2026-09-22 | AI-Studio | **【双端 3D 模型装配彻底激活】解决本地拉取后模型未变问题**：
+  ① **根因修复**：此前 Cocos Creator 侧 `CharacterRig.ts` 的 `activeSkin` 默认停留于旧版 `'runner'` 且未动态装配专属 3D 几何配件（紧箍/双雉翎/锁子甲等仅在原型侧）；web-preview 侧现代发带发团未随国风身份隐藏导致视觉覆盖。
+  ② **Cocos 侧全面激活国风 3D 配饰装配与动力学**：`GEO` 补充金箍、乾坤圈、马尾、发髻、腰封等程序化图元；`mats` 补入金/赤红/夜黑材质；`applyRigSkin` 动态创建与隐藏部件；`activeSkin` 默认直接置为 `'wukong'`（开局即孙悟空）；`GameApp.ts` 接入 `KeyCode.KEY_C` 换装刷新。
+  ③ **web-preview 视觉修正**：装配国风角色时自动隐藏现代运动发带及冲突部件，凤翅紫金冠与锁子甲清晰呈现。
+  ④ **自动化门禁全部全绿**：`smoke.ts` 零错误 / `sim.mjs` 38/38 全项通过。

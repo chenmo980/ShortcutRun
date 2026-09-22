@@ -13,7 +13,7 @@ import { cfgForLevel, itemsFor } from './LevelCurve';
 import { createProgress, ProgressStore } from './Progression';
 import { cycleTheme, currentTheme } from './Theme';
 import { applyTheme } from './BoxFactory';
-import { applyCharTheme } from './CharacterRig';
+import { applyCharTheme, setCharacterSkin, getCharacterSkin, CharSkinType, CHAR_SKINS } from './CharacterRig';
 import { curveFromCfg, bendX, headingAt, CurveState } from './CurvePath';
 import { AudioMgr } from './AudioMgr';
 import { TrackBuilder, RuntimePickup } from './TrackBuilder';
@@ -238,6 +238,7 @@ export class GameApp extends Component {
     this.startRun();
     this.applyKeyHold(ev.keyCode, true);
     if (ev.keyCode === KeyCode.KEY_T) this.toggleTheme();
+    if (ev.keyCode === KeyCode.KEY_C) this.toggleCharacterSkin();
     if (ev.keyCode === KeyCode.KEY_M && this.audio) {
       const m = this.audio.toggleMute();
       console.log(`[ShortcutRun] 音效 ${m ? '关' : '开'}`);
@@ -251,6 +252,16 @@ export class GameApp extends Component {
   private applyKeyHold(code: number, down: boolean): void {
     if (code === KeyCode.KEY_A || code === KeyCode.ARROW_LEFT) this.heldLeft = down;
     if (code === KeyCode.KEY_D || code === KeyCode.ARROW_RIGHT) this.heldRight = down;
+  }
+
+  // C 键切换角色预设：齐天大圣 孙悟空 / 莲花哪吒 / 少年侠客 / 功夫熊猫 / 国潮刺客 / 经典跑者
+  private toggleCharacterSkin(): void {
+    const keys: CharSkinType[] = ['wukong', 'nezha', 'guofeng', 'panda', 'ninja', 'runner'];
+    const cur = getCharacterSkin();
+    const next = keys[(keys.indexOf(cur) + 1) % keys.length];
+    setCharacterSkin(next);
+    console.log(`[ShortcutRun] 切换角色预设：${CHAR_SKINS[next]?.name || next}`);
+    this.startLevel();
   }
 
   // T 键换肤：切主题 + 清各处材质缓存 + 重建当前关卡（种子不变，同图换色）

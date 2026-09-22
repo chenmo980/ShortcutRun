@@ -542,6 +542,7 @@ function buildChar() {
   const eyeL = new THREE.Mesh(eyeGeo, M.eyes); eyeL.scale.set(1, 1.3, 0.5); eyeL.position.set(-0.12, 0.04, 0.28); eyeL.rotation.y = 0.15; headGroup.add(eyeL);
   const eyeR = new THREE.Mesh(eyeGeo, M.eyes); eyeR.scale.set(1, 1.3, 0.5); eyeR.position.set(0.12, 0.04, 0.28); eyeR.rotation.y = -0.15; headGroup.add(eyeR);
   const band = new THREE.Mesh(new THREE.CylinderGeometry(0.335, 0.335, 0.1, 12, 1, true), M.accent);
+  band.name = 'Band';
   band.position.y = 0.1; headGroup.add(band);
   const ribbonGeo = new THREE.BoxGeometry(0.14, 0.04, 0.55);
   ribbonGeo.translate(0, 0, -0.27);
@@ -562,6 +563,7 @@ function buildChar() {
   smile.position.set(0, -0.12, 0.29); smile.rotation.x = -0.2; headGroup.add(smile);
   // 立体碎发：主发团 + 三根风缕刺 + 层叠刘海 + 双鬓发簇（AI Studio v2 增强）
   const hairGroup = new THREE.Group();
+  hairGroup.name = 'HairGroup';
   headGroup.add(hairGroup);
   const crown = new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.42, 7), M.hair);
   crown.position.set(0, 0.22, -0.05); crown.rotation.x = -0.32; hairGroup.add(crown);
@@ -729,8 +731,29 @@ function applySkin(c, skinKey) {
   currentSkinKey = s.id;
   const accH = c.skinAccHead || c.head.getObjectByName('SkinAccHead');
   const accT = c.skinAccTorso || c.torso.getObjectByName('SkinAccTorso');
+  const band = c.head.getObjectByName('Band');
+  const hairGroup = c.head.getObjectByName('HairGroup');
+  const ribbon = c.head.getObjectByName('Ribbon');
   if (accH) while (accH.children.length > 0) accH.remove(accH.children[0]);
   if (accT) while (accT.children.length > 0) accT.remove(accT.children[0]);
+
+  if (s.id === 'wukong') {
+    if (band) band.visible = false;
+    if (ribbon) ribbon.visible = false;
+    if (hairGroup) hairGroup.visible = true;
+  } else if (s.id === 'nezha') {
+    if (band) band.visible = false;
+    if (ribbon) ribbon.visible = false;
+    if (hairGroup) hairGroup.visible = false;
+  } else if (s.id === 'guofeng') {
+    if (band) band.visible = false;
+    if (ribbon) ribbon.visible = false;
+    if (hairGroup) hairGroup.visible = false;
+  } else {
+    if (band) band.visible = true;
+    if (ribbon) ribbon.visible = true;
+    if (hairGroup) hairGroup.visible = true;
+  }
 
   CHAR_MATS.clothTop.color.setHex(s.clothTop);
   CHAR_MATS.clothBottom.color.setHex(s.clothBottom);

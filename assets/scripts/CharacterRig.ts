@@ -44,13 +44,19 @@ const GEO = {
   hairSpike: () => mesh('hairSpike', () => utils.createMesh(primitives.cone(0.14, 0.35, { radialSegments: 5 }))),
   hairTuft: () => mesh('hairTuft', () => utils.createMesh(primitives.cone(0.12, 0.28, { radialSegments: 5 }))),
   smile: () => mesh('smile', () => utils.createMesh(primitives.torus(0.065, 0.016, { arc: Math.PI }))),
+  circlet: () => mesh('circlet', () => utils.createMesh(primitives.torus(0.335, 0.025, { radialSegments: 8, tubularSegments: 20 }))),
+  bun: () => mesh('bun', () => utils.createMesh(primitives.sphere(0.12, { segments: 8 }))),
+  qiankun: () => mesh('qiankun', () => utils.createMesh(primitives.torus(0.24, 0.028, { radialSegments: 8, tubularSegments: 20 }))),
+  pony: () => mesh('pony', () => utils.createMesh(primitives.cone(0.14, 0.55, { radialSegments: 6 }))),
+  sash: () => mesh('sash', () => utils.createMesh(primitives.cylinder(0.35, 0.33, 0.12, { radialSegments: 8 }))),
 };
 
-// ---------- 材质（主题色四件 + 固定色四件） ----------
+// ---------- 材质（主题色四件 + 固定色四件 + 国风专属三件） ----------
 const mats: Record<string, Material> = {
   clothTop: new Material(), clothBottom: new Material(), skin: new Material(), accent: new Material(),
   hair: new Material(), shoes: new Material(), eyes: new Material(), white: new Material(),
   blush: new Material(), smile: new Material(),
+  gold: new Material(), red: new Material(), dark: new Material(),
 };
 function initMat(m: Material, hex: number, alpha = 255): void {
   m.initialize({ effectName: 'builtin-unlit', defines: { USE_COLOR: true }, technique: 0 });
@@ -67,6 +73,9 @@ initMat(mats.eyes, 0x0f172a);
 initMat(mats.white, 0xffffff);
 initMat(mats.blush, 0xff8a80, 220);
 initMat(mats.smile, 0x991b1b);
+initMat(mats.gold, 0xf59e0b);
+initMat(mats.red, 0xdc2626);
+initMat(mats.dark, 0x0f172a);
 
 // ---------- 国风与经典角色预设（AI Studio 优势移植） ----------
 export type CharSkinType = 'runner' | 'wukong' | 'nezha' | 'guofeng' | 'panda' | 'ninja';
@@ -138,7 +147,7 @@ export const CHAR_SKINS: Record<CharSkinType, SkinDef> = {
   },
 };
 
-let activeSkin: CharSkinType = 'runner';
+let activeSkin: CharSkinType = 'wukong'; // 默认国风之光：齐天大圣 孙悟空
 
 export function setCharacterSkin(skin: CharSkinType): void {
   activeSkin = skin;
@@ -147,6 +156,103 @@ export function setCharacterSkin(skin: CharSkinType): void {
 
 export function getCharacterSkin(): CharSkinType {
   return activeSkin;
+}
+
+// 配饰装配与换装（支持无缝切换国风造型）
+export function applyRigSkin(r: CharRig, skin: CharSkinType = activeSkin): void {
+  activeSkin = skin;
+  applyCharTheme();
+
+  const head = r.head;
+  const torso = r.torso;
+  const band = head.getChildByName('Band');
+  const ribbon = head.getChildByName('Ribbon');
+  const hairGroup = head.getChildByName('HairGroup');
+  const skinAccHead = head.getChildByName('SkinAccHead');
+  const skinAccTorso = torso.getChildByName('SkinAccTorso');
+
+  if (skinAccHead) skinAccHead.removeAllChildren();
+  if (skinAccTorso) skinAccTorso.removeAllChildren();
+
+  if (skin === 'wukong') {
+    if (band) band.active = false;
+    if (ribbon) ribbon.active = false;
+    if (hairGroup) hairGroup.active = true;
+    if (skinAccHead && skinAccTorso) {
+      // 纯金紧箍环
+      const circlet = prime(skinAccHead, GEO.circlet, mats.gold, 0, 0.12, 0.02, 'Circlet');
+      circlet.eulerAngles = new Vec3(90 + 5.7, 0, 0);
+      // 凤翅紫金冠双雉翎飘带
+      for (const sx of [-1, 1]) {
+        const plume = spawnBox(skinAccHead, 'limb', 0.035, 0.018, 0.75, sx * 0.12, 0.35, -0.15, sx < 0 ? 'PlumeL' : 'PlumeR');
+        plume.getComponent(MeshRenderer)!.material = mats.red;
+        plume.eulerAngles = new Vec3(-37, sx * 10, sx * 7);
+      }
+      // 锁子黄金甲护心镜
+      const plate = spawnBox(skinAccTorso, 'limb', 0.24, 0.24, 0.06, 0, 0.55, 0.34, 'Breastplate');
+      plate.getComponent(MeshRenderer)!.material = mats.gold;
+    }
+  } else if (skin === 'nezha') {
+    if (band) band.active = false;
+    if (ribbon) ribbon.active = false;
+    if (hairGroup) hairGroup.active = false;
+    if (skinAccHead && skinAccTorso) {
+      // 双冲天抓髻
+      for (const sx of [-1, 1]) {
+        prime(skinAccHead, GEO.bun, mats.dark, sx * 0.22, 0.38, 0, sx < 0 ? 'BunL' : 'BunR');
+        const ring = prime(skinAccHead, GEO.circlet, mats.red, sx * 0.22, 0.34, 0, sx < 0 ? 'RingL' : 'RingR');
+        ring.setScale(new Vec3(0.4, 0.4, 0.4));
+        ring.eulerAngles = new Vec3(90, 0, 0);
+      }
+      // 纯金乾坤圈
+      const qiankun = prime(skinAccTorso, GEO.qiankun, mats.gold, 0, 0.55, 0.12, 'Qiankun');
+      qiankun.eulerAngles = new Vec3(20, 26, 12);
+      // 仙家混天绫长飘带
+      for (const sx of [-1, 1]) {
+        const silk = spawnBox(skinAccTorso, 'limb', 0.06, 0.02, 0.8, sx * 0.28, 0.65, -0.15, sx < 0 ? 'SilkL' : 'SilkR');
+        silk.getComponent(MeshRenderer)!.material = mats.red;
+        silk.eulerAngles = new Vec3(-23, sx * 9, sx * 6);
+      }
+    }
+  } else if (skin === 'guofeng') {
+    if (band) band.active = false;
+    if (ribbon) ribbon.active = false;
+    if (hairGroup) hairGroup.active = false;
+    if (skinAccHead && skinAccTorso) {
+      // 高马尾发髻
+      const pony = prime(skinAccHead, GEO.pony, mats.dark, 0, 0.42, -0.22, 'Pony');
+      pony.eulerAngles = new Vec3(-63, 0, 0);
+      const redRibbon = spawnBox(skinAccHead, 'limb', 0.08, 0.02, 0.45, 0, 0.28, -0.32, 'PonyRibbon');
+      redRibbon.getComponent(MeshRenderer)!.material = mats.red;
+      redRibbon.eulerAngles = new Vec3(-40, 0, 0);
+      // 汉服朱砂腰封
+      prime(skinAccTorso, GEO.sash, mats.red, 0, 0.24, 0, 'Sash');
+    }
+  } else if (skin === 'panda') {
+    if (band) band.active = false;
+    if (ribbon) ribbon.active = false;
+    if (hairGroup) hairGroup.active = true;
+    if (skinAccHead) {
+      for (const sx of [-1, 1]) {
+        prime(skinAccHead, GEO.bun, mats.dark, sx * 0.25, 0.32, -0.05, sx < 0 ? 'EarL' : 'EarR');
+      }
+    }
+  } else if (skin === 'ninja') {
+    if (band) band.active = false;
+    if (ribbon) ribbon.active = false;
+    if (hairGroup) hairGroup.active = true;
+    if (skinAccHead) {
+      const mask = spawnBox(skinAccHead, 'limb', 0.34, 0.16, 0.22, 0, -0.08, 0.2, 'NinjaMask');
+      mask.getComponent(MeshRenderer)!.material = mats.dark;
+      const plate = spawnBox(skinAccHead, 'limb', 0.18, 0.08, 0.02, 0, 0.12, 0.335, 'NinjaPlate');
+      plate.getComponent(MeshRenderer)!.material = mats.white;
+    }
+  } else {
+    // 经典跑者
+    if (band) band.active = true;
+    if (ribbon) ribbon.active = true;
+    if (hairGroup) hairGroup.active = true;
+  }
 }
 
 // 换主题/换皮肤：只改色，不重建（材质是共享引用）
@@ -184,9 +290,11 @@ function joint(parent: Node, x: number, y: number, z: number, name: string): Nod
 }
 
 // ---------- 建角色 ----------
-export function buildCharacter(root: Node): CharRig {
+export function buildCharacter(root: Node, skin: CharSkinType = activeSkin): CharRig {
+  activeSkin = skin;
   applyCharTheme();
   const torso = joint(root, 0, 0.72, 0, 'Torso');
+  const skinAccTorso = joint(torso, 0, 0, 0, 'SkinAccTorso');
 
   prime(torso, GEO.pelvis, mats.clothBottom, 0, 0.16, 0, 'Pelvis');
   prime(torso, GEO.chest, mats.clothTop, 0, 0.55, 0, 'Chest');
@@ -233,6 +341,7 @@ export function buildCharacter(root: Node): CharRig {
   tuftL.eulerAngles = new Vec3(0, 0, tuftGeoRotZ);
   const tuftR = prime(hairGroup, GEO.hairTuft, mats.hair, 0.25, 0.12, 0.05, 'TuftR');
   tuftR.eulerAngles = new Vec3(0, 0, -tuftGeoRotZ);
+  const skinAccHead = joint(head, 0, 0, 0, 'SkinAccHead');
 
   // 腿：髋 → 大腿 → 膝 → 小腿 → 踝(脚步滚动) → 鞋 + 鞋底 + 后跟提环
   const createLeg = (isLeft: boolean) => {
@@ -308,6 +417,27 @@ export function animateCharacter(r: CharRig, runCycle: number, steerVel: number,
   r.torso.setPosition(new Vec3(r.torso.position.x, 0.72 + Math.abs(stride) * 0.12, r.torso.position.z));
   rot(r.head, -r.torso.eulerAngles.x * 0.8, -r.torso.eulerAngles.y * 0.5);
   rot(r.ribbon, -0.35 + Math.sin(runCycle * 2.5) * 0.22, Math.cos(runCycle * 2) * 0.15);
+  // 国风飘带/雉翎动力学模拟
+  const accH = r.head.getChildByName('SkinAccHead');
+  if (accH) {
+    const plumeL = accH.getChildByName('PlumeL');
+    const plumeR = accH.getChildByName('PlumeR');
+    if (plumeL && plumeR) {
+      const pw = Math.sin(runCycle * 2.8) * 8.5;
+      plumeL.eulerAngles = new Vec3(-37 + pw, -10, -7);
+      plumeR.eulerAngles = new Vec3(-37 + pw, 10, 7);
+    }
+  }
+  const accT = r.torso.getChildByName('SkinAccTorso');
+  if (accT) {
+    const silkL = accT.getChildByName('SilkL');
+    const silkR = accT.getChildByName('SilkR');
+    if (silkL && silkR) {
+      const sw = Math.sin(runCycle * 2.6) * 14;
+      silkL.eulerAngles = new Vec3(-23 + sw, -9, -6);
+      silkR.eulerAngles = new Vec3(-23 + sw, 9, 6);
+    }
+  }
   // 腿：髋摆 + 膝屈
   rot(r.leftLeg.hip, stride * 0.82);
   rot(r.leftLeg.knee, stride > 0 ? 0.1 : Math.max(0, -stride * 1.35));
