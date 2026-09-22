@@ -30,7 +30,7 @@
 - [x] J4 操作手感：铺桥瞬间减速 ×0.55（落桥停顿感）、FOV 随速度冲刺
 - [x] J5 Cocos 同步：CameraFollow 震屏+FOV / TrackBuilder 边线警示建筑 / Theme building 色键
 - [x] J6 三套件全绿（verify-web 升至 13 项，含 Qoder 加的道具门断言）
-- [ ] **失败慢动作**（浏览器版已有 slow-mo；Cocos 版待接 director.timeScale）
+- [x] **失败慢动作**（2026-09-22）：Cocos `enterFall` 接 `director.getScheduler().setTimeScale(0.35)` + `setTimeout` 550ms 真实时间恢复（对齐浏览器版 slowT=0.55/dt×0.35）；`startLevel`/`onDestroy` 强制恢复 1 防卡死
 - [x] T8 PAR 星线换表同步（2026-09-22）：Progression.ts + web-preview 内联改走 parFor(level)（loop 补偿 +2.5s/loop，修 L11+ 三星恒不可达）；smoke 新增 PAR 漂移锁 L1-L60；§17 转绿
 
 ## 本波（2026-09-22 弯道/遥测/协作，step-5 推送）
@@ -86,8 +86,8 @@
 - [x] Mixamo 角色替换灰盒 → 已改为 AI Studio 关节角色移植（CharacterRig.ts，零素材）
 - [ ] 微信小游戏构建 + 真机预览（wechat-build.md）
 - [x] 主题换肤系统（Theme.ts 五盘，Q5 规范锁）
-- [ ] 广告 SDK（banner/激励视频）
-- [ ] 音效（audio-assets.md 清单，素材即插即用）
+- [x] 广告 SDK 桩（2026-09-22）：`assets/scripts/AdMgr.ts` 按 k1-ad-spec——`AdSys` init/showRewarded/showInterstitial/showBanner、非 wx 桩立即 resolve(true)、`shouldInterstitialAfterWin` 前3关不弹 L3/L6/… 各1次、单会话插屏≤1、连续2次失败禁用、广告期 AudioMgr.muted、遥测 `{ev:'ad',kind,scene,result,level,t}` 进 `sr_telemetry_v1`；GameApp 已接线；smoke +6 断言（节流/桩/埋点/静音复位）；四门全绿。真机 wx.create* 待微信工具实测
+- [ ] 音效（audio-assets.md 清单，素材即插即用）——SfxSynth 合成降级已有，缺 4 件套采购（需用户）
 
 ## DeepSeek 草稿收货区
 

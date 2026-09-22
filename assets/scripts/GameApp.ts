@@ -5,7 +5,7 @@
 const { ccclass, property } = _decorator;
 import {
   _decorator, Component, Node, Prefab, Vec3, Camera, input, Input,
-  EventTouch, EventKeyboard, KeyCode, sys,
+  EventTouch, EventKeyboard, KeyCode, sys, director,
 } from 'cc';
 import { CFG, Cfg } from './config';
 import { genLevelV3, LevelDef } from './LevelGen';
@@ -20,6 +20,7 @@ import { TrackBuilder, RuntimePickup } from './TrackBuilder';
 import { CameraFollow } from './CameraFollow';
 import { GameUI } from './GameUI';
 import { tweenPos, clamp } from './util';
+import { adSys, shouldInterstitialAfterWin, AdTelemetry } from './AdMgr';
 
 type State = 'ready' | 'run' | 'fall' | 'win' | 'lose';
 
@@ -100,6 +101,20 @@ export class GameApp extends Component {
     };
     this.prog = createProgress(store);
 
+    // 广告（k1-ad-spec）：桩环境立即就绪；广告期间静音；ad 事件进遥测
+    adSys.init();
+    adSys.setMuteHook((m) => { if (this.audio) this.audio.muted = m; });
+    adSys.setTelemetryHook((ev) => {
+      try {
+        const raw = sys.localStorage.getItem('sr_telemetry_v1');
+        const arr = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(arr)) return;
+        arr.push(ev as AdTelemetry);
+        if (arr.length > 500) arr.splice(0, arr.length - 500);
+        sys.localStorage.setItem('sr_telemetry_v1', JSON.stringify(arr));
+      } catch { /* 忽略 */ }
+    });
+
     this.bindInput();
     this.startLevel();
   }
@@ -110,6 +125,8 @@ export class GameApp extends Component {
     this.levelNum = cur.level;
     this.attempt = Math.floor(cur.seed % 1000);
     this.cfg = cur.cfg;
+    adSys.setLevel(this.levelNum);
+    director.getScheduler()?.setTimeScale(1); // 重开时强制恢复正常时间流
     this.curve = curveFromCfg(cur.cfg); // 弯道（表现层）
     // v4 道具：itemsFor 分带（L1-2 无道具），关闭时输出与 v3 逐字节一致
     this.levelDef = genLevelV3(cur.seed, this.cfg, { items: itemsFor(cur.level) ?? undefined });
@@ -179,6 +196,7 @@ export class GameApp extends Component {
 
   // 场景重载时旧实例不会自动解绑全局 input 监听，必须手动 off
   onDestroy(): void {
+    director.getScheduler()?.setTimeScale(1); // 慢动作中断时避免卡死全局时间缩放
     input.off(Input.EventType.TOUCH_START, this.onTouchStart, this);
     input.off(Input.EventType.TOUCH_MOVE, this.onTouchMove, this);
     input.off(Input.EventType.TOUCH_END, this.onTouchEnd, this);
@@ -393,6 +411,9 @@ export class GameApp extends Component {
     this.fallVel = 1;
     this.fell = true;
     this.camFollow.addShake(0.18, 0.2); // J1：掉落实感
+    // 失败慢动作（对齐浏览器版 slowT=0.55 / dt×0.35）：Scheduler 缩放，setTimeout 按真实时间恢复
+    director.getScheduler()?.setTimeScale(0.35);
+    setTimeout(() => { director.getScheduler()?.setTimeScale(1); }, 550);
   }
 
   private checkGate(z: number): void {
@@ -429,6 +450,10 @@ export class GameApp extends Component {
       tweenPos(this.player, 0.25, new Vec3(p.x, p.y, p.z));
     });
     console.log(`[ShortcutRun] WIN 第 ${this.levelNum} 关 ${timeSec.toFixed(1)}s 余砖 ${this.bricks} ${r.stars}星！（进度已存档）`);
+    // 插屏节流：前 3 关不弹；通关 L3/L6/…（进 L4/L7 前）各 1 次（k1 §4）
+    if (shouldInterstitialAfterWin(this.levelNum)) {
+      void adSys.showInterstitial();
+    }
     this.scheduleOnce(() => this.startLevel(), 2.5);
   }
 

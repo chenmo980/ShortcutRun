@@ -168,6 +168,26 @@ check('starsFor-parity', starsFor(1, 16.5, 5) === jsStarsFor(1, 16.5, 5)
     '铺桥双音一致');
 }
 
+// 10. 广告节流与桩（k1-ad-spec §4/§5）
+{
+  const { shouldInterstitialAfterWin, AdSys } = await import('../assets/scripts/AdMgr.ts');
+  check('ad-no-interstitial-L1-L2', !shouldInterstitialAfterWin(1) && !shouldInterstitialAfterWin(2) && !shouldInterstitialAfterWin(0), '前3关不插屏(L0-L2)');
+  // L3/L6/L9 通关后各 1 次（进 L4/L7/L10 前）
+  check('ad-interstitial-L3-L6', shouldInterstitialAfterWin(3) && shouldInterstitialAfterWin(6) && shouldInterstitialAfterWin(9), 'L3/L6/L9 触发');
+  check('ad-no-interstitial-L4', !shouldInterstitialAfterWin(4) && !shouldInterstitialAfterWin(5), '非 3 倍数不触发');
+  const ad = new AdSys();
+  let muted = false;
+  let telem: unknown[] = [];
+  ad.setMuteHook((m) => { muted = m; });
+  ad.setTelemetryHook((ev) => { telem.push(ev); });
+  ad.init();
+  check('ad-stub-ready', ad.isReady('rewarded') && ad.isReady('interstitial'), '桩环境就绪');
+  const ok = await ad.showRewarded('revive');
+  check('ad-stub-rewarded', ok === true, `revive→${ok}`);
+  check('ad-stub-telemetry', telem.length >= 1 && (telem[0] as any).ev === 'ad', JSON.stringify(telem[0]));
+  check('ad-mute-restored', muted === false, `muted=${muted}`);
+}
+
 // 8. 输出
 const demo = genLevelV3(1, CFG);
 console.log(`v3 demo: gaps=${demo.gaps.length} pickups=${demo.pickups.length} stats=${JSON.stringify(levelStats(demo, CFG))}`);
