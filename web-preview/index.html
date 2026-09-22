@@ -1184,6 +1184,16 @@ window.__game = {
   resetProgress: () => prog.reset(),
   renderOnce: () => renderer.render(scene, camera),
   canvas: () => renderer.domElement,
+  // G1 数据回流：导出遥测 events.json（Qoder telemetry-report.mjs 的输入）
+  dumpTelemetry: () => {
+    const arr = JSON.parse(localStorage.getItem(TELEMETRY_KEY) || '[]');
+    const blob = new Blob([JSON.stringify(arr)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'events.json';
+    a.click();
+    return arr.length;
+  },
 };
 </script>
 </body>
