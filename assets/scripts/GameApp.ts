@@ -335,7 +335,7 @@ export class GameApp extends Component {
     const charState = this.state === 'fall' ? 'drowned'
       : this.state === 'run' ? (this.bridgeT > 0 ? 'bridging' : 'running')
       : (this.fell ? 'drowned' : 'stand');
-    this.pickupPulse = Math.max(0, this.pickupPulse - dt * 4.5);
+    this.pickupPulse = Math.max(0, this.pickupPulse - dt * 2.2);
     this.track.syncRig(charState, this.runCycle, this.targetX - x, this.bricks, dt, this.pickupPulse);
     this.ui?.setProgress(z, this.levelDef.gateZ);
     // J1：速度因子喂相机（FOV 冲刺）；弯道：相机锚在路径后方 + 逻辑侧向偏移

@@ -1044,12 +1044,13 @@ export function animateCharacter(
   // Torso twists with running strides
   char.torso.rotation.y = Math.sin(runCycle) * 0.08;
 
-  // Banking / leaning into steer turns (VOODOO dynamic responsiveness)
-  const targetRoll = -steerVelocity * 0.35;
+  // Banking / leaning into steer turns (VOODOO dynamic responsiveness) + 拾取时身体向右侧下探
+  const pickupSideRoll = pickupPulse * -0.22; // 顺应右手捞砖，躯干向右微倾
+  const targetRoll = -steerVelocity * 0.35 + pickupSideRoll;
   char.torso.rotation.z = THREE.MathUtils.lerp(char.torso.rotation.z, targetRoll, delta * 14);
 
   // Vertical step bounce (Bobbing) with impact compression
-  char.torso.position.y = 0.72 + Math.abs(stride) * 0.12 - pulseSquash;
+  char.torso.position.y = 0.72 + Math.abs(stride) * 0.12 - pulseSquash * 1.5;
 
   // 3. Head Dynamics & Eye Tracking
   // Keep head level looking forward towards destination
@@ -1103,14 +1104,20 @@ export function animateCharacter(
     char.leftArm.hand.rotation.x = -0.22;
     char.leftArm.hand.rotation.y = 0.35; // 掌心向上托住砖垛
 
-    // 右手：如果有拾取触发（pickupPulse > 0.02），手臂大开大合下探捞拾；否则辅助扶持/摆臂
+    // 右手：如果有拾取触发（pickupPulse > 0.02），手臂大开大合向右侧下探大弧度捞拾；否则辅助扶持/摆臂
     if (pickupPulse > 0.02) {
-      // 探手拾取动作：大臂向前下探、小臂向前探伸捞砖，随即回缩拍入砖垛
-      char.rightArm.shoulder.rotation.x = THREE.MathUtils.lerp(0.48, 1.35, pickupPhase);
-      char.rightArm.shoulder.rotation.y = THREE.MathUtils.lerp(0.22, -0.22, pickupPhase);
-      char.rightArm.shoulder.rotation.z = THREE.MathUtils.lerp(-0.22, -0.42, pickupPhase);
-      char.rightArm.elbow.rotation.x = THREE.MathUtils.lerp(-1.25, -0.32, pickupPhase);
-      char.rightArm.hand.rotation.x = THREE.MathUtils.lerp(-0.15, 0.55, pickupPhase);
+      // 探手拾取动作：从正后方视角看，手臂大幅向右展开（rotation.z 甩向 -1.15），形成一个自右侧划下的大弧形下捞轨迹！
+      const isReaching = pickupPulse > 0.45;
+      const reachProgress = isReaching ? (1.0 - pickupPulse) / 0.55 : pickupPulse / 0.45;
+      const wideSpread = THREE.MathUtils.lerp(-0.22, -1.15, reachProgress); // 向右大幅甩开，从背后一览无余！
+      const pitchForward = THREE.MathUtils.lerp(0.48, 1.42, reachProgress); // 向前下探向地面捞取
+      const armStraighten = THREE.MathUtils.lerp(-1.25, -0.2, reachProgress); // 手臂伸直去够砖
+
+      char.rightArm.shoulder.rotation.x = pitchForward;
+      char.rightArm.shoulder.rotation.y = THREE.MathUtils.lerp(0.22, -0.35, reachProgress);
+      char.rightArm.shoulder.rotation.z = wideSpread;
+      char.rightArm.elbow.rotation.x = armStraighten;
+      char.rightArm.hand.rotation.x = THREE.MathUtils.lerp(-0.15, 0.75, reachProgress);
     } else if (carriedPlanks > 0) {
       // 平常跑步抱着时：右手轻扶砖垛右侧，随跑步轻微呼吸浮动
       char.rightArm.shoulder.rotation.x = 0.48 - Math.sin(runCycle) * 0.08 + bridgeThrust;

@@ -938,12 +938,17 @@ function animateChar(char, runCycle, steerVelocity, carriedPlanks, state, delta,
     char.leftArm.shoulder.rotation.y = -0.32;
     char.leftArm.elbow.rotation.x = -1.48 + bridgeThrust * 0.4;
 
-    // 右手：拾取时下探捞拾动作，平常辅助扶持
+    // 右手：拾取时大幅侧向下探捞拾动作（背后视角一览无余）
     if (pickupPulse > 0.02) {
-      char.rightArm.shoulder.rotation.x = lerp(0.48, 1.35, pickupPhase);
-      char.rightArm.shoulder.rotation.y = lerp(0.22, -0.22, pickupPhase);
-      char.rightArm.shoulder.rotation.z = lerp(-0.22, -0.42, pickupPhase);
-      char.rightArm.elbow.rotation.x = lerp(-1.25, -0.32, pickupPhase);
+      const isReaching = pickupPulse > 0.45;
+      const reachProgress = isReaching ? (1.0 - pickupPulse) / 0.55 : pickupPulse / 0.45;
+      const wideSpread = lerp(-0.22, -1.15, reachProgress);
+      const pitchForward = lerp(0.48, 1.42, reachProgress);
+      const armStraighten = lerp(-1.25, -0.2, reachProgress);
+      char.rightArm.shoulder.rotation.x = pitchForward;
+      char.rightArm.shoulder.rotation.y = lerp(0.22, -0.35, reachProgress);
+      char.rightArm.shoulder.rotation.z = wideSpread;
+      char.rightArm.elbow.rotation.x = armStraighten;
     } else if (carriedPlanks > 0) {
       char.rightArm.shoulder.rotation.x = 0.48 - Math.sin(runCycle) * 0.08 + bridgeThrust;
       char.rightArm.shoulder.rotation.z = -0.22 - loadFactor * 0.08;
@@ -1581,7 +1586,7 @@ function loop() {
       : state === 'fall' ? 'drowned'
       : state === 'win' ? 'finished'
       : (fell ? 'drowned' : 'idle'); // lose：掉下去的旋水，够砖差一步的站着
-    pickupPulse = Math.max(0, pickupPulse - dt * 4.5);
+    pickupPulse = Math.max(0, pickupPulse - dt * 2.2);
     animateChar(char, runCycle, targetX - x, bricks, charState, dt, pickupPulse);
 
     if (state === 'run') {

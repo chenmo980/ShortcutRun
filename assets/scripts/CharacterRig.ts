@@ -471,14 +471,19 @@ export function animateCharacter(r: CharRig, runCycle: number, steerVel: number,
     r.leftArm.shoulder.eulerAngles = new Vec3(0.65 + Math.sin(runCycle) * 0.04 + thrust, -0.32, 0.38 + loadFactor * 0.1);
     r.leftArm.elbow.eulerAngles = new Vec3(-1.48 + thrust * 0.4, 0, 0);
 
-    // 右手：拾取时触发下探捞拾动作，平常辅助扶持
+    // 右手：拾取时触发大幅侧向下探捞拾动作（背后视角一览无余）
     if (pickupPulse > 0.02) {
+      const isReaching = pickupPulse > 0.45;
+      const reachProgress = isReaching ? (1.0 - pickupPulse) / 0.55 : pickupPulse / 0.45;
+      const wideSpread = lerp(-0.22, -1.15, reachProgress); // 向右大幅外展甩开，避开背后躯干遮挡！
+      const pitchForward = lerp(0.48, 1.42, reachProgress); // 向前下方探向地面捞取
+      const armStraighten = lerp(-1.22, -0.2, reachProgress); // 手臂伸直捞砖
       r.rightArm.shoulder.eulerAngles = new Vec3(
-        lerp(0.48, 1.35, pickupPhase),
-        lerp(0.22, -0.22, pickupPhase),
-        lerp(-0.22, -0.42, pickupPhase),
+        pitchForward,
+        lerp(0.22, -0.35, reachProgress),
+        wideSpread,
       );
-      r.rightArm.elbow.eulerAngles = new Vec3(lerp(-1.22, -0.32, pickupPhase), 0, 0);
+      r.rightArm.elbow.eulerAngles = new Vec3(armStraighten, 0, 0);
     } else if (planks > 0) {
       r.rightArm.shoulder.eulerAngles = new Vec3(0.48 - Math.sin(runCycle) * 0.06 + thrust, 0.22, -0.22 - loadFactor * 0.08);
       r.rightArm.elbow.eulerAngles = new Vec3(-1.22 + thrust * 0.5, 0, 0);

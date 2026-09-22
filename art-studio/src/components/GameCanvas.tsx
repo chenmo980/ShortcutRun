@@ -668,7 +668,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         // Steer velocity for dynamic character banking
         const steerVelocity = g.targetPlayerX - g.playerX;
         g.runCycle += delta * 15;
-        g.pickupPulse = Math.max(0, g.pickupPulse - delta * 6);
+        g.pickupPulse = Math.max(0, g.pickupPulse - delta * 2.2); // ~0.45s 显著动作时长，避免一闪而过
 
         // Footstep ground contact particles (dust puffs on runway, water drops on bridge)
         g.stepTimer += delta * 15;
