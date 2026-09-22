@@ -30,6 +30,7 @@ function levelOf(ev) {
 }
 
 function classify(ev) {
+  if (ev.qa === true) return { kind: 'qa' }; // 引擎侧标记（restart 后门局，若 step-5 接了）
   const attempt = ev.seed - ev.level * 1000;
   if (!(ev.level >= 1 && attempt >= 1 && attempt <= 150)) return { kind: 'qa' };
   if (ev.outcome === 'win') return { kind: 'win' };
@@ -55,8 +56,15 @@ function wilsonLower(w, n, z = 1.96) {
 const median = (a) => { if (!a.length) return '-'; const s = [...a].sort((x, y) => x - y); return s[s.length >> 1]; };
 
 const byLevel = new Map();
-const dropped = { qa: 0, orphan: 0 };
+const dropped = { qa: 0, orphan: 0, dup: 0 };
+// restart(1) 后门实测会产生**重复合法 seed**（L1 seed1001 秒级复读，浏览器端到端实证），seed 区间法抓不到。
+// 单文件内同键(关,seed)必然唯一（合法推进 attempt 只增不换、同关重开=换 seed），复读一律算刷局剔除。
+// 多设备请各导各跑本脚本，勿把两份文件拼一起（拼了会把别人真局当复读误剔）。
+const seen = new Set();
 for (const ev of events) {
+  const key = `${ev.level}:${ev.seed}`;
+  if (seen.has(key)) { dropped.dup++; continue; }
+  seen.add(key);
   const c = classify(ev);
   if (c.kind === 'qa') { dropped.qa++; continue; }
   if (c.kind === 'orphan') { dropped.orphan++; continue; }
@@ -70,7 +78,7 @@ for (const ev of events) {
 }
 
 const lvls = [...byLevel.keys()].sort((a, b) => a - b);
-console.log(`样本 ${events.length} 局（剔除 QA后门 ${dropped.qa} / 孤儿seed ${dropped.orphan}）`);
+console.log(`样本 ${events.length} 局（剔除 QA后门 ${dropped.qa} / 同键复读 ${dropped.dup} / 孤儿seed ${dropped.orphan}）`);
 console.log('lv |   n | 胜率 | Wilson下界 | 带 | t中位 | 余砖中位 | short | 断崖命中 top3');
 const triggers = [];
 for (const lv of lvls) {

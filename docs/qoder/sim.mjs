@@ -4,7 +4,7 @@
 import {
   DEFAULT_CFG, genLevel, genLevelV2, genLevelV3, levelStats, prefixBalance, botRun, zonesOf, HUMAN_AVG,
 } from './bridge-rules.mjs';
-import { cfgForLevel, bandFor, marginFor, ratioFor, itemsFor } from './levels.mjs';
+import { cfgForLevel, bandFor, marginFor, ratioFor, itemsFor, curveFor } from './levels.mjs';
 import { genLevel as tsGenLevel, genLevelV3 as tsGenLevelV3 } from '../../assets/scripts/LevelGen.ts';
 import { CFG } from '../../assets/scripts/config.ts';
 
@@ -673,6 +673,39 @@ const N = 2000;
     check('v4 items-on parity: preview inline', !bad21b, bad21b);
   } else {
     console.log('info v4 items-on inline parity: 预览尚未接 placeItems，跳过（接线后本项自动激活）');
+  }
+}
+
+
+// 22. 弯道参数漂移锁（表现层规格母本化）：curveFor 三键双端逐关与母本一致（1e-9）
+{
+  const { readFileSync, writeFileSync, unlinkSync } = await import('node:fs');
+  const lcSrc = readFileSync(new URL('../../assets/scripts/LevelCurve.ts', import.meta.url), 'utf8')
+    .replace(/from '\.\/config'/g, `from '${new URL('../../assets/scripts/config.ts', import.meta.url).href}'`);
+  const tmp = new URL('./.tmp-LevelCurve22.ts', import.meta.url);
+  writeFileSync(tmp, lcSrc);
+  const { curveFor: tsCurve } = await import(tmp.href);
+  unlinkSync(tmp);
+  let badTs = '';
+  for (let lv = 1; lv <= 60 && !badTs; lv++) {
+    const m = curveFor(lv), t = tsCurve(lv);
+    for (const k of Object.keys(m)) if (Math.abs(t[k] - m[k]) > 1e-9) { badTs = `L${lv}.${k}: ts=${t[k]} master=${m[k]}`; break; }
+  }
+  check('curve-param lock: assets/LevelCurve.ts', !badTs, badTs);
+
+  const html = readFileSync(new URL('../../web-preview/index.html', import.meta.url), 'utf8');
+  const fn = html.match(/function curveFor\(level\) \{[\s\S]*?\n\}/);
+  if (!fn) check('curve-param lock: web-preview inline', false, '抽取失败：请保留函数名 curveFor');
+  else {
+    const { default: vm } = await import('node:vm');
+    const sb = vm.createContext({ Math });
+    vm.runInContext(fn[0] + '\nthis.f = curveFor;', sb);
+    let badPv = '';
+    for (let lv = 1; lv <= 60 && !badPv; lv++) {
+      const m = curveFor(lv), t = sb.f(lv);
+      for (const k of Object.keys(m)) if (Math.abs(t[k] - m[k]) > 1e-9) { badPv = `L${lv}.${k}: pv=${t[k]} master=${m[k]}`; break; }
+    }
+    check('curve-param lock: web-preview inline', !badPv, badPv);
   }
 }
 

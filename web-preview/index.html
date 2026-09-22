@@ -440,7 +440,7 @@ function levelBox(mat, sx, sy, sz, x, y, z) {
 // 关卡空间组（道具门/加速鞋等复合体）
 function levelGroup(x, y, z) {
   const g = new THREE.Group();
-  g.position.set(bendX(z) + x, y, z);
+  g.position.set(bendX(z) + x * Math.cos(headingAt(z)), y, z);
   g.rotation.y = headingAt(z);
   scene.add(g);
   return g;
@@ -888,11 +888,12 @@ function floatText(txt, color) {
 
 // ===== G1 遥测（Q6 schema：docs/qoder/g1-tuning.md；汇总脚本由 Qoder 提供） =====
 const TELEMETRY_KEY = 'sr_telemetry_v1';
+let qaSession = false; // restart()/QA 后门发起的局带 qa:true，telemetry-report 直剔（Qoder 去重双保险）
 function pushEvent(ev) {
   try {
     const arr = JSON.parse(localStorage.getItem(TELEMETRY_KEY) || '[]');
     if (!Array.isArray(arr)) return;
-    arr.push({ ...ev, ts: Date.now() });
+    arr.push({ ...ev, ...(qaSession ? { qa: true } : {}), ts: Date.now() });
     if (arr.length > 500) arr.splice(0, arr.length - 500); // 封顶防无限膨胀
     localStorage.setItem(TELEMETRY_KEY, JSON.stringify(arr));
   } catch (e) { /* 遥测失败不影响游戏 */ }
@@ -1176,12 +1177,13 @@ window.__game = {
   setTheme: (k) => { if (THEMES[k]) { themeKey = k; applyTheme(); } },
   setPlayerColor: (hex) => { MAT.player.color.setHex(hex); CHAR_MATS.clothTop.color.setHex(hex); }, // QA 用：像素检测 marker 色（新角色用 clothTop）
   restart: (lv) => {
+    qaSession = true; // QA 后门局：后续 pushEvent 带 qa:true，避免污染真人统计
     prog.reset();
     for (let i = 1; i < (lv || 1); i++) prog.win(999, 0); // 快进到指定关（QA 用）
     syncLevel();
   },
   progress: () => prog.state(),
-  resetProgress: () => prog.reset(),
+  resetProgress: () => { qaSession = true; prog.reset(); },
   renderOnce: () => renderer.render(scene, camera),
   canvas: () => renderer.domElement,
   // G1 数据回流：导出遥测 events.json（Qoder telemetry-report.mjs 的输入）

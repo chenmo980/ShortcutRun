@@ -33,6 +33,16 @@
 - [ ] **失败慢动作**（浏览器版已有 slow-mo；Cocos 版待接 director.timeScale）
 - [x] T8 PAR 星线换表同步（2026-09-22）：Progression.ts + web-preview 内联改走 parFor(level)（loop 补偿 +2.5s/loop，修 L11+ 三星恒不可达）；smoke 新增 PAR 漂移锁 L1-L60；§17 转绿
 
+## 本波（2026-09-22 弯道/遥测/协作，step-5 推送）
+
+- [x] 怀里搬木板 + 弯道系统（表现层 sin 弯曲，LevelGen 零改动保 parity）双版本落地 8f30c51
+- [x] dumpTelemetry() 采纳（__game 一键导出 events.json，G1 数据回流闭环）dea55fd
+- [x] Qoder 弯道审计两点采纳：pickup/鞋 mesh 改 `bendX(z)+x*cos(h)` 切线系；restart/resetProgress 后 pushEvent 带 qa:true
+- [x] curveFor 母本化收编（Qoder levels.mjs + sim §22 双端锁）随波入库，sim 38 项全绿
+- [x] K2 投递收货：docs/k2/（ad-spec / bundle-budget / device-matrix / README）入仓；回执=K4-K8 待补实存、广告事件隔离、统计母本唯一
+- [x] 四门回归：tsc 0 错（本地 TS 5.9.3）/ smoke / sim 38/38 / verify-web 13/13
+- [x] package.json 增 devDependencies.typescript + package-lock；.gitignore 补 node_modules/
+
 ## 时间预期（说实话）
 
 | 里程碑 | 时间 | 说明 |

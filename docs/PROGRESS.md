@@ -1,10 +1,10 @@
 # 项目进度报告
 
-> 更新时间：2026-09-22 凌晨 · 版本：v0.2 进行中 · 仓库：chenmo980/ShortcutRun（main）
+> 更新时间：2026-09-22 · 版本：v0.3 进行中 · 仓库：chenmo980/ShortcutRun（main）
 
 ## 一句话
 
-复刻 VOODOO《Shortcut Run》（铺路过断崖跑酷）→ 微信小游戏 → IAA 广告变现。多 AI 协作开发，玩法闭环、角色、关卡进阶已就位。
+复刻 VOODOO《Shortcut Run》（铺路过断崖跑酷）→ 微信小游戏 → IAA 广告变现。多 AI 协作开发，玩法闭环、角色、弯道、关卡进阶、道具、遥测、发行规格已就位。
 
 ## 现在就能玩（2 分钟）
 
@@ -29,7 +29,10 @@
 | 道具系统（+N 门 / ×2 门 / 加速鞋，L3 起分带解锁） | ✅ | 双端 parity 位级一致 + 道具不改供需（纯增益数学锁）+ 端到端断言 |
 | UI 流程（开始界面/结算面板/星级/进度条） | ✅ | 浏览器版面板上线；Cocos 版文本 HUD |
 | 音效（浏览器版 WebAudio 合成：吃砖/铺桥/胜/负，M 静音） | ✅ | 无页面错误 + 事件钩子全覆盖 |
-| G1 遥测采集（胜/败事件落 sr_telemetry_v1，Q6 schema） | ✅ | 双端挂点；汇总对照表由 Qoder 侧出 |
+| G1 遥测采集（胜/败事件落 sr_telemetry_v1，Q6 schema） | ✅ | 双端挂点；dumpTelemetry 一键导出；汇总对照表 Qoder 侧 telemetry-report.mjs |
+| 怀里搬木板 + 俯视相机 | ✅ | AI Studio 方案移植，四门回归全绿 |
+| 弯道系统（表现层 S 弯，LevelGen 零改动） | ✅ | 纯表现层审计通过；curveFor 母本 + sim §22 双端锁 L1-L60 |
+| 发行规格包（广告位/包体预算/真机矩阵） | ✅ | K2 投递 docs/k2/ 已收货（K4-K8 待 K2 补实存） |
 | Cocos 零装配（内置场景+程序化灰盒） | ✅ | 双击场景即玩，无需任何手动装配 |
 | 关卡进度 HUD（砖数/进度%/关卡号/最佳成绩/星级） | ✅ | 双版本上线 |
 | 多 AI 协作机制（邮箱+门禁+母本制+漂移锁） | ✅ | 见 `docs/AI-HANDOFF.md` |
@@ -45,17 +48,18 @@
 
 | 成员 | 地盘 | 本轮任务 |
 |---|---|---|
-| **step-5（opencode）** | Cocos/微信侧全部代码、集成、构建、上架、git main | V2 主题配色 → V3 UI 流程 → V4 音效 → V5 微信构建 |
-| **Qoder agent** | cc-free 规则母本 + 数值 + headless 验证（投递 `docs/qoder/`） | Q5 主题规范 → Q6 G1 数据回调方案 |
+| **step-5（opencode）** | Cocos/微信侧全部代码、集成、构建、上架、git main | 弯道/怀里搬/遥测 → K2 规格落地（AdMgr/构建）→ V5 微信构建 |
+| **Qoder agent** | cc-free 规则母本 + 数值 + headless 验证（投递 `docs/qoder/`） | curveFor 母本化 + telemetry-report 去重/qa 剔除已交付 |
+| **K2（DeepSeek）** | 发行链路规格 `docs/k2/` | K1 广告规格 / K2 包体预算 / K3 真机矩阵已交付 |
 | 工具线（非 AI 同事） | Meshy/Tripo、淘宝素材、Suno、微信开发者工具 | 按需调用，全部经 step-5 之手进包 |
 | 人类（项目负责人） | 手感裁决、门禁签批、合规决策、审美 | G1 试玩反馈；Mixamo/素材采购决策 |
 
-## 下一步（两周成“能看的 Demo”）
+## 下一步（两周成“能看的 Demo” → 能上架）
 
-1. **V2 主题配色**（进行中）：灰盒 → 城市主题，config 驱动可换肤
-2. **V3 UI 流程**：开始界面 / 结算面板 / 关卡进度条
-3. **V4 音效**：吃砖 / 铺桥 / 胜利 / 失败
-4. **V5 微信小游戏构建** + 真机预览
+1. **V5 微信小游戏构建** + 真机预览（按 wechat-build.md；出包后 K2 跑 check-bundle + k3 矩阵）
+2. **广告 SDK 接入**（按 docs/k2/ad-spec.md → assets/scripts/AdMgr.ts）
+3. 音效素材采购（audio-assets.md 清单）
+4. G1 真人遥测 → telemetry-report.mjs 对照 g1-tuning §5 基准带调参
 5. 并行（周期长越早越好）：软著申请、企业主体（见 `docs/compliance.md`）
 
 ## 风险与阻塞
@@ -69,10 +73,11 @@
 ## 给新成员（3 分钟上手）
 
 ```bash
-# 跑全部测试（Node ≥ 22.6，零依赖）
+# 跑全部测试（Node ≥ 22.6，零依赖；tsc 用本地 devDependencies）
 node tools/smoke.ts          # 关卡生成器：parity + 不变量 + bot 通关率
-node tools/verify-web.mjs    # 浏览器版端到端 10 项
-node docs/qoder/sim.mjs      # 规则母本验收套件（Qoder 维护）
+node tools/verify-web.mjs    # 浏览器版端到端 13 项
+node docs/qoder/sim.mjs      # 规则母本验收套件（Qoder 维护，现 38 项）
+node node_modules/typescript/bin/tsc -p tools/tsconfig.check.json --noEmit
 ```
 
 - 代码/文档唯一源：本仓库 main 分支，所有改动走 git

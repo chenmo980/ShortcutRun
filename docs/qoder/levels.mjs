@@ -82,3 +82,12 @@ export function itemsFor(level) {
     mulValue: 2,
   };
 }
+
+// 弯道曲线（表现层规格母本化，2026-09-22）：step-5 的 8f30c51 首落双端副本，现升格母本规则。
+// 只影响视觉路径形状（bendX/headingAt/secant 由引擎侧实现），不进供需/难度/PAR 任何锁；
+// 双端漂移由 sim 22 号锁看守（与 theme/PAR 同法：母本先行，红=点名落后副本）。
+export function curveFor(level) {
+  const l = ((Math.max(1, level) - 1) % 10) + 1;
+  if (l <= 3) return { curveAmp: 0, curveFreq: 0.12, curvePhase: 0 };
+  return { curveAmp: l <= 6 ? 2.2 : 3.2, curveFreq: 0.12, curvePhase: level * 1.7 };
+}

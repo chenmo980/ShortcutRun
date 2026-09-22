@@ -129,7 +129,7 @@ export class TrackBuilder extends Component {
         const g = new Node('Shoe');
         g.parent = this.node;
         const h = headingAt(def.z, this.curve);
-        g.setPosition(new Vec3(bendX(def.z, this.curve) + def.x, 0.05, def.z));
+        g.setPosition(new Vec3(bendX(def.z, this.curve) + def.x * Math.cos(h), 0.05, def.z));
         g.setRotationFromEuler(new Vec3(0, 34, 0));
         this.box('shoe', new Vec3(0.5, 0.14, 0.26), new Vec3(0, 0.07, 0), g);
         this.box('shoe', new Vec3(0.3, 0.2, 0.24), new Vec3(-0.08, 0.24, 0), g);
