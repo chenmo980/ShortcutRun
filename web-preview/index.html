@@ -498,6 +498,7 @@ function buildChar() {
   const M = CHAR_MATS;
   const root = player;
   const torsoGroup = new THREE.Group();
+  torsoGroup.name = 'Torso'; // 克隆体(AI 对手)靠名字找回关节，必须命名
   torsoGroup.position.set(0, 0.72, 0);
   root.add(torsoGroup);
 
@@ -511,6 +512,7 @@ function buildChar() {
 
   // 头 + 眼睛 + 头发 + 头带 + 飘带
   const headGroup = new THREE.Group();
+  headGroup.name = 'Head';
   headGroup.position.set(0, 1.15, 0);
   torsoGroup.add(headGroup);
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 10), M.skin);
@@ -523,6 +525,7 @@ function buildChar() {
   const ribbonGeo = new THREE.BoxGeometry(0.14, 0.04, 0.55);
   ribbonGeo.translate(0, 0, -0.27);
   const headbandRibbon = new THREE.Mesh(ribbonGeo, M.accent);
+  headbandRibbon.name = 'Ribbon'; // 克隆体靠名字找回关节
   headbandRibbon.position.set(0, 0.12, -0.32);
   headGroup.add(headbandRibbon);
   // 表情：腮红 + 微笑（AI Studio v2 增强）
@@ -557,12 +560,14 @@ function buildChar() {
   const createLeg = (isLeft) => {
     const side = isLeft ? -1 : 1;
     const hip = new THREE.Group();
+    hip.name = isLeft ? 'HipL' : 'HipR'; // 克隆体靠名字找回关节
     hip.position.set(side * 0.2, 0.08, 0);
     torsoGroup.add(hip);
     const thighGeo = new THREE.CylinderGeometry(0.11, 0.09, 0.38, 6);
     thighGeo.translate(0, -0.19, 0);
     hip.add(new THREE.Mesh(thighGeo, M.clothBottom));
     const knee = new THREE.Group();
+    knee.name = isLeft ? 'KneeL' : 'KneeR';
     knee.position.set(0, -0.38, 0);
     hip.add(knee);
     const calfGeo = new THREE.CylinderGeometry(0.09, 0.075, 0.38, 6);
@@ -570,6 +575,7 @@ function buildChar() {
     knee.add(new THREE.Mesh(calfGeo, M.skin));
     // 踝关节：脚掌俯仰（脚跟触地 +0.28 / 脚尖蹬地 -0.45）
     const foot = new THREE.Group();
+    foot.name = isLeft ? 'FootL' : 'FootR';
     foot.position.set(0, -0.36, 0);
     knee.add(foot);
     const shoeGeo = new THREE.BoxGeometry(0.18, 0.14, 0.34);
@@ -591,12 +597,14 @@ function buildChar() {
   const createArm = (isLeft) => {
     const side = isLeft ? -1 : 1;
     const shoulder = new THREE.Group();
+    shoulder.name = isLeft ? 'ShoulderL' : 'ShoulderR'; // 克隆体靠名字找回关节
     shoulder.position.set(side * 0.42, 0.72, 0);
     torsoGroup.add(shoulder);
     const upperGeo = new THREE.CylinderGeometry(0.09, 0.08, 0.34, 6);
     upperGeo.translate(0, -0.17, 0);
     shoulder.add(new THREE.Mesh(upperGeo, M.skin));
     const elbow = new THREE.Group();
+    elbow.name = isLeft ? 'ElbowL' : 'ElbowR';
     elbow.position.set(0, -0.32, 0);
     shoulder.add(elbow);
     const foreGeo = new THREE.CylinderGeometry(0.08, 0.07, 0.34, 6);
@@ -613,6 +621,7 @@ function buildChar() {
 
   // 砖垛挂点：胸前手抱位（AI Studio 母本方案；相机已调高成俯视追尾使其可见）
   const plankMount = new THREE.Group();
+  plankMount.name = 'PlankMount'; // 克隆体靠名字找回关节
   plankMount.position.set(0, 0.58, 0.62);
   torsoGroup.add(plankMount);
 
@@ -768,6 +777,8 @@ function buildLevel(cur) {
   playerX = 0; targetX = 0; playerY = 0; fallVel = 0;
   heldLeft = false; heldRight = false; dragging = false;
   fell = false; bridgeT = 0;
+  offRoad = false; plankAcc = 0; leapGrace = 0;
+  buildOpponents(); // AI 对手竞速（原版机制）
   player.position.set(bendX(0), 0, 0);
   player.rotation.set(0, 0, 0);
   for (const m of stackMeshes) m.visible = false;
@@ -1090,25 +1101,129 @@ function updateShortcut(x, z, adv) {
   // 每 plankStride 米在脚下留一块板（未满池时新增，满后循环复用最老的）
   if (plankAcc >= cfg.plankStride) {
     plankAcc = 0;
-    const h = headingAt(z);
-    const px = bendX(z) + x * Math.cos(h) + (Math.random() - 0.5) * 0.15;
-    let plank;
-    if (planks.length < cfg.plankPoolMax) {
-      plank = new THREE.Mesh(BOX, plankMat);
-      plank.scale.set(1.5, 0.1, cfg.plankStride * 0.95);
-      scene.add(plank);
-      planks.push(plank);
-    } else {
-      plank = planks[plankCursor];
-      plankCursor = (plankCursor + 1) % cfg.plankPoolMax;
-    }
-    plank.position.set(px, 0.02, z - 0.2);
-    plank.rotation.y = h;
+    layPlank(z, x);
   }
+}
+
+// 在 (x,z) 留一块板（玩家与 AI 对手共用）
+function layPlank(z, x) {
+  const h = headingAt(z);
+  const px = bendX(z) + x * Math.cos(h) + (Math.random() - 0.5) * 0.15;
+  let plank;
+  if (planks.length < cfg.plankPoolMax) {
+    plank = new THREE.Mesh(BOX, plankMat);
+    plank.scale.set(1.5, 0.1, cfg.plankStride * 0.95);
+    scene.add(plank);
+    planks.push(plank);
+  } else {
+    plank = planks[plankCursor];
+    plankCursor = (plankCursor + 1) % cfg.plankPoolMax;
+  }
+  plank.position.set(px, 0.02, z - 0.2);
+  plank.rotation.y = h;
 }
 
 function checkGate(z) {
   if (z >= level.gateZ - 0.5) win(); // 原版规则：到达终点即过关（星级按用时/余砖）
+}
+
+// ===== AI 对手竞速（原版标志性机制复刻） =====
+// 规则：N 个 AI 对手同时起跑，各自带板铺捷径；速度比玩家快的撞飞玩家（抢板），
+// 玩家比对手快的撞飞对手并没收其携带板子；断崖/板尽同样会坠落。
+const OPPONENT_COUNT = 3;
+const opponents = [];
+
+function buildOpponents() {
+  for (const o of opponents) scene.remove(o.rig);
+  opponents.length = 0;
+  for (let i = 0; i < OPPONENT_COUNT; i++) {
+    const rig = char.root.clone(); // 深拷贝角色（共享几何体/克隆材质）
+    rig.traverse((n) => {
+      if (n.isMesh && n.material) {
+        n.material = n.material.clone();
+        n.material.color.offsetHSL(0.09 * (i + 1), 0, -0.12 - i * 0.05);
+      }
+    });
+    const x = (i - (OPPONENT_COUNT - 1) / 2) * 1.1;
+    const z = -1.2 - i * 1.0;
+    rig.position.set(bendX(z) + x, 0, z);
+    rig.rotation.y = headingAt(z);
+    scene.add(rig);
+    opponents.push({
+      rig, x, z,
+      speed: cfg.runSpeed * (0.9 + i * 0.05),
+      bricks: 24,
+      alive: true, finished: false,
+      targetX: x, changeT: Math.random() * 2, runCycle: i * 2.1,
+    });
+  }
+}
+
+function rigOf(root) {
+  const g = (n) => root.getObjectByName(n);
+  return {
+    root,
+    torso: g('Torso'), head: g('Head'), headbandRibbon: g('Ribbon'),
+    leftArm: { shoulder: g('ShoulderL'), elbow: g('ElbowL') },
+    rightArm: { shoulder: g('ShoulderR'), elbow: g('ElbowR') },
+    leftLeg: { hip: g('HipL'), knee: g('KneeL'), foot: g('FootL') },
+    rightLeg: { hip: g('HipR'), knee: g('KneeR'), foot: g('FootR') },
+    plankMount: g('PlankMount'),
+  };
+}
+
+function updateOpponents(dt) {
+  for (const o of opponents) {
+    if (!o.alive || o.finished) continue;
+    o.changeT -= dt;
+    if (o.changeT <= 0) {
+      o.changeT = 1.2 + Math.random() * 2;
+      // 80% 沿主路跑，20% 尝试切弯抄近路
+      o.targetX = Math.random() < 0.8
+        ? (Math.random() * 2 - 1) * cfg.trackHalfWidth * 0.7
+        : (Math.random() * 2 - 1) * (cfg.trackHalfWidth + 2.2);
+    }
+    o.x += (o.targetX - o.x) * Math.min(1, dt * 2.2);
+    const adv = o.speed * dt;
+    o.z += adv;
+
+    // 铺板经济：离开主路持续耗板，板尽坠落
+    if (!isOnMainRoad(o.x, o.z)) {
+      if (o.bricks > 0) {
+        o.bricks -= cfg.plankCostPerMeter * adv;
+        if (Math.random() < adv / cfg.plankStride) layPlank(o.z, o.x);
+      } else { knockOut(o, ' opponents 板尽坠落'); continue; }
+    }
+
+    // 与玩家碰撞：快者撞飞慢者并抢板
+    if (state === 'run' && Math.abs(o.z - player.position.z) < 0.85 && Math.abs(o.x - playerX) < 0.85) {
+      if (speed > o.speed * 1.02) {
+        knockOut(o, ' 被你撞飞');
+        const loot = Math.min(Math.floor(o.bricks), 6);
+        if (loot > 0) { bricks += loot; setBricksUI(Math.floor(bricks)); floatText(`抢板 +${loot}`, '#ff8a80'); }
+      } else if (o.speed > speed * 1.02) {
+        knockOut(o, ' 对手撞飞了你'); // 对手继续跑
+        enterFall();
+        return;
+      }
+    }
+
+    if (o.z >= level.gateZ - 0.5) { o.finished = true; continue; }
+
+    o.rig.position.set(bendX(o.z) + o.x * Math.cos(headingAt(o.z)), 0, o.z);
+    o.rig.rotation.y = headingAt(o.z);
+    o.runCycle += dt * (8 + o.speed * 0.7);
+    animateChar(rigOf(o.rig), o.runCycle, o.targetX - o.x, Math.ceil(o.bricks), 'running', dt);
+  }
+}
+
+function knockOut(o, why) {
+  o.alive = false;
+  console.log('[ShortcutRun] 对手退场:' + why);
+  sfx.lose();
+  shake(0.12, 0.2);
+  const p = o.rig.position;
+  tweenTo(o.rig.position, 'y', p.y - 6, 0.8);
 }
 
 // ============ 主循环 ============
@@ -1165,6 +1280,7 @@ function loop() {
       checkGates(prevZ, z);
       checkGate(z);
     }
+    updateOpponents(dt);
     // 砖堆挂 plankMount（头顶），只需切可见性
     for (let i = 0; i < stackMeshes.length; i++) {
       stackMeshes[i].visible = i < Math.min(bricks, stackMeshes.length);
@@ -1234,6 +1350,8 @@ window.__game = {
     pickupList: pickups.map((p) => ({ x: p.def.x, z: p.def.z, taken: p.taken, kind: p.def.kind || 'brick' })),
     gapList: level.gaps.map((g) => ({ zStart: g.zStart, zEnd: g.zEnd, cost: g.cost, bridged: !!g.bridged })),
     offRoad, planksLaid: planks.length,
+    opponents: opponents.filter((o) => o.alive).length,
+    opponentsDone: opponents.filter((o) => o.finished || !o.alive).length,
     gateList: (level.gates || []).map((g) => ({ z: g.z, type: g.type, v: g.v, used: !!g.used })),
   }),
   setBricks: (n) => { bricks = n; setBricksUI(n); },
