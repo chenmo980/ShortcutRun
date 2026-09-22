@@ -13,6 +13,7 @@ import { cfgForLevel, itemsFor } from './LevelCurve';
 import { createProgress, ProgressStore } from './Progression';
 import { cycleTheme, currentTheme } from './Theme';
 import { applyTheme } from './BoxFactory';
+import { applyCharTheme } from './CharacterRig';
 import { AudioMgr } from './AudioMgr';
 import { TrackBuilder, RuntimePickup } from './TrackBuilder';
 import { CameraFollow } from './CameraFollow';
@@ -63,6 +64,8 @@ export class GameApp extends Component {
   private elapsed = 0;
   private runT0 = 0;
   private speedDip = 0; // 铺桥瞬间轻微减速（J4 手感）
+  private runCycle = 0; // 角色步态相位
+  private fell = false;  // 是否坠落死亡（决定 lose 姿势：旋水 or 站立）
 
   onLoad(): void {
     if (!this.boxPrefab) {
@@ -129,6 +132,7 @@ export class GameApp extends Component {
     this.heldLeft = false;
     this.heldRight = false;
     this.dragging = false;
+    this.fell = false;
     this.ui?.setBricks(0);
     this.ui?.setLevel(cur.level);
     this.ui?.hideResult();
@@ -220,10 +224,11 @@ export class GameApp extends Component {
     if (code === KeyCode.KEY_D || code === KeyCode.ARROW_RIGHT) this.heldRight = down;
   }
 
-  // T 键换肤：切主题 + 清材质缓存 + 重建当前关卡（种子不变，同图换色）
+  // T 键换肤：切主题 + 清各处材质缓存 + 重建当前关卡（种子不变，同图换色）
   private toggleTheme(): void {
     cycleTheme();
     applyTheme();
+    applyCharTheme();
     console.log(`[ShortcutRun] 切换主题：${currentTheme().name}`);
     this.startLevel();
   }
@@ -238,7 +243,8 @@ export class GameApp extends Component {
   update(dt: number): void {
     this.elapsed += dt;
     if (this.state === 'ready' || this.state === 'win' || this.state === 'lose') {
-      this.track.syncRig(this.state, 0, this.elapsed);
+      const idleState = this.state === 'win' ? 'finished' : 'idle';
+      this.track.syncRig(idleState, this.runCycle, 0, this.bricks, dt);
       return;
     }
 
@@ -268,8 +274,8 @@ export class GameApp extends Component {
     }
 
     this.player.setPosition(new Vec3(x, y, z)); // rig 根节点在脚底
-    const tilt = clamp((this.targetX - x) * 0.25, -0.35, 0.35);
-    this.player.eulerAngles = new Vec3(this.state === 'fall' ? -0.9 : 0.04, 0, -tilt);
+    // 角色姿势由 CharacterRig 接管（含转向侧倾/落水），这里不再手动旋转根节点
+    if (this.state === 'run') this.runCycle += dt * (8 + this.speed * 0.7);
 
     if (this.state === 'run') {
       this.checkPickups(x, prevZ, z);
@@ -278,7 +284,8 @@ export class GameApp extends Component {
       this.checkGate(z);
     }
     this.track.syncStack(this.bricks);
-    this.track.syncRig(this.state, this.speed, this.elapsed);
+    const charState = this.state === 'fall' ? 'drowned' : (this.fell ? 'drowned' : 'stand');
+    this.track.syncRig(charState, this.runCycle, this.targetX - x, this.bricks, dt);
     this.ui?.setProgress(z, this.levelDef.gateZ);
     // J1：速度因子喂相机（FOV 冲刺）
     const span = Math.max(0.1, this.cfg.maxSpeed - this.cfg.runSpeed);
@@ -347,6 +354,7 @@ export class GameApp extends Component {
     this.ui?.showHint('掉落！');
     this.state = 'fall';
     this.fallVel = 1;
+    this.fell = true;
     this.camFollow.addShake(0.18, 0.2); // J1：掉落实感
   }
 

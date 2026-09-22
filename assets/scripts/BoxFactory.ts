@@ -58,8 +58,8 @@ export function applyTheme(): void {
 }
 
 // 造一个盒子：共享一份网格，按颜色共享材质，几百个盒子也不卡
-export function spawnBox(parent: Node, kind: BoxKind, sx: number, sy: number, sz: number, x: number, y: number, z: number): Node {
-  const n = new Node('Box');
+export function spawnBox(parent: Node, kind: BoxKind, sx: number, sy: number, sz: number, x: number, y: number, z: number, name = 'Box'): Node {
+  const n = new Node(name);
   n.parent = parent;
   const mr = n.addComponent(MeshRenderer);
   mr.mesh = getMesh();

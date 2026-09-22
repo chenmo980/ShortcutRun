@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2019",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "strict": false,
+    "noImplicitAny": false,
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "cc": ["E:/Program Files (x86)/CocosDashboard/resources/resources/3d/engine/bin/.declarations/cc.d.ts"]
+    }
+  },
+  "include": ["../assets/scripts/**/*.ts"]
+}

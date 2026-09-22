@@ -159,5 +159,39 @@ export function verifyAll() {
   const out = {};
   out['day'] = verifyTheme(PALETTES.day);
   for (const [k, t] of Object.entries(PROPOSALS)) out[`proposal-${k}`] = verifyTheme(t);
+  for (const [k, t] of Object.entries(ARTSTUDIO)) out[`artstudio-${k}`] = verifyTheme(t);
   return out;
 }
+
+// ---------- art-studio 四盘（用户 2026-09-22 重制版调色板，保身份最小修复，全部实跑过验） ----------
+// 来源 origin/main(=art-studio 分支) src/data/themes.ts；night 盘走夜/昏豁免通道。
+// 每盘注释 = 相对原盘的改动键。详见 docs/qoder/art-pack.md。
+export const ARTSTUDIO = {
+  voodoo: {
+    // 原盘砖#FFB703/桥#E2E8F0 在白道上不可见，player 由品红改青蓝（品红vs棕砖色盲塌陷）
+    name: 'VOODOO 经典马卡龙',
+    sky: 0xbee1e6, ground: 0x48cae4, road: 0xffffff, brick: 0xb45309,
+    bridge: 0x94a3b8, player: 0x06b6d4, limb: 0x3a86ff, skin: 0xffe0b2,
+    gate: 0x8338ec, pillar: 0x1098f7,
+  },
+  tropical: {
+    // 沙滩跑道去饱和提亮为白沙（原#E9D8A6 抢戏+天路明暗序违规），砖深一档
+    name: '热带海岛微风',
+    sky: 0xc8e7f5, ground: 0x00b4d8, road: 0xf5f5f4, brick: 0xd97706,
+    bridge: 0x8b5e34, player: 0x005f73, limb: 0x94d2bd, skin: 0xffe0b2,
+    gate: 0xae2012, pillar: 0x0077b6,
+  },
+  sunset: {
+    name: '落日金辉余晖', night: true,
+    sky: 0x6d28d9, ground: 0x0e7490, road: 0xe8dcc4, brick: 0xb91c1c,
+    bridge: 0x7c2d12, player: 0x1e40af, limb: 0xfde047, skin: 0xffe0b2,
+    gate: 0xdc2626, pillar: 0x581845,
+  },
+  cyberpunk: {
+    // 海平线加发光青（原水色与夜空在暗端糊成一团，groundvssky 1.11）
+    name: '赛博霓虹夜跑', night: true,
+    sky: 0x0d0826, ground: 0x0e7490, road: 0x1a1e29, brick: 0x00f5d4,
+    bridge: 0x7000ff, player: 0xff007f, limb: 0xfee440, skin: 0xffe0b2,
+    gate: 0x9b5de5, pillar: 0x050517,
+  },
+};

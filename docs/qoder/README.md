@@ -92,7 +92,9 @@ v4 开启道具时追加：`gates:[{z,type:'add'|'mul',v}]`（按 z 升序），
 
 15. **Q5 主题规范（theme.mjs）**：step-5 明言"我不自己拍颜色，避免审美争议"，所以这里定的不是审美而是**可读性下限**——关键对（砖/路、角色/路、门/天…）用"明度对比 ∨ 高饱和色相分离"双通道判定 + Viénot-Brettel 三色盲模拟残余下限 + 天空亮度/路面饱和带。阈值是 3D 场景折减版（平面 WCAG 3:1 会误杀所有中性地板，实测把 city 都错杀）。体检结论：**city 仅 1 项不过**（淡蓝角色 vs 琥珀砖在绿色盲下残余 1.00=同色，改 `player: 0x0288d1` 一键即全过）；**candy 7 项不过**（浅粉路上放黄砖/粉紫桥，拾取物直接隐身，PROPOSALS 给了保糖果身份的修复表）。§20 双锁：规范盘常绿 + Theme.ts 现表逐张跑（**当前红=故意报警**，同 §15a 先例；测试专测盘 name 加「(QA)」可豁免）。
 
-16. **Q6 G1 数据回调方案（g1-tuning.md）**：事件 schema（level/seed/outcome/t/bricksLeft/failZ）+ 六条"症状→单旋钮"回调公式（含实测斜率 k±0.1≈胜率±20pt）+ 验收带更新流程（真人数据 vs HUMAN_AVG 同向性判定：同偏改数值、唯真人偏改失误模型）。统计坑已列：restart 后门数据按 seed 合法区间剔除、分母用局不用关（attempt 墙）、计时口径 runT0 跨端对齐。**v4 基准带已实测入 §5**：items-on vs off 人形代理 L1-L30（60 seeds/关）——道具纯增益（胜率均值 +1.9pt、无 <25% 墙、双态贪心 60/60），但 ×2 门使 loop2 余砖中位膨胀至 99-130、鞋使平均 T 降 1.5~3s，故真机"太松"判断须扣 gate 增益、PAR 星线须按 on 态校准。
+16. **Q6 G1 数据回调方案（g1-tuning.md）**：事件 schema（level/seed/outcome/t/bricksLeft/failZ）+ 六条"症状→单旋钮"回调公式（含实测斜率 k±0.1≈胜率±20pt）+ 验收带更新流程（真人数据 vs HUMAN_AVG 同向性判定：同偏改数值、唯真人偏改失误模型）。统计坑已列：restart 后门数据按 seed 合法区间剔除、分母用局不用关（attempt 墙）、计时口径 runT0 跨端对齐。**v4 基准带已实测入 §5**：items-on vs off 人形代理 L1-L30（60 seeds/关）——道具纯增益（胜率均值 +1.9pt、无 <25% 墙、双态贪心 60/60），但 ×2 门使 loop2 余砖中位膨胀至 99-130、鞋使平均 T 降 1.5~3s，故真机"太松"判断须扣 gate 增益、PAR 星线须按 on 态校准。**§6 PAR 已换表并三处同步完成**（母本新表+parFor loop 补偿 +2.5s/loop，step-5 提交 1b18e88 同步两处拷贝，§17 复绿）。
+
+17. **美术规格包（art-pack.md，2026-09-22）**：用户 force-push 了 React+three 美工工作台到 origin/main（零共同历史，主工程远端 15 提交暂不可见，本地完好+bundle 备份）。工作台产出四调色板全部过 Q5 规范（theme.mjs 新增 `ARTSTUDIO` 入 verifyAll 常绿锁 + **verifyTheme 新增 night 豁免通道**：夜/昏盘跳过天空亮度与天路明暗序，配对检查不减免）；角色=程序化五皮肤+抱板姿遮挡修复+跑步公式；渲染=FogExp2 0.007/PCFSoft 1024/55° 跟拍；附 Cocos 卡通水 shader 完整 effect 代码与 Mixamo 选型表。移植参数全在 art-pack.md，等 step-5 认领。
 
 ## 移植要求（给 step-5）
 

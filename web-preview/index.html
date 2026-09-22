@@ -83,6 +83,7 @@ const CFG = {
 let cfg = { ...CFG }; // 按关卡切换（LevelCurve），全局代码只读 cfg
 let levelNum = 1, attempt = 1, runT0 = 0;
 let speedDip = 0; // 铺桥瞬间轻微减速（J4 手感）
+let runCycle = 0, fell = false; // 角色动画相位 / 是否坠落死亡
 
 // ===== 关卡推进（移植自 docs/qoder/progression.mjs 母本，localStorage 持久化） =====
 const SR_KEY = 'shortcut_run_progress_v1';
@@ -355,6 +356,11 @@ const THEMES = {
   day: { name: '白天（原版）', sky: 0xaee6ff, ground: 0x43a047, road: 0x6d4c41, brick: 0x4dd0ff, bridge: 0xc98d4f, player: 0xffffff, limb: 0x90a4ae, skin: 0xffe0b2, gate: 0xff3b30, pillar: 0x263238, shoe: 0xffee58, building1: 0xeceff1, building2: 0xb0bec5 },
   city: { name: '城市', sky: 0x8fb3d9, ground: 0x7d8a99, road: 0x3d444d, brick: 0xffc107, bridge: 0x8d6e63, player: 0x0288d1, limb: 0x2196f3, skin: 0xffe0b2, gate: 0xe53935, pillar: 0x455a64, shoe: 0xffee58, building1: 0x78909c, building2: 0x546e7a },
   candy: { name: '糖果', sky: 0xffe4ef, ground: 0x66bb6a, road: 0xd8b8ca, brick: 0xab27d3, bridge: 0x4e342e, player: 0xffffff, limb: 0xbdbdbd, skin: 0xffe0b2, gate: 0xc51162, pillar: 0x6a1b9a, shoe: 0x006064, building1: 0xf8bbd0, building2: 0xb39ddb },
+  // 以下四盘移植自 art-studio 重制版（docs/qoder/art-pack.md §1，Q5 ARTSTUDIO 已过验）
+  voodoo: { name: '马卡龙', sky: 0xbee1e6, ground: 0x48cae4, road: 0xffffff, brick: 0xb45309, bridge: 0x94a3b8, player: 0x06b6d4, limb: 0x3a86ff, skin: 0xffe0b2, gate: 0x8338ec, pillar: 0x1098f7, shoe: 0xff4081, building1: 0xd7f0f5, building2: 0x80cbc4 },
+  tropical: { name: '海岛', sky: 0xc8e7f5, ground: 0x00b4d8, road: 0xf5f5f4, brick: 0xd97706, bridge: 0x8b5e34, player: 0x005f73, limb: 0x94d2bd, skin: 0xffe0b2, gate: 0xae2012, pillar: 0x0077b6, shoe: 0xff4081, building1: 0xe0f2f7, building2: 0x48cae4 },
+  sunset: { name: '落日', night: true, sky: 0x6d28d9, ground: 0x0e7490, road: 0xe8dcc4, brick: 0xb91c1c, bridge: 0x7c2d12, player: 0x1e40af, limb: 0xfde047, skin: 0xffe0b2, gate: 0xdc2626, pillar: 0x581845, shoe: 0xff4081, building1: 0x8b5cf6, building2: 0x4c1d95 },
+  cyberpunk: { name: '霓虹', night: true, sky: 0x0d0826, ground: 0x0e7490, road: 0x1a1e29, brick: 0x00f5d4, bridge: 0x7000ff, player: 0xff007f, limb: 0xfee440, skin: 0xffe0b2, gate: 0x9b5de5, pillar: 0x050517, shoe: 0xffee58, building1: 0x2a2140, building2: 0x120e2b },
 };
 let themeKey = 'day';
 const MAT = {
@@ -381,6 +387,11 @@ function applyTheme() {
   scene.background.setHex(t.sky);
   scene.fog.color.setHex(t.sky);
   for (const k of Object.keys(MAT)) MAT[k].color.setHex(t[k]);
+  // 角色配色跟随主题（AI Studio 角色系统适配）
+  CHAR_MATS.clothTop.color.setHex(t.player);
+  CHAR_MATS.clothBottom.color.setHex(t.limb);
+  CHAR_MATS.skin.color.setHex(t.skin);
+  CHAR_MATS.accent.color.setHex(t.gate);
 }
 // 固定色（不随主题）：道路边线 + 断崖警示条纹
 const MAT_FIX = {
@@ -395,7 +406,6 @@ function cycleTheme() {
   console.log(`[ShortcutRun] 切换主题：${THEMES[themeKey].name}`);
   return themeKey;
 }
-applyTheme();
 
 function box(mat, sx, sy, sz, x, y, z) {
   const m = new THREE.Mesh(BOX, mat);
@@ -432,53 +442,173 @@ const sfx = {
   lose: () => beep(220, 0.4, 'sawtooth', 0.14, -160),
 };
 
-// ============ 角色：程序化骨骼小人（零外部素材，四肢正弦摆动） ============
+// ============ 角色：AI Studio 关节角色移植版（零外部素材） ============
+// 母本：chenmo980/ShortcutRun art-studio 分支 src/components/characterBuilder.ts
+// （Google AI Studio 生成，按用户分工“AI Studio 解决美工和动作”）
+// 适配：颜色走我们的主题表；plankMount 移到头顶（追尾相机可见，原版 Shortcut Run 即头顶垛）
 const player = new THREE.Group();
 scene.add(player);
-const rig = {};
-function rigPart(mat, w, h, d, x, y, z, parent) {
-  const m = new THREE.Mesh(BOX, mat);
-  m.scale.set(w, h, d);
-  m.position.set(x, y, z);
-  (parent || player).add(m);
-  return m;
-}
-rig.body = rigPart(MAT.player, 0.55, 0.62, 0.35, 0, 0.98, 0);
-rig.head = rigPart(MAT.skin, 0.42, 0.42, 0.42, 0, 1.5, 0);
-rig.armL = new THREE.Group(); rig.armL.position.set(-0.37, 1.22, 0); player.add(rig.armL);
-rig.armR = new THREE.Group(); rig.armR.position.set(0.37, 1.22, 0); player.add(rig.armR);
-rig.armLm = rigPart(MAT.limb, 0.16, 0.58, 0.16, 0, -0.29, 0, rig.armL);
-rig.armRm = rigPart(MAT.limb, 0.16, 0.58, 0.16, 0, -0.29, 0, rig.armR);
-rig.legL = new THREE.Group(); rig.legL.position.set(-0.15, 0.68, 0); player.add(rig.legL);
-rig.legR = new THREE.Group(); rig.legR.position.set(0.15, 0.68, 0); player.add(rig.legR);
-rig.legLm = rigPart(MAT.limb, 0.2, 0.68, 0.2, 0, -0.34, 0, rig.legL);
-rig.legRm = rigPart(MAT.limb, 0.2, 0.68, 0.2, 0, -0.34, 0, rig.legR);
+const CHAR_MATS = {
+  clothTop: new THREE.MeshLambertMaterial(),
+  clothBottom: new THREE.MeshLambertMaterial(),
+  skin: new THREE.MeshLambertMaterial(),
+  accent: new THREE.MeshLambertMaterial(),
+  hair: new THREE.MeshLambertMaterial({ color: 0x452a18 }),
+  shoes: new THREE.MeshLambertMaterial({ color: 0xffffff }),
+  eyes: new THREE.MeshBasicMaterial({ color: 0x0f172a }),
+  white: new THREE.MeshBasicMaterial({ color: 0xffffff }),
+};
+function buildChar() {
+  const M = CHAR_MATS;
+  const root = player;
+  const torsoGroup = new THREE.Group();
+  torsoGroup.position.set(0, 0.72, 0);
+  root.add(torsoGroup);
 
-function animateRig() {
-  if (state === 'run') {
-    const freq = 5 + speed * 0.9;          // 跑得越快步频越高
-    const sw = Math.sin(elapsed * freq);
-    rig.legL.rotation.x = sw * 0.75;
-    rig.legR.rotation.x = -sw * 0.75;
-    rig.armL.rotation.x = -sw * 0.55;
-    rig.armR.rotation.x = sw * 0.55;
-    rig.body.position.y = 0.98 + Math.abs(Math.sin(elapsed * freq)) * 0.05;
-    rig.head.position.y = 1.5 + Math.abs(Math.sin(elapsed * freq)) * 0.05;
-  } else if (state === 'fall') {
-    const t = elapsed * 18;
-    rig.legL.rotation.x = Math.sin(t) * 1.1;
-    rig.legR.rotation.x = Math.sin(t + 2) * 1.1;
-    rig.armL.rotation.x = -2.6 + Math.sin(t * 1.3) * 0.4;
-    rig.armR.rotation.x = -2.6 + Math.sin(t * 1.1) * 0.4;
-  } else if (state === 'win') {
-    rig.legL.rotation.x = 0; rig.legR.rotation.x = 0;
-    rig.armL.rotation.x = -2.9; rig.armR.rotation.x = -2.9;   // 举手庆祝
-  } else {
-    const sw = Math.sin(elapsed * 2.2) * 0.12;
-    rig.armL.rotation.x = sw; rig.armR.rotation.x = sw;
-    rig.legL.rotation.x = 0; rig.legR.rotation.x = 0;
-    rig.body.position.y = 0.98; rig.head.position.y = 1.5;
+  // 骨盆 + 胸 + 脖
+  const pelvis = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.3, 0.32, 8), M.clothBottom);
+  pelvis.position.y = 0.16; torsoGroup.add(pelvis);
+  const chest = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.31, 0.55, 8), M.clothTop);
+  chest.position.y = 0.55; torsoGroup.add(chest);
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.14, 0.18, 6), M.skin);
+  neck.position.y = 0.88; torsoGroup.add(neck);
+
+  // 头 + 眼睛 + 头发 + 头带 + 飘带
+  const headGroup = new THREE.Group();
+  headGroup.position.set(0, 1.15, 0);
+  torsoGroup.add(headGroup);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 10), M.skin);
+  headGroup.add(head);
+  const eyeGeo = new THREE.SphereGeometry(0.065, 8, 8);
+  const eyeL = new THREE.Mesh(eyeGeo, M.eyes); eyeL.scale.set(1, 1.3, 0.5); eyeL.position.set(-0.12, 0.04, 0.28); eyeL.rotation.y = 0.15; headGroup.add(eyeL);
+  const eyeR = new THREE.Mesh(eyeGeo, M.eyes); eyeR.scale.set(1, 1.3, 0.5); eyeR.position.set(0.12, 0.04, 0.28); eyeR.rotation.y = -0.15; headGroup.add(eyeR);
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.335, 0.335, 0.1, 12, 1, true), M.accent);
+  band.position.y = 0.1; headGroup.add(band);
+  const ribbonGeo = new THREE.BoxGeometry(0.14, 0.04, 0.55);
+  ribbonGeo.translate(0, 0, -0.27);
+  const headbandRibbon = new THREE.Mesh(ribbonGeo, M.accent);
+  headbandRibbon.position.set(0, 0.12, -0.32);
+  headGroup.add(headbandRibbon);
+  // 头发（锥帽 + 刘海）
+  const hair = new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.35, 7), M.hair);
+  hair.position.set(0, 0.2, -0.04); hair.rotation.x = -0.2; headGroup.add(hair);
+  const fringe = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.12, 0.22), M.hair);
+  fringe.position.set(0, 0.24, 0.15); fringe.rotation.x = 0.25; headGroup.add(fringe);
+
+  // 腿：髋 → 大腿 → 膝 → 小腿 → 鞋
+  const createLeg = (isLeft) => {
+    const side = isLeft ? -1 : 1;
+    const hip = new THREE.Group();
+    hip.position.set(side * 0.2, 0.08, 0);
+    torsoGroup.add(hip);
+    const thighGeo = new THREE.CylinderGeometry(0.11, 0.09, 0.38, 6);
+    thighGeo.translate(0, -0.19, 0);
+    hip.add(new THREE.Mesh(thighGeo, M.clothBottom));
+    const knee = new THREE.Group();
+    knee.position.set(0, -0.38, 0);
+    hip.add(knee);
+    const calfGeo = new THREE.CylinderGeometry(0.09, 0.075, 0.38, 6);
+    calfGeo.translate(0, -0.19, 0);
+    knee.add(new THREE.Mesh(calfGeo, M.skin));
+    const shoeGeo = new THREE.BoxGeometry(0.18, 0.14, 0.34);
+    shoeGeo.translate(0, -0.07, 0.06);
+    const foot = new THREE.Mesh(shoeGeo, M.shoes);
+    foot.position.set(0, -0.36, 0);
+    knee.add(foot);
+    return { hip, knee, foot };
+  };
+  const leftLeg = createLeg(true);
+  const rightLeg = createLeg(false);
+
+  // 臂：肩 → 上臂 → 肘 → 前臂 → 手（前抱姿势，呼应“搬砖”）
+  const createArm = (isLeft) => {
+    const side = isLeft ? -1 : 1;
+    const shoulder = new THREE.Group();
+    shoulder.position.set(side * 0.42, 0.72, 0);
+    torsoGroup.add(shoulder);
+    const upperGeo = new THREE.CylinderGeometry(0.09, 0.08, 0.34, 6);
+    upperGeo.translate(0, -0.17, 0);
+    shoulder.add(new THREE.Mesh(upperGeo, M.skin));
+    const elbow = new THREE.Group();
+    elbow.position.set(0, -0.32, 0);
+    shoulder.add(elbow);
+    const foreGeo = new THREE.CylinderGeometry(0.08, 0.07, 0.34, 6);
+    foreGeo.translate(0, 0, 0.17);
+    foreGeo.rotateX(Math.PI / 2);
+    elbow.add(new THREE.Mesh(foreGeo, M.skin));
+    const hand = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.09, 0.15), M.skin);
+    hand.position.set(side * -0.05, -0.02, 0.35);
+    elbow.add(hand);
+    return { shoulder, elbow };
+  };
+  const leftArm = createArm(true);
+  const rightArm = createArm(false);
+
+  // 砖垛挂点：头顶（追尾相机可见）
+  const plankMount = new THREE.Group();
+  plankMount.position.set(0, 1.45, 0.02);
+  torsoGroup.add(plankMount);
+
+  return { root, torso: torsoGroup, head: headGroup, headbandRibbon, leftArm, rightArm, leftLeg, rightLeg, plankMount };
+}
+const char = buildChar();
+applyTheme(); // 初始配色（须在 MAT/CHAR_MATS/char 都就绪后）
+
+// 动画（移植自母本 animateCharacter）：跑步步态/前倾/转弯侧倾/头带飘动/胜利/落水
+function animateChar(char, runCycle, steerVelocity, carriedPlanks, state, delta) {
+  const lerp = (a, b, t) => a + (b - a) * Math.min(1, Math.max(0, t));
+  if (state === 'drowned') {
+    char.root.rotation.x = lerp(char.root.rotation.x, Math.PI / 2, delta * 5);
+    char.root.rotation.z = lerp(char.root.rotation.z, 0.6, delta * 4);
+    char.torso.position.y = lerp(char.torso.position.y, -0.8, delta * 3);
+    return;
   }
+  if (state === 'finished') {
+    char.torso.rotation.x = lerp(char.torso.rotation.x, -0.15, delta * 5);
+    char.torso.rotation.z = 0;
+    char.torso.position.y = 0.72 + Math.abs(Math.sin(runCycle * 4)) * 0.25;
+    char.leftArm.shoulder.rotation.x = lerp(char.leftArm.shoulder.rotation.x, -2.8, delta * 6);
+    char.leftArm.shoulder.rotation.z = lerp(char.leftArm.shoulder.rotation.z, -0.4, delta * 6);
+    char.rightArm.shoulder.rotation.x = lerp(char.rightArm.shoulder.rotation.x, -2.8, delta * 6);
+    char.rightArm.shoulder.rotation.z = lerp(char.rightArm.shoulder.rotation.z, 0.4, delta * 6);
+    char.leftLeg.hip.rotation.x = 0; char.rightLeg.hip.rotation.x = 0;
+    char.leftLeg.knee.rotation.x = 0.1; char.rightLeg.knee.rotation.x = 0.1;
+    return;
+  }
+  const stride = Math.sin(runCycle);
+  char.torso.rotation.x = 0.16 + (carriedPlanks > 15 ? 0.06 : 0);
+  char.torso.rotation.y = Math.sin(runCycle) * 0.08;
+  char.torso.rotation.z = lerp(char.torso.rotation.z, -steerVelocity * 0.32, delta * 12);
+  char.torso.position.y = 0.72 + Math.abs(stride) * 0.12;
+  char.head.rotation.x = -char.torso.rotation.x * 0.8;
+  char.head.rotation.y = -char.torso.rotation.y * 0.5;
+  char.headbandRibbon.rotation.x = -0.35 + Math.sin(runCycle * 2.5) * 0.22;
+  char.headbandRibbon.rotation.y = Math.cos(runCycle * 2) * 0.15;
+  char.leftLeg.hip.rotation.x = stride * 0.82;
+  char.leftLeg.knee.rotation.x = stride > 0 ? 0.1 : Math.max(0, -stride * 1.35);
+  char.rightLeg.hip.rotation.x = -stride * 0.82;
+  char.rightLeg.knee.rotation.x = -stride > 0 ? 0.1 : Math.max(0, stride * 1.35);
+  if (carriedPlanks > 0) {
+    char.leftArm.shoulder.rotation.x = 0.58 + Math.sin(runCycle) * 0.08;
+    char.leftArm.shoulder.rotation.z = 0.22;
+    char.leftArm.shoulder.rotation.y = -0.28;
+    char.leftArm.elbow.rotation.x = -1.25;
+    char.rightArm.shoulder.rotation.x = 0.58 - Math.sin(runCycle) * 0.08;
+    char.rightArm.shoulder.rotation.z = -0.22;
+    char.rightArm.shoulder.rotation.y = 0.28;
+    char.rightArm.elbow.rotation.x = -1.25;
+  } else {
+    char.leftArm.shoulder.rotation.x = -stride * 0.8;
+    char.leftArm.shoulder.rotation.z = 0.15;
+    char.leftArm.shoulder.rotation.y = 0;
+    char.leftArm.elbow.rotation.x = -0.6;
+    char.rightArm.shoulder.rotation.x = stride * 0.8;
+    char.rightArm.shoulder.rotation.z = -0.15;
+    char.rightArm.shoulder.rotation.y = 0;
+    char.rightArm.elbow.rotation.x = -0.6;
+  }
+  char.plankMount.rotation.z = lerp(char.plankMount.rotation.z, -steerVelocity * 0.42, delta * 10);
+  char.plankMount.rotation.x = 0.04 + Math.sin(runCycle * 2) * 0.04;
 }
 let level, state = 'ready', bricks = 0, speed = cfg.runSpeed;
 let playerX = 0, targetX = 0, playerY = 0, fallVel = 0;
@@ -487,7 +617,7 @@ let curSeed = 1, shoeT = 0, itemMeshes = []; // v4：本局种子 / 加速鞋剩
 let camInited = false;
 for (let i = 0; i < 12; i++) {
   const s = cfg.brickUnit * 0.85;
-  const m = box(MAT.brick, s, s, s, 0, s / 2, -0.6 - i * s * 1.15);
+  const m = box(MAT.brick, s, s, s, 0, 0.08 + i * s * 0.92, 0.04, char.plankMount); // 头顶砖垛（挂 torso 下，随身体动）
   m.visible = false;
   stackMeshes.push(m);
 }
@@ -557,6 +687,7 @@ function buildLevel(cur) {
   state = 'ready'; bricks = 0; speed = cfg.runSpeed; shoeT = 0;
   playerX = 0; targetX = 0; playerY = 0; fallVel = 0;
   heldLeft = false; heldRight = false; dragging = false;
+  fell = false;
   player.position.set(0, 0, 0);
   player.rotation.set(0, 0, 0);
   for (const m of stackMeshes) m.visible = false;
@@ -743,6 +874,7 @@ function enterFall() {
   console.log('[ShortcutRun] 砖不够，掉落！');
   showHint('掉落！');
   state = 'fall'; fallVel = 1;
+  fell = true;
   slowT = 0.55;  // 失败慢动作
   shake(0.18, 0.2);
 }
@@ -852,7 +984,7 @@ function loop() {
   elapsed += dt;
   stepAnims(dt);
 
-  if (state === 'run' || state === 'fall') {
+  if (state === 'run' || state === 'fall' || state === 'win' || state === 'lose') {
     if (heldLeft) targetX += cfg.keySteerSpeed * dt;   // 屏幕左 = 世界 +X（手性修正）
     if (heldRight) targetX -= cfg.keySteerSpeed * dt;
     clampTarget();
@@ -876,10 +1008,14 @@ function loop() {
       if (playerY < -8) { lose('掉落！'); }
     }
 
-    player.position.set(x, playerY, z); // rig 根节点在脚底
-    const tilt = Math.max(-0.35, Math.min(0.35, (targetX - x) * 0.25));
-    player.rotation.set(state === 'fall' ? -0.9 : 0.04, 0, -tilt);
-    animateRig();
+    player.position.set(x, playerY, z); // 根节点在脚底
+    if (state === 'run') runCycle += dt * (8 + speed * 0.7); // 步频随速度
+    const charState = state === 'ready' ? 'idle'
+      : state === 'run' ? 'running'
+      : state === 'fall' ? 'drowned'
+      : state === 'win' ? 'finished'
+      : (fell ? 'drowned' : 'idle'); // lose：掉下去的旋水，够砖差一步的站着
+    animateChar(char, runCycle, targetX - x, bricks, charState, dt);
 
     if (state === 'run') {
       checkPickups(x, prevZ, z);
@@ -887,19 +1023,15 @@ function loop() {
       checkGates(prevZ, z);
       checkGate(z);
     }
-    // 砖堆跟随
+    // 砖堆挂 plankMount（头顶），只需切可见性
     for (let i = 0; i < stackMeshes.length; i++) {
       stackMeshes[i].visible = i < Math.min(bricks, stackMeshes.length);
-      if (stackMeshes[i].visible) {
-        const s = cfg.brickUnit * 0.85;
-        stackMeshes[i].position.set(x, s / 2, z - 0.6 - i * s * 1.15);
-      }
     }
     setProgressUI(z, level.gateZ);
   } else if (state === 'ready') {
     // 待机轻浮动
     player.position.y = Math.sin(elapsed * 3) * 0.03;
-    animateRig();
+    animateChar(char, 0, 0, 0, 'idle', dt);
   }
 
   // 相机跟随（与 Cocos 版 CameraFollow 一致）
@@ -960,7 +1092,7 @@ window.__game = {
   }),
   setBricks: (n) => { bricks = n; setBricksUI(n); },
   setTheme: (k) => { if (THEMES[k]) { themeKey = k; applyTheme(); } },
-  setPlayerColor: (hex) => { MAT.player.color.setHex(hex); }, // QA 用：像素检测 marker 色
+  setPlayerColor: (hex) => { MAT.player.color.setHex(hex); CHAR_MATS.clothTop.color.setHex(hex); }, // QA 用：像素检测 marker 色（新角色用 clothTop）
   restart: (lv) => {
     prog.reset();
     for (let i = 1; i < (lv || 1); i++) prog.win(999, 0); // 快进到指定关（QA 用）

@@ -68,14 +68,15 @@
 ## 阻塞
 
 - [ ] 本地 `git push` 默认走 chenmo980-hue 凭证会 403；当前靠一次性 PAT URL 推送。建议在 Windows 凭据管理器更新 github.com 凭证
+- [ ] **AI Studio 占仓事件后排期**：远程备份二选一——① MCP 通道推全量到 lark980-web/ShortcutRun（约 50 文件，three.min.js 走 CDN）② 用户新建仓库 + 给 PAT，git 直推（含完整历史）。本地 + bundle + F 盘副本已三重保全
 
 ## 待办（G1 通过后按序）
 
-- [ ] Mixamo 角色替换灰盒（自动绑骨 + run/fall/win 动画）
-- [ ] 微信小游戏构建 + 真机预览
-- [ ] 主题换肤系统（同几何体换配色）
+- [x] Mixamo 角色替换灰盒 → 已改为 AI Studio 关节角色移植（CharacterRig.ts，零素材）
+- [ ] 微信小游戏构建 + 真机预览（wechat-build.md）
+- [x] 主题换肤系统（Theme.ts 五盘，Q5 规范锁）
 - [ ] 广告 SDK（banner/激励视频）
-- [ ] 音效（Suno/免费素材）
+- [ ] 音效（audio-assets.md 清单，素材即插即用）
 
 ## DeepSeek 草稿收货区
 

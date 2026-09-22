@@ -613,6 +613,8 @@ const N = 2000;
     }
     const nm = m[2].match(/name: '([^']*)'/);
     if (nm) t.name = nm[1];
+    const nt = m[2].match(/night:\s*true/); // 夜盘标记（Q5 规范 night 逃生舱）
+    if (nt) t.night = true;
     if (Object.keys(t).length > 1) themes[m[1]] = t;
   }
   const names = Object.keys(themes);

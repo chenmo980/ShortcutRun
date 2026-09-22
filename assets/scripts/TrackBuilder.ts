@@ -7,6 +7,7 @@ import type { Cfg } from './config';
 import type { LevelDef, GapDef, PickupDef, ItemGateDef } from './LevelGen';
 import { tweenPos, tweenScale, clamp } from './util';
 import { spawnBox, BoxKind } from './BoxFactory';
+import { buildCharacter, animateCharacter, CharRig, CharState } from './CharacterRig';
 
 export interface RuntimePickup {
   node: Node;
@@ -25,13 +26,7 @@ export class TrackBuilder extends Component {
 
   private gateWalls: Node[] = [];
   private stackNodes: Node[] = [];
-  // 程序化角色骨骼（与浏览器版 rig 一致）
-  private rigBody: Node | null = null;
-  private rigHead: Node | null = null;
-  private rigArmL: Node | null = null;
-  private rigArmR: Node | null = null;
-  private rigLegL: Node | null = null;
-  private rigLegR: Node | null = null;
+  private rig: CharRig | null = null;
 
   private box(kind: BoxKind, scale: Vec3, pos: Vec3, parent: Node): Node {
     if (this.boxPrefab) {
@@ -184,61 +179,23 @@ export class TrackBuilder extends Component {
       player = new Node('Player');
       player.parent = this.node;
     }
-    this.rigBody = this.box('player', new Vec3(0.55, 0.62, 0.35), new Vec3(0, 0.98, 0), player);
-    this.rigBody.name = 'Body';
-    this.rigHead = this.box('skin', new Vec3(0.42, 0.42, 0.42), new Vec3(0, 1.5, 0), player);
-    this.rigHead.name = 'Head';
+    this.rig = buildCharacter(player);
 
-    // 四肢用“枢轴节点”实现：枢轴在肩/髋，肢体挂在枢轴下，转枢轴就是摆手/蹬腿
-    this.rigArmL = new Node('ArmL'); this.rigArmL.parent = player; this.rigArmL.setPosition(new Vec3(-0.37, 1.22, 0));
-    this.rigArmR = new Node('ArmR'); this.rigArmR.parent = player; this.rigArmR.setPosition(new Vec3(0.37, 1.22, 0));
-    this.box('limb', new Vec3(0.16, 0.58, 0.16), new Vec3(0, -0.29, 0), this.rigArmL);
-    this.box('limb', new Vec3(0.16, 0.58, 0.16), new Vec3(0, -0.29, 0), this.rigArmR);
-
-    this.rigLegL = new Node('LegL'); this.rigLegL.parent = player; this.rigLegL.setPosition(new Vec3(-0.15, 0.68, 0));
-    this.rigLegR = new Node('LegR'); this.rigLegR.parent = player; this.rigLegR.setPosition(new Vec3(0.15, 0.68, 0));
-    this.box('limb', new Vec3(0.2, 0.68, 0.2), new Vec3(0, -0.34, 0), this.rigLegL);
-    this.box('limb', new Vec3(0.2, 0.68, 0.2), new Vec3(0, -0.34, 0), this.rigLegR);
-
-    // 身后拖的砖块堆：携带量的可视化，最多显示 12 块
+    // 头顶砖垛：携带量可视化（挂 plankMount，最多 12 块）
     for (let i = 0; i < 12; i++) {
       const s = cfg.brickUnit * 0.85;
-      const brick = this.box('brick', new Vec3(s, s, s), new Vec3(0, s / 2, -0.6 - i * s * 1.15), player);
+      const brick = this.box('brick', new Vec3(s, s, s), new Vec3(0, 0.08 + i * s * 0.92, 0.04), this.rig.plankMount);
       brick.active = false;
       this.stackNodes.push(brick);
     }
     return player;
   }
 
-  // 程序化跑步/掉落/庆祝动画（与浏览器版 animateRig 一致，零动画资产）
-  syncRig(state: string, speed: number, t: number): void {
-    const setRx = (n: Node | null, rx: number) => { if (n) n.eulerAngles = new Vec3(rx, 0, 0); };
-    if (state === 'run') {
-      const freq = 5 + speed * 0.9;
-      const sw = Math.sin(t * freq);
-      setRx(this.rigLegL, sw * 0.75);
-      setRx(this.rigLegR, -sw * 0.75);
-      setRx(this.rigArmL, -sw * 0.55);
-      setRx(this.rigArmR, sw * 0.55);
-      const bob = Math.abs(Math.sin(t * freq)) * 0.05;
-      if (this.rigBody) this.rigBody.setPosition(new Vec3(0, 0.98 + bob, 0));
-      if (this.rigHead) this.rigHead.setPosition(new Vec3(0, 1.5 + bob, 0));
-    } else if (state === 'fall') {
-      const ft = t * 18;
-      setRx(this.rigLegL, Math.sin(ft) * 1.1);
-      setRx(this.rigLegR, Math.sin(ft + 2) * 1.1);
-      setRx(this.rigArmL, -2.6 + Math.sin(ft * 1.3) * 0.4);
-      setRx(this.rigArmR, -2.6 + Math.sin(ft * 1.1) * 0.4);
-    } else if (state === 'win') {
-      setRx(this.rigLegL, 0); setRx(this.rigLegR, 0);
-      setRx(this.rigArmL, -2.9); setRx(this.rigArmR, -2.9);
-    } else {
-      const sw = Math.sin(t * 2.2) * 0.12;
-      setRx(this.rigArmL, sw); setRx(this.rigArmR, sw);
-      setRx(this.rigLegL, 0); setRx(this.rigLegR, 0);
-      if (this.rigBody) this.rigBody.setPosition(new Vec3(0, 0.98, 0));
-      if (this.rigHead) this.rigHead.setPosition(new Vec3(0, 1.5, 0));
-    }
+  // 角色动画（AI Studio 母本移植，零动画资产）
+  syncRig(state: string, runCycle: number, steerVel: number, planks: number, dt: number): void {
+    if (!this.rig) return;
+    const s: CharState = state === 'stand' ? 'idle' : (state as CharState);
+    animateCharacter(this.rig, runCycle, steerVel, planks, s, dt);
   }
 
   syncStack(count: number): void {
