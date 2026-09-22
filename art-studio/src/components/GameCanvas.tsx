@@ -4,6 +4,7 @@ import confetti from 'canvas-confetti';
 import { ColorPalette, VisualSettings, GameMetrics } from '../types';
 import { sound } from '../utils/audio';
 import { buildArticulatedCharacter, animateCharacter, ArticulatedCharacter } from './characterBuilder';
+import { PerformanceMonitor, PerfMetricPoint } from './PerformanceMonitor';
 
 interface GameCanvasProps {
   palette: ColorPalette;
@@ -21,6 +22,24 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const [plankCount, setPlankCount] = useState<number>(10);
   const [finalMultiplier, setFinalMultiplier] = useState<number>(1);
   const [score, setScore] = useState<number>(0);
+
+  // Performance telemetry state for Recharts waveform
+  const [perfHistory, setPerfHistory] = useState<PerfMetricPoint[]>(() => {
+    const initial: PerfMetricPoint[] = [];
+    for (let i = 12; i >= 0; i--) {
+      initial.push({
+        time: `${i}s`,
+        fps: 60,
+        drawCalls: 38,
+        renderMs: 1.2,
+      });
+    }
+    return initial;
+  });
+  const [liveFps, setLiveFps] = useState<number>(60);
+  const [liveDrawCalls, setLiveDrawCalls] = useState<number>(38);
+  const [liveRenderMs, setLiveRenderMs] = useState<number>(1.2);
+  const lastPerfSampleRef = useRef<{ time: number }>({ time: 0 });
 
   // References for game loop access
   const gameRef = useRef<{
@@ -752,7 +771,25 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       }
 
       // Render
+      const t0 = performance.now();
       renderer.render(scene, camera);
+      const renderMs = Math.max(0.1, Number((performance.now() - t0).toFixed(2)));
+      const calls = renderer.info.render.calls;
+
+      // Telemetry sampling for Recharts waveform (~4-5 Hz)
+      const nowTime = performance.now();
+      if (nowTime - lastPerfSampleRef.current.time >= 220) {
+        lastPerfSampleRef.current.time = nowTime;
+        const now = new Date();
+        const timeLabel = `${now.getMinutes()}:${String(now.getSeconds()).padStart(2, '0')}.${Math.floor(now.getMilliseconds() / 100)}`;
+        setLiveFps(currentFps);
+        setLiveDrawCalls(calls);
+        setLiveRenderMs(renderMs);
+        setPerfHistory((prev) => {
+          const next = [...prev, { time: timeLabel, fps: currentFps, drawCalls: calls, renderMs }];
+          return next.length > 25 ? next.slice(next.length - 25) : next;
+        });
+      }
 
       // Report metrics
       onMetricsUpdate({
@@ -761,8 +798,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         planksPlaced: g.bridgePlanks.length,
         multiplier: finalMultiplier,
         state: g.state,
-        drawCalls: renderer.info.render.calls,
+        drawCalls: calls,
         fps: currentFps,
+        renderMs: renderMs,
       });
     };
 
@@ -834,6 +872,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           </span>
         </div>
       </div>
+
+      {/* Recharts Real-Time Performance Waveform Floating Panel */}
+      <PerformanceMonitor
+        data={perfHistory}
+        currentFps={liveFps}
+        currentDrawCalls={liveDrawCalls}
+        currentRenderMs={liveRenderMs}
+      />
 
       {/* Touch/Mouse Instructions Hint */}
       {gameState === 'running' && (

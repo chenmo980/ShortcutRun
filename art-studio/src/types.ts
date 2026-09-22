@@ -50,4 +50,5 @@ export interface GameMetrics {
   state: 'idle' | 'running' | 'bridging' | 'drowned' | 'finished';
   drawCalls: number;
   fps: number;
+  renderMs?: number;
 }
