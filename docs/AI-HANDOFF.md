@@ -143,3 +143,9 @@ G1 门禁：用户试玩“还想再来一把”= 立项。门禁不过，谁都
   ② **Cocos 侧全面激活国风 3D 配饰装配与动力学**：`GEO` 补充金箍、乾坤圈、马尾、发髻、腰封等程序化图元；`mats` 补入金/赤红/夜黑材质；`applyRigSkin` 动态创建与隐藏部件；`activeSkin` 默认直接置为 `'wukong'`（开局即孙悟空）；`GameApp.ts` 接入 `KeyCode.KEY_C` 换装刷新。
   ③ **web-preview 视觉修正**：装配国风角色时自动隐藏现代运动发带及冲突部件，凤翅紫金冠与锁子甲清晰呈现。
   ④ **自动化门禁全部全绿**：`smoke.ts` 零错误 / `sim.mjs` 38/38 全项通过。
+- 2026-09-23 | step-5-preview | **铺路烟雾拖尾双端落地（replica-gap 清单 M3+J1，G1 前 P0 第 1 项）**：原版标志性反馈——离开主路铺板时脚下持续冒烟（出生扩散/上飘/下沉/消隐）。
+  - **web-preview**：60 粒子池 `spawnSmoke`/`stepSmokes`，`updateShortcut` 每 0.12s 在脚下生成一粒，`stepAnims` 统一步进。
+  - **Cocos**：`BoxFactory` 新增 `smoke` 白色固定盒；`TrackBuilder.spawnSmoke/stepSmokes` 同构粒子池（build 重建时同步清池，防 removeAllChildren 后悬空引用）；`GameApp` 传 dt 挂钩 + update 早返回（ready/win/lose）前也步进粒子。
+  - **修一个真 bug**：初版 web 端在 `updateShortcut(x,z,adv)` 里用了未定义的 `dt`（签名不携带），每帧 ReferenceError 直接冻结拾取/推进（verify 三连 FAIL 抓到）；双端统一改为传 dt。教训：跨端同构代码必须双端都端到端跑一遍浏览器。
+  - **回归**：tsc 0 / smoke 绿 / sim 38 / verify-web 15/15（pickup/steer/shortcut/fall/bonus/道具门/主题/像素全过）。
+  - replica-gap.md 已勾 M3/J1 完成；剩余 P0：**M5 对手铺板=持久地面**（原版“蹭路”策略，AI 铺路才有意义）、**M10 奖励区回头机制**（原版高分核心策略）。

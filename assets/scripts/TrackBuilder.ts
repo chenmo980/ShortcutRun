@@ -12,6 +12,14 @@ import { buildCharacter, animateCharacter, CharRig, CharState } from './Characte
 import { genIslands, IslandDef } from './IslandGen';
 import { curveFromCfg, bendX, headingAt, secant, CurveState } from './CurvePath';
 
+const SMOKE_MAX = 60; // 铺路烟雾粒子池上限（与浏览器版一致）
+
+interface SmokeState {
+  life: number; dur: number;
+  vx: number; vy: number; vz: number;
+  s0: number;
+}
+
 export interface RuntimePickup {
   node: Node;
   def: PickupDef;
@@ -37,6 +45,9 @@ export class TrackBuilder extends Component {
   private plankSeq = 0;            // 木板双色交替序号
   private plankTrail: Array<{ x: number; z: number }> = []; // 持久地面：铺了就是路
   private islandNodes: Array<{ def: IslandDef; plat: Node; pile: Node[]; taken: boolean }> = []; // 孤岛（原版机制）
+  private smokePool: Node[] = [];      // 铺路烟雾粒子池（原版标志性反馈，与浏览器版同构）
+  private smokeLive: (SmokeState | null)[] = [];
+  private smokeCursor = 0;
 
   // 铺一块板（Pool：未满新增，满后循环复用最老的）；pos 为 level-space
   // 视觉（2026-09-23 用户反馈“板子像散架木片”后重做）：去抖动贴路径、加宽 1.8m、
@@ -68,6 +79,48 @@ export class TrackBuilder extends Component {
       if (Math.abs(x - p.x) < 1.1 && Math.abs(z - p.z) < 0.8) return true;
     }
     return false;
+  }
+
+  // ===== 铺路烟雾拖尾（原版标志性反馈：铺板时脚下冒烟+加速感，与浏览器版同构） =====
+  // 轻量粒子池：白色小盒，出生扩散、上飘、下沉、扩散到顶点后缩没。池满循环复用最老的。
+  spawnSmoke(x: number, y: number, z: number): void {
+    const i = this.smokeCursor;
+    const s0 = 0.14 + Math.random() * 0.12;
+    let node = this.smokePool[i];
+    if (!node) {
+      node = spawnBox(this.node, 'smoke', s0, s0, s0, x, y + 0.05, z);
+      this.smokePool.push(node);
+    } else {
+      node.setScale(new Vec3(s0, s0, s0));
+      node.setPosition(new Vec3(x, y + 0.05, z));
+      node.active = true;
+    }
+    this.smokeCursor = (this.smokeCursor + 1) % SMOKE_MAX;
+    this.smokeLive[i] = {
+      life: 0, dur: 0.45 + Math.random() * 0.2,
+      vx: (Math.random() - 0.5) * 1.6, vy: 0.6 + Math.random() * 0.8, vz: (Math.random() - 0.5) * 1.2,
+      s0,
+    };
+  }
+
+  stepSmokes(dt: number): void {
+    for (let i = 0; i < this.smokeLive.length; i++) {
+      const st = this.smokeLive[i];
+      if (!st) continue;
+      const node = this.smokePool[i];
+      st.life += dt;
+      const k = st.life / st.dur;
+      if (k >= 1 || !node) {
+        this.smokeLive[i] = null;
+        if (node) node.active = false;
+        continue;
+      }
+      const p = node.position;
+      node.setPosition(new Vec3(p.x + st.vx * dt, p.y + st.vy * dt, p.z + st.vz * dt));
+      st.vy -= 0.4 * dt; // 微微下沉
+      const s = st.s0 * (1 + k * 2.5) * (1 - k); // 先扩散到 2.5 倍，尾段缩没消隐
+      node.setScale(new Vec3(s, s, s));
+    }
   }
 
   isOnMainRoad(x: number, z: number): boolean {
@@ -112,6 +165,9 @@ export class TrackBuilder extends Component {
     this.plankPool = []; // 重建时清掉板子池（避免上一局轨迹残留）
     this.plankCursor = 0;
     this.plankTrail = []; // 持久地面也清空
+    this.smokePool = []; // removeAllChildren 会销毁烟雾节点，池引用必须同步清
+    this.smokeLive = [];
+    this.smokeCursor = 0;
     // 地面（跑道下面的绿地，给纵深参照；世界空间居中，不随弯道）
     this.box('ground', new Vec3(60, 0.4, cfg.levelLength + 80), new Vec3(0, -0.6, level.length / 2 - 10), this.node);
     this.buildRoad();

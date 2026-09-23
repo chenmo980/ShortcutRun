@@ -1076,6 +1076,8 @@ function buildLevel(cur) {
   offRoad = false; plankAcc = 0; leapGrace = 0;
   plankTrail.length = 0; // 清空持久地面（新关卡）
   bonusActive = false; bonusState = null; bonusPads = []; // 重置倍率奖励区
+  for (const m of smokes) { m.alive = false; m.visible = false; } // 清烟雾
+  smokeTimer = 0;
   buildIslands();        // 孤岛（原版机制：主路外板堆冒险）
   buildOpponents(); // AI 对手竞速（原版机制）
   player.position.set(bendX(0), 0, 0);
@@ -1258,6 +1260,7 @@ function stepAnims(dt) {
     a.obj[a.prop] = a.from + (a.to - a.from) * k;
     if (k >= 1) { anims.splice(i, 1); a.onDone && a.onDone(); }
   }
+  stepSmokes(dt);
 }
 
 // ============ 核心逻辑（与 Cocos 版 GameApp.ts 一致，含扫掠检测） ============
@@ -1410,7 +1413,7 @@ function isOnMainRoad(x, z) {
   return true;
 }
 
-function updateShortcut(x, z, adv) {
+function updateShortcut(x, z, adv, dt) {
   const onRoad = isOnMainRoad(x, z);
   // 支撑 = 主路 OR 自己铺过的板子（持久地面，原版规则：铺了就是路）
   const supported = onRoad || onPlankTrail(x, z);
@@ -1444,6 +1447,15 @@ function updateShortcut(x, z, adv) {
   const cost = cfg.plankCostPerMeter * adv;
   bricks = Math.max(0, bricks - cost);
   setBricksUI(Math.floor(bricks));
+
+  // 铺板烟雾拖尾（原版标志性反馈）：每 0.12s 在脚下生成一粒
+  smokeTimer -= dt;
+  if (smokeTimer <= 0) {
+    smokeTimer = 0.12;
+    const h = headingAt(z);
+    const wx = bendX(z) + x * Math.cos(h);
+    spawnSmoke(wx, 0, z - 0.25);
+  }
 
   // 每 plankStride 米在脚下留一块板（未满池时新增，满后循环复用最老的）
   if (plankAcc >= cfg.plankStride) {
@@ -1543,6 +1555,52 @@ function checkIslands(x, z) {
       for (const m of isl.pile) tweenTo(m.position, 'y', m.position.y - 3, 0.4);
       tweenTo(isl.plat.position, 'y', isl.plat.position.y - 3, 0.4);
     }
+  }
+}
+
+// ===== 铺路烟雾拖尾（原版标志性反馈：铺板时脚下冒烟+加速感） =====
+// 轻量粒子池：白色半透明小盒，出生扩散、放大、淡出、下沉。池满循环复用。
+const SMOKE_MAX = 60;
+const smokes = [];
+const smokeGeo = new THREE.BoxGeometry(1, 1, 1);
+const smokeMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, depthWrite: false });
+let smokeTimer = 0;
+
+function spawnSmoke(x, y, z) {
+  let m = smokes.find((s) => !s.alive);
+  if (!m) {
+    if (smokes.length >= SMOKE_MAX) return;
+    m = new THREE.Mesh(smokeGeo, smokeMat.clone());
+    m.alive = false;
+    scene.add(m);
+    smokes.push(m);
+  }
+  m.alive = true;
+  m.life = 0;
+  m.dur = 0.45 + Math.random() * 0.2;
+  m.vx = (Math.random() - 0.5) * 1.6;
+  m.vy = 0.6 + Math.random() * 0.8;
+  m.vz = (Math.random() - 0.5) * 1.2;
+  const s = 0.14 + Math.random() * 0.12;
+  m.scale.set(s, s, s);
+  m.position.set(x, y + 0.05, z);
+  m.visible = true;
+  m.material.opacity = 0.55;
+}
+
+function stepSmokes(dt) {
+  for (const m of smokes) {
+    if (!m.alive) continue;
+    m.life += dt;
+    const k = m.life / m.dur;
+    if (k >= 1) { m.alive = false; m.visible = false; continue; }
+    m.position.x += m.vx * dt;
+    m.position.y += m.vy * dt;
+    m.position.z += m.vz * dt;
+    m.vy -= 0.4 * dt; // 微微下沉
+    const s = m.scale.x + dt * 0.7; // 扩散
+    m.scale.set(s, s, s);
+    m.material.opacity = 0.55 * (1 - k);
   }
 }
 
@@ -1757,7 +1815,7 @@ function loop() {
       const k = 1 - Math.exp(-cfg.steerSpeed * dt);
       x += (targetX - x) * k;
       playerY = 0;
-      updateShortcut(x, z, adv); // 自由铺板核心：离开主路即脚下耗板铺路
+      updateShortcut(x, z, adv, dt); // 自由铺板核心：离开主路即脚下耗板铺路
     } else if (state === 'fall') {
       fallVel += 22 * dt;
       playerY -= fallVel * dt;

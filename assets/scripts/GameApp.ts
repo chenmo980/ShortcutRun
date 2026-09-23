@@ -72,6 +72,7 @@ export class GameApp extends Component {
   private bridgeT = 0;   // 铺板推掷动作剩余时间（v2 增强）
   private offRoad = false; // 当前是否在主路外（铺板模式）
   private plankAcc = 0;    // 累计铺板距离（米）
+  private smokeTimer = 0;  // 铺路烟雾生成间隔计时（原版标志性反馈）
   private leapGrace = 0;   // 剩余最后一跃距离（米），>0 表示飞跃中不耗板
   private curve: CurveState = { amp: 0, freq: 0.12, phase: 0 }; // 弯道（表现层）
 
@@ -284,6 +285,7 @@ export class GameApp extends Component {
 
   update(dt: number): void {
     this.elapsed += dt;
+    this.track.stepSmokes(dt); // 铺路烟雾拖尾：各状态都要推进粒子（ready/win/lose 早返回也不能停）
     if (this.state === 'ready' || this.state === 'win' || this.state === 'lose') {
       const idleState = this.state === 'win' ? 'finished' : 'idle';
       this.track.syncRig(idleState, this.runCycle, 0, this.bricks, dt);
@@ -311,7 +313,7 @@ export class GameApp extends Component {
       const k = 1 - Math.exp(-this.cfg.steerSpeed * dt);
       x += (this.targetX - x) * k;
       y = 0;
-      this.updateShortcut(x, z, adv); // 自由铺板核心（原版机制）
+      this.updateShortcut(x, z, adv, dt); // 自由铺板核心（原版机制）
     } else if (this.state === 'fall') {
       this.fallVel += 22 * dt;
       y -= this.fallVel * dt;
@@ -388,7 +390,7 @@ export class GameApp extends Component {
   // 每前进 1 米消耗 plankCostPerMeter 块板、每 plankStride 米生成一块板（视觉轨迹），
   // 并获得 offRoadBoost 加速（赌板子换速度）；板子耗尽时给 1.2m 最后一跃，
   // 飞跃中落回主路则生还，否则坠落。
-  private updateShortcut(x: number, z: number, adv: number): void {
+  private updateShortcut(x: number, z: number, adv: number, dt: number): void {
     const realOnRoad = this.track.isOnMainRoad(x, z);
     // 支撑 = 主路 OR 自己铺过的板子（持久地面，原版规则：铺了就是路）
     const supported = realOnRoad || this.track.onPlankTrail(x, z);
@@ -415,6 +417,14 @@ export class GameApp extends Component {
     this.plankAcc += adv;
     this.bricks = Math.max(0, this.bricks - (this.cfg.plankCostPerMeter ?? 1) * adv);
     this.ui?.setBricks(Math.floor(this.bricks));
+
+    // 铺板烟雾拖尾（原版标志性反馈，与浏览器版同构）：每 0.12s 在脚下生成一粒
+    this.smokeTimer -= dt;
+    if (this.smokeTimer <= 0) {
+      this.smokeTimer = 0.12;
+      const h = headingAt(z, this.curve);
+      this.track.spawnSmoke(bendX(z, this.curve) + x * Math.cos(h), 0, z - 0.25);
+    }
 
     if (this.plankAcc >= (this.cfg.plankStride ?? 0.6)) {
       this.plankAcc = 0;
