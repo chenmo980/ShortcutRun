@@ -149,3 +149,9 @@ G1 门禁：用户试玩“还想再来一把”= 立项。门禁不过，谁都
   - **修一个真 bug**：初版 web 端在 `updateShortcut(x,z,adv)` 里用了未定义的 `dt`（签名不携带），每帧 ReferenceError 直接冻结拾取/推进（verify 三连 FAIL 抓到）；双端统一改为传 dt。教训：跨端同构代码必须双端都端到端跑一遍浏览器。
   - **回归**：tsc 0 / smoke 绿 / sim 38 / verify-web 15/15（pickup/steer/shortcut/fall/bonus/道具门/主题/像素全过）。
   - replica-gap.md 已勾 M3/J1 完成；剩余 P0：**M5 对手铺板=持久地面**（原版“蹭路”策略，AI 铺路才有意义）、**M10 奖励区回头机制**（原版高分核心策略）。
+- 2026-09-23 | step-5-preview | **G1 前 P0 三项全清零（M5+M10）+ Cocos 奖励区补齐**：
+  - **M5 蹭路**：web `layPlank` 统一记 `plankTrail`（原先只有玩家 updateShortcut 记，对手铺的是纯视觉）→ 对手铺的板也是持久地面；Cocos 侧 `spawnPlank` 本就记 trail 无需改。verify 新增 `opponent-plank-ground`（layPlankAt/supportAt/plankTrailCount 三个 QA 钩子）。
+  - **M10 回头机制**：`BonusRun.ts` 加 `genGasPiles`（入口后 -3.5/-11 各 +15，前方 +20/+42 各 +18）+ `stepBonusRun(s,pads,piles,adv)` 支持负 adv（回头烧气/收垛/锁倍率不降）；web 端 S/↓ 按住回头（0.65 速），气垛三块叠视觉+下沉；`buildLevel` 补 `bonusActive` 整局重置（**修潜在 bug：旧代码奖励区状态不重置，下一局到终点不再进奖励区**）。
+  - **Cocos 奖励区补齐（此前名不副实）**：`GameApp` 到终点直落 `win()`，BonusRun.ts 只有 bonus-balance 工具在用；现已全接线——`enterBonus`/奖励区移动走 `stepBonusRun`/`winFromBonus` 结算（倍率×100+余板，progression/遥测/插屏节流同口径）；`TrackBuilder.buildBonusZone`（倍率台+气垛视觉，BoxFactory 加 pad/plate 色）；`build()` 重建同步清 bonusPileNodes。
+  - **踩坑记录**：①bonus-balance 工具一直在关卡起点 setBricks，冲线吃砖把气补回 80+，输出全是假数据（3气→×10）——已改为冲线前一刻才设气，真曲线 3/8→×2、20→×5、50→×15（吃两垛）；②像素检测 marker 随跑步相位抖（36~78）会误杀——加 `setRunPhase` QA 钩子固定相位后确定性通过；③E 盘被项目外数据塞满 0 字节致 smoke ENOSPC——删 Cocos 可再生缓存（library/temp/build）回 44MB。
+  - **回归**：tsc 0 / smoke / sim 38 / verify-web 18/18（新增 M5/M10 四条断言）。

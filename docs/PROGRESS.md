@@ -37,7 +37,10 @@
 | 关卡进度 HUD（砖数/进度%/关卡号/最佳成绩/星级） | ✅ | 双版本上线 |
 | 多 AI 协作机制（邮箱+门禁+母本制+漂移锁） | ✅ | 见 `docs/AI-HANDOFF.md` |
 | 铺路烟雾拖尾（原版标志性反馈，双端 60 粒子池） | ✅ | tsc 0 / smoke / sim 38 / verify-web 15/15 |
-| 完全复刻差距清单（机制/镜头/UI/juice 五维） | ✅ | `docs/replica-gap.md`，G1 前 P0 剩 M5/M10 |
+| 对手铺板=持久地面（原版“蹭路”策略 M5） | ✅ | layPlank 统一记 trail；verify opponent-plank-ground 断言 |
+| 奖励区回头机制（M10：S 键回头捡气垛再冲） | ✅ | 双端；verify bonus-back-pickup/boost（20气×3→×10） |
+| Cocos 端奖励区补齐（此前到终点直接 win，BonusRun.ts 只被平衡工具用） | ✅ | GameApp enterBonus/stepBonusRun/winFromBonus 全接线 |
+| 完全复刻差距清单（机制/镜头/UI/juice 五维） | ✅ | `docs/replica-gap.md`，**G1 前 P0 全部清零** |
 
 ## 质量数据（QA 口径）
 

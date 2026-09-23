@@ -11,6 +11,7 @@ import { spawnBox, BoxKind } from './BoxFactory';
 import { buildCharacter, animateCharacter, CharRig, CharState } from './CharacterRig';
 import { genIslands, IslandDef } from './IslandGen';
 import { curveFromCfg, bendX, headingAt, secant, CurveState } from './CurvePath';
+import type { BonusPad, BonusPile } from './BonusRun';
 
 const SMOKE_MAX = 60; // 铺路烟雾粒子池上限（与浏览器版一致）
 
@@ -48,6 +49,7 @@ export class TrackBuilder extends Component {
   private smokePool: Node[] = [];      // 铺路烟雾粒子池（原版标志性反馈，与浏览器版同构）
   private smokeLive: (SmokeState | null)[] = [];
   private smokeCursor = 0;
+  private bonusPileNodes: Node[][] = []; // 奖励区气垛网格（按 piles 下标对齐，吃到即下沉销毁）
 
   // 铺一块板（Pool：未满新增，满后循环复用最老的）；pos 为 level-space
   // 视觉（2026-09-23 用户反馈“板子像散架木片”后重做）：去抖动贴路径、加宽 1.8m、
@@ -123,6 +125,43 @@ export class TrackBuilder extends Component {
     }
   }
 
+  // ===== 终点倍率奖励区（原版核心计分玩法，M10 含回头气垛） =====
+  // entryZ = 玩家冲过终点的 z（入口）。倍率台青色悬浮台+白色倍率牌；
+  // 气垛三块叠：入口后褐色（回头才拿得到），前方青色（冲刺路上顺手）
+  buildBonusZone(entryZ: number, pads: BonusPad[], piles: BonusPile[]): void {
+    for (const p of pads) {
+      const z = entryZ + p.z;
+      const h = headingAt(z, this.curve);
+      const px = bendX(z, this.curve);
+      const pad = this.box('pad', new Vec3(3.2, 0.3, 1.6), new Vec3(px, 0.1, z), this.node);
+      pad.eulerAngles = new Vec3(0, h, 0);
+      this.box('plate', new Vec3(1.2, 0.5, 0.1), new Vec3(px, 0.7, z), this.node)
+        .setRotationFromEuler(new Vec3(0, h, 0));
+    }
+    for (const p of piles) {
+      const z = entryZ + p.z;
+      const h = headingAt(z, this.curve);
+      const px = bendX(z, this.curve);
+      const nodes: Node[] = [];
+      for (let i = 0; i < 3; i++) {
+        const m = this.box(p.z < 0 ? 'plank' : 'pad', new Vec3(0.7, 0.22, 0.7),
+          new Vec3(px, 0.2 + i * 0.24, z), this.node);
+        m.eulerAngles = new Vec3(0, h, 0);
+        nodes.push(m);
+      }
+      this.bonusPileNodes.push(nodes);
+    }
+  }
+
+  // 气垛被收：三块下沉销毁（与浏览器版 tween 一致）
+  takeBonusPileVisual(i: number): void {
+    const nodes = this.bonusPileNodes[i];
+    if (!nodes) return;
+    for (const n of nodes) {
+      tweenPos(n, 0.4, new Vec3(n.position.x, n.position.y - 3, n.position.z), () => n.destroy());
+    }
+  }
+
   isOnMainRoad(x: number, z: number): boolean {
     if (z >= this.level.gateZ - 0.5) return true;
     if (Math.abs(x - bendX(z, this.curve)) > this.cfg.trackHalfWidth) return false;
@@ -168,6 +207,7 @@ export class TrackBuilder extends Component {
     this.smokePool = []; // removeAllChildren 会销毁烟雾节点，池引用必须同步清
     this.smokeLive = [];
     this.smokeCursor = 0;
+    this.bonusPileNodes = []; // 奖励区网格随 removeAllChildren 销毁，引用同步清
     // 地面（跑道下面的绿地，给纵深参照；世界空间居中，不随弯道）
     this.box('ground', new Vec3(60, 0.4, cfg.levelLength + 80), new Vec3(0, -0.6, level.length / 2 - 10), this.node);
     this.buildRoad();

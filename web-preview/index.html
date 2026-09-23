@@ -1017,6 +1017,9 @@ function buildLevel(cur) {
   // 清掉上一局动态物体（保留 player / stack / 灯光）；道具专属网格先显式清
   for (const m of itemMeshes) scene.remove(m);
   itemMeshes = [];
+  // 烟雾粒子用独立 geometry（非 BOX），上面的通用清扫扫不到，显式清池防跨局残留
+  for (const m of smokes) { m.alive = false; m.visible = false; scene.remove(m); }
+  smokes.length = 0; smokeTimer = 0;
   for (let i = scene.children.length - 1; i >= 0; i--) {
     const o = scene.children[i];
     if (o.geometry === BOX && o !== player && !stackMeshes.includes(o)) scene.remove(o);
@@ -1025,6 +1028,9 @@ function buildLevel(cur) {
   box(MAT.ground, 60, 0.4, cfg.levelLength + 80, 0, -0.6, cfg.levelLength / 2 - 10);
 
   pickups = []; gateWalls = []; anims = [];
+  // 奖励区状态整局重置（倍率台/气垛网格已随上面的 BOX 清扫回收；
+  // bonusActive 不重置会导致下一局到终点不再进奖励区——修复潜在 bug）
+  bonusActive = false; bonusState = null; bonusPads = []; bonusPiles = []; heldBack = false;
   const w = cfg.trackHalfWidth * 2 + 0.6;
   // 跑道（按断崖分段）
   let z = 0;
@@ -1154,6 +1160,8 @@ addEventListener('keydown', (e) => {
   startRun();
   if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') heldLeft = true;
   if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') heldRight = true;
+  // M10：奖励区回头键（按住后退捡气，松手继续冲刺）
+  if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') heldBack = true;
   if (e.key === 't' || e.key === 'T') { cycleTheme(); syncLevel(); } // 场景换肤
   if (e.key === 'c' || e.key === 'C') { cycleSkin(); } // 切换国风与经典角色
   if (e.key === 'm' || e.key === 'M') { muted = !muted; console.log(`[ShortcutRun] 音效 ${muted ? '关' : '开'}`); }
@@ -1161,6 +1169,7 @@ addEventListener('keydown', (e) => {
 addEventListener('keyup', (e) => {
   if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') heldLeft = false;
   if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') heldRight = false;
+  if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') heldBack = false;
 });
 function clampTarget() { const m = cfg.trackHalfWidth + 3.5; targetX = Math.max(-m, Math.min(m, targetX)); } // 允许横移出主路铺捷径（超出主路半宽即耗板）
 
@@ -1461,11 +1470,12 @@ function updateShortcut(x, z, adv, dt) {
   if (plankAcc >= cfg.plankStride) {
     plankAcc = 0;
     layPlank(z, x);
-    plankTrail.push({ x, z }); // 记入持久地面：之后站上来不耗砖
   }
 }
 
 // 在 (x,z) 留一块板（玩家与 AI 对手共用）
+// M5（原版规则）：谁铺的板都是持久地面——plankTrail 记录放在这里，
+// 对手铺的板玩家也能站（"蹭路"策略），AI 铺路才对玩家有意义
 function layPlank(z, x) {
   const h = headingAt(z);
   const px = bendX(z) + x * Math.cos(h); // 去抖动：严格贴路径，出连贯木板路
@@ -1483,6 +1493,7 @@ function layPlank(z, x) {
   }
   plank.position.set(px, 0.06, z - 0.2); // 略高于路面，明确是"铺上去的板"
   plank.rotation.y = h;
+  plankTrail.push({ x, z }); // 持久地面：之后任何人站上来都不耗砖不坠落（含 AI 对手铺的）
 }
 
 // ===== 孤岛（原版经典机制：离开主路踩上悬浮板台，捡岛上的板堆） =====
@@ -1609,23 +1620,36 @@ function checkGate(z) {
 }
 
 // ===== 终点倍率 Bonus Run（原版核心计分玩法） =====
-// 冲过终点不重开，进入奖励区：一排倍率悬浮台，剩余板子是汽油，每米烧 1 块，
+// 冲过终点不重开，进入奖励区：一排倍率悬浮台，剩余板子是汽油，每米烧 1.4 块，
 // 烧完即停，停在哪个台乘哪个倍率。分数 = 100×倍率 + 剩余板数。
-// 倍率台布局：烧板速度 = 跑步速度×1.4（冲刺费油），台距拉大形成真实取舍——
-// 少量余板只够到低倍率台，板多才冲得到 ×15（原版张力：停在半路比冲不到更难受）
+// M10（原版高分核心策略）：奖励区可回头——入口后埋着气垛，按 S 后退捡气再冲刺；
+// 倍率台站过即锁定不降。倍率台布局：×2@3 ×3@9 ×5@15.5 ×8@24 ×10@34 ×12@46.5 ×15@62
 const BONUS_MULTS = [2, 3, 5, 8, 10, 12, 15];
-const BONUS_BURN = 1.4;   // 奖励区烧板倍率（每米烧 1.4 板）
+const BONUS_BURN = 1.4;        // 每米烧板（回头也烧）
+const BONUS_BACK_LIMIT = -13;  // 回头最远（入口后 13m）
+const BONUS_BACK_SPEED = 0.65; // 回头速度系数
 let bonusState = null;   // { traveled, remainingPlanks, multiplier, finished }
 let bonusPads = [];      // { z, mult, padMesh, plateMesh }
+let bonusPiles = [];     // { z, planks, taken, meshes[] }
 let bonusActive = false;
+let bonusBaseZ = 0;      // 进入奖励区时的 z（入口）
+let heldBack = false;    // S/↓ 按住=回头捡气
 
 function genBonusPads() {
   const pads = [];
   let z = 3;
-  // 间距 = 5 + m*0.7：×2@3 ×3@9 ×5@15.5 ×8@24 ×10@34 ×12@46.5 ×15@62
-  // 配合 BONUS_BURN=1.4：约需汽油 4/13/22/34/48/65/87 板，档差清晰
   for (const m of BONUS_MULTS) { pads.push({ z, mult: m }); z += 5 + m * 0.7; }
   return pads;
+}
+
+// 气垛（原版“回头捡板”）：入口后两垛只有回头拿得到，前方两垛冲刺路上顺手
+function genGasPiles() {
+  return [
+    { z: -3.5, planks: 15, taken: false },
+    { z: -11, planks: 15, taken: false },
+    { z: 20, planks: 18, taken: false },
+    { z: 42, planks: 18, taken: false },
+  ];
 }
 
 function enterBonusRun() {
@@ -1633,33 +1657,49 @@ function enterBonusRun() {
   bonusActive = true;
   bonusState = { traveled: 0, remainingPlanks: bricks, multiplier: 1, finished: false };
   bonusPads = genBonusPads();
-  const baseZ = level.gateZ + 6;
+  bonusPiles = genGasPiles();
+  bonusBaseZ = player.position.z; // 入口=当前位置（不是 gateZ+6，越过门就进）
   // 视觉：倍率台（青色悬浮台 + 白色倍率牌）
   for (const p of bonusPads) {
-    const h = headingAt(baseZ);
-    const px = bendX(baseZ) + p.z * Math.sin(h) * 0; // 倍率区沿路中心延伸
+    const h = headingAt(bonusBaseZ);
+    const px = bendX(bonusBaseZ); // 倍率区沿路中心延伸
     const pad = new THREE.Mesh(BOX, new THREE.MeshLambertMaterial({ color: 0x26c6da }));
     pad.scale.set(3.2, 0.3, 1.6);
-    pad.position.set(px, 0.1, baseZ + p.z);
+    pad.position.set(px, 0.1, bonusBaseZ + p.z);
     pad.rotation.y = h;
     scene.add(pad);
     p.padMesh = pad;
     const plate = new THREE.Mesh(BOX, new THREE.MeshLambertMaterial({ color: 0xffffff }));
     plate.scale.set(1.2, 0.5, 0.1);
-    plate.position.set(px, 0.7, baseZ + p.z);
+    plate.position.set(px, 0.7, bonusBaseZ + p.z);
     plate.rotation.y = h;
     scene.add(plate);
     p.plateMesh = plate;
   }
-  showHint('奖励区！剩余板子=汽油，烧完即停');
-  console.log(`[ShortcutRun] 进入倍率奖励区，汽油 ${Math.floor(bricks)} 板`);
+  // 视觉：气垛 = 三块叠的小堆（入口后褐色=回头货，前方青色=冲刺路上）
+  for (const p of bonusPiles) {
+    const h = headingAt(bonusBaseZ);
+    const px = bendX(bonusBaseZ);
+    p.meshes = [];
+    for (let i = 0; i < 3; i++) {
+      const m = new THREE.Mesh(BOX, new THREE.MeshLambertMaterial({ color: p.z < 0 ? 0xa06a35 : 0x26c6da }));
+      m.scale.set(0.7, 0.22, 0.7);
+      m.position.set(px, 0.2 + i * 0.24, bonusBaseZ + p.z);
+      m.rotation.y = h;
+      scene.add(m);
+      p.meshes.push(m);
+    }
+  }
+  showHint('奖励区！板=汽油；按 S 回头捡气，松手冲刺');
+  console.log(`[ShortcutRun] 进入倍率奖励区，汽油 ${Math.floor(bricks)} 板（S 可回头捡气）`);
 }
 
 function stepBonus(dt) {
   if (!bonusActive || !bonusState || bonusState.finished) return;
-  const adv = speed * dt;
-  bonusState.traveled += adv;
-  bonusState.remainingPlanks = Math.max(0, bonusState.remainingPlanks - adv * BONUS_BURN);
+  const dir = heldBack ? -BONUS_BACK_SPEED : 1;
+  const adv = speed * dt * dir;
+  bonusState.traveled = Math.max(BONUS_BACK_LIMIT, bonusState.traveled + adv);
+  bonusState.remainingPlanks = Math.max(0, bonusState.remainingPlanks - Math.abs(adv) * BONUS_BURN);
   for (const p of bonusPads) {
     if (bonusState.traveled >= p.z && p.mult > bonusState.multiplier) {
       bonusState.multiplier = p.mult;
@@ -1668,6 +1708,20 @@ function stepBonus(dt) {
       shake(0.15, 0.2);
     }
   }
+  // 气垛：走过即收（回头/冲刺都能拿，一次性）
+  for (const p of bonusPiles) {
+    if (p.taken) continue;
+    if (Math.abs(bonusState.traveled - p.z) < 1.3) {
+      p.taken = true;
+      bonusState.remainingPlanks += p.planks;
+      floatText(`+${p.planks} 汽油`, '#80deea');
+      sfx.pickup();
+      for (const m of p.meshes) {
+        tweenTo(m.position, 'y', m.position.y - 3, 0.4, () => scene.remove(m));
+      }
+    }
+  }
+  setBricksUI(Math.ceil(bonusState.remainingPlanks)); // HUD 显示剩余汽油
   if (bonusState.remainingPlanks <= 0) {
     bonusState.finished = true;
     finishBonus();
@@ -1810,7 +1864,9 @@ function loop() {
       if (speedDip > 0) speedDip -= dt;
       if (bridgeT > 0) bridgeT -= dt;
       speed = Math.min(cfg.maxSpeed, cfg.runSpeed + bricks * cfg.speedPerBrick) * (shoeT > 0 ? 1.35 : 1) * (offRoad ? cfg.offRoadBoost : 1);
-      const adv = speed * dt; // 本帧前进距离（米）
+      // M10：奖励区按住 S 回头（速度系数 BONUS_BACK_SPEED），松手恢复冲刺
+      const moveDir = bonusActive && heldBack ? -BONUS_BACK_SPEED : 1;
+      const adv = speed * dt * moveDir; // 本帧前进距离（米，回头为负）
       z += adv;
       const k = 1 - Math.exp(-cfg.steerSpeed * dt);
       x += (targetX - x) * k;
@@ -1913,15 +1969,27 @@ window.__game = {
     offRoad, planksLaid: planks.length,
     islandCount: islands.filter((i) => !i.taken).length,
     islandList: islands.map((i) => ({ x: Math.round(i.def.x * 10) / 10, z: Math.round(i.def.z * 10) / 10, planks: i.def.planks, taken: i.taken })),
-    bonus: bonusActive ? { traveled: Math.round(bonusState.traveled * 10) / 10, remaining: Math.round(bonusState.remainingPlanks), mult: bonusState.multiplier, finished: bonusState.finished } : null,
+    bonus: bonusActive ? {
+      traveled: Math.round(bonusState.traveled * 10) / 10,
+      remaining: Math.round(bonusState.remainingPlanks),
+      mult: bonusState.multiplier, finished: bonusState.finished,
+      pilesTaken: bonusPiles.filter((p) => p.taken).length,
+    } : null,
     islandTaken: islands.filter((i) => i.taken).length,
     opponents: opponents.filter((o) => o.alive).length,
     opponentsDone: opponents.filter((o) => o.finished || !o.alive).length,
     gateList: (level.gates || []).map((g) => ({ z: g.z, type: g.type, v: g.v, used: !!g.used })),
   }),
   setBricks: (n) => { bricks = n; setBricksUI(n); },
+  // M5 验证钩子：铺过的板=持久地面（含 AI 对手铺的）
+  layPlankAt: (x, z) => layPlank(z, x),
+  supportAt: (x, z) => onPlankTrail(x, z),
+  plankTrailCount: () => plankTrail.length,
   setTheme: (k) => { if (THEMES[k]) { themeKey = k; applyTheme(); } },
   setPlayerColor: (hex) => { MAT.player.color.setHex(hex); CHAR_MATS.clothTop.color.setHex(hex); }, // QA 用：像素检测 marker 色（新角色用 clothTop）
+  // QA 用：固定跑步相位后立刻摆一帧，消除像素检测的相位抖动（实测 marker 36~78 大幅波动）
+  // 注意：玩家 rig 是 buildChar 本体 char（关节是直接引用），只有对手克隆体才需要 rigOf 按名找
+  setRunPhase: (v) => { runCycle = v; animateChar(char, runCycle, 0, Math.ceil(bricks), 'running', 0); },
   getSkin: () => currentSkinKey,
   setSkin: (k) => { if (SKINS[k]) { currentSkinKey = k; applySkin(char, k); } },
   skinList: () => Object.keys(SKINS),

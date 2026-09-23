@@ -15,6 +15,10 @@ import { cycleTheme, currentTheme } from './Theme';
 import { applyTheme } from './BoxFactory';
 import { applyCharTheme, setCharacterSkin, getCharacterSkin, CharSkinType, CHAR_SKINS } from './CharacterRig';
 import { curveFromCfg, bendX, headingAt, CurveState } from './CurvePath';
+import {
+  BONUS_BACK_SPEED, genBonusPads, genGasPiles, createBonusRun, stepBonusRun, bonusScore, bonusStars,
+  BonusPad, BonusPile, BonusRunState,
+} from './BonusRun';
 import { AudioMgr } from './AudioMgr';
 import { TrackBuilder, RuntimePickup } from './TrackBuilder';
 import { CameraFollow } from './CameraFollow';
@@ -75,6 +79,14 @@ export class GameApp extends Component {
   private smokeTimer = 0;  // 铺路烟雾生成间隔计时（原版标志性反馈）
   private leapGrace = 0;   // 剩余最后一跃距离（米），>0 表示飞跃中不耗板
   private curve: CurveState = { amp: 0, freq: 0.12, phase: 0 }; // 弯道（表现层）
+  // 终点倍率奖励区（原版核心计分玩法；M10：S 键回头捡气垛）
+  private bonusActive = false;
+  private bonus: BonusRunState | null = null;
+  private bonusPads: BonusPad[] = [];
+  private bonusPiles: BonusPile[] = [];
+  private bonusEntryZ = 0;
+  private bonusPileDone: boolean[] = []; // 气垛下沉动画是否已播（防重复 tween 已销毁节点）
+  private heldBack = false; // S/↓ 按住=奖励区回头
 
   onLoad(): void {
     if (!this.boxPrefab) {
@@ -160,6 +172,13 @@ export class GameApp extends Component {
     this.fallVel = 0;
     this.heldLeft = false;
     this.heldRight = false;
+    this.heldBack = false;
+    this.bonusActive = false; // 奖励区状态整局重置（网格已随 track.build 重建回收）
+    this.bonus = null;
+    this.bonusPads = [];
+    this.bonusPiles = [];
+    this.bonusEntryZ = 0;
+    this.bonusPileDone = [];
     this.dragging = false;
     this.fell = false;
     this.bridgeT = 0;
@@ -254,6 +273,8 @@ export class GameApp extends Component {
   private applyKeyHold(code: number, down: boolean): void {
     if (code === KeyCode.KEY_A || code === KeyCode.ARROW_LEFT) this.heldLeft = down;
     if (code === KeyCode.KEY_D || code === KeyCode.ARROW_RIGHT) this.heldRight = down;
+    // M10：奖励区回头键（按住后退捡气，松手继续冲刺）
+    if (code === KeyCode.KEY_S || code === KeyCode.ARROW_DOWN) this.heldBack = down;
   }
 
   // C 键切换角色预设：齐天大圣 孙悟空 / 莲花哪吒 / 少年侠客 / 功夫熊猫 / 国潮刺客 / 经典跑者
@@ -308,12 +329,33 @@ export class GameApp extends Component {
       // 铺捷径加速 ×offRoadBoost（赌板子换速度，原版 Shortcut Run 规则）
       this.speed = Math.min(this.cfg.maxSpeed, this.cfg.runSpeed + this.bricks * this.cfg.speedPerBrick)
         * (this.shoeT > 0 ? 1.35 : 1) * (this.offRoad ? (this.cfg.offRoadBoost ?? 1.15) : 1);
-      const adv = this.speed * dt; // 本帧前进距离（米）——铺板按距离耗板
-      z += adv;
       const k = 1 - Math.exp(-this.cfg.steerSpeed * dt);
       x += (this.targetX - x) * k;
       y = 0;
-      this.updateShortcut(x, z, adv, dt); // 自由铺板核心（原版机制）
+      if (this.bonusActive && this.bonus && !this.bonus.finished) {
+        // 奖励区（M10）：移动=冲刺/按住 S 回头，烧气/收垛/锁倍率统一走 stepBonusRun
+        const dir = this.heldBack ? -BONUS_BACK_SPEED : 1;
+        const adv = this.speed * dt * dir;
+        const takenBefore = this.bonusPiles.reduce((n, p) => n + (p.taken ? 1 : 0), 0);
+        const alive = stepBonusRun(this.bonus, this.bonusPads, this.bonusPiles, adv);
+        z = this.bonusEntryZ + this.bonus.traveled;
+        this.ui?.setBricks(Math.ceil(this.bonus.remainingPlanks)); // HUD 显示剩余汽油
+        const gained = this.bonusPiles.reduce((n, p) => n + (p.taken ? 1 : 0), 0) - takenBefore;
+        if (gained > 0) {
+          this.audio?.play('pickup');
+          this.bonusPiles.forEach((p, i) => {
+            if (!p.taken || this.bonusPileDone[i]) return;
+            this.bonusPileDone[i] = true; // 只给新吃的垛播下沉（销毁过的节点不能重复 tween）
+            this.track.takeBonusPileVisual(i);
+          });
+          console.log(`[ShortcutRun] 奖励区气垛 +${gained} 堆，汽油 ${Math.ceil(this.bonus.remainingPlanks)}`);
+        }
+        if (!alive) { this.winFromBonus(); return; }
+      } else {
+        const adv = this.speed * dt; // 本帧前进距离（米）——铺板按距离耗板
+        z += adv;
+        this.updateShortcut(x, z, adv, dt); // 自由铺板核心（原版机制）
+      }
     } else if (this.state === 'fall') {
       this.fallVel += 22 * dt;
       y -= this.fallVel * dt;
@@ -456,7 +498,23 @@ export class GameApp extends Component {
   }
 
   private checkGate(z: number): void {
-    if (z >= this.levelDef.gateZ - 0.5) this.win(); // 原版规则：到达终点即过关（星级按用时/余砖）
+    if (z >= this.levelDef.gateZ - 0.5) this.enterBonus(); // 原版规则：到达终点 → 进倍率奖励区
+  }
+
+  // ===== 终点倍率奖励区（原版核心计分玩法，2026-09-23 Cocos 端补齐） =====
+  // 冲过终点不重开：一排倍率台×2~×15，剩余板子=汽油每米烧 1.4 块，烧完结算；
+  // M10：入口后埋气垛，按住 S 回头捡气再冲刺（倍率站过即锁定不降）
+  private enterBonus(): void {
+    if (this.bonusActive) return;
+    this.bonusActive = true;
+    this.bonus = createBonusRun(this.bricks);
+    this.bonusPads = genBonusPads(this.cfg);
+    this.bonusPiles = genGasPiles(this.cfg);
+    this.bonusPileDone = this.bonusPiles.map(() => false);
+    this.bonusEntryZ = this.player.position.z; // 入口=当前越过终点的位置
+    this.track.buildBonusZone(this.bonusEntryZ, this.bonusPads, this.bonusPiles);
+    this.ui?.showHint('奖励区！板=汽油；按 S 回头捡气，松手冲刺');
+    console.log(`[ShortcutRun] 进入倍率奖励区，汽油 ${Math.floor(this.bonus.remainingPlanks)} 板（S 可回头捡气）`);
   }
 
   // ---------------- 状态切换 ----------------
@@ -470,25 +528,25 @@ export class GameApp extends Component {
     }
   }
 
-  private win(): void {
+  // 奖励区油尽结算：倍率×100 + 余板； progression/遥测/插屏节流与 win 同口径
+  private winFromBonus(): void {
+    const b = this.bonus;
+    if (!b) return;
     this.state = 'win';
     this.track.openGate();
     this.audio?.play('win');
     const timeSec = this.elapsed - this.runT0;
+    const score = bonusScore(b);
     this.pushTelemetry({
       level: this.levelNum, seed: this.curSeed, outcome: 'win',
-      t: +timeSec.toFixed(2), bricksLeft: this.bricks,
+      t: +timeSec.toFixed(2), bricksLeft: Math.floor(b.remainingPlanks),
       failZ: null, pickupsTotal: this.levelDef.pickups.length,
     });
-    const r = this.prog.win(timeSec, this.bricks);
+    const r = this.prog.win(timeSec, Math.floor(b.remainingPlanks));
     const best = this.prog.state().best[this.levelNum];
-    this.ui?.setResult(true, r.stars, timeSec, this.bricks, `${best.stars}★ ${best.time}s`);
-    this.ui?.showHint(`第 ${this.levelNum} 关通过！`);
-    const p = this.player.position;
-    tweenPos(this.player, 0.25, new Vec3(p.x, p.y + 0.7, p.z), () => {
-      tweenPos(this.player, 0.25, new Vec3(p.x, p.y, p.z));
-    });
-    console.log(`[ShortcutRun] WIN 第 ${this.levelNum} 关 ${timeSec.toFixed(1)}s 余砖 ${this.bricks} ${r.stars}星！（进度已存档）`);
+    this.ui?.setResult(true, r.stars, timeSec, score, `${best.stars}★ ${best.time}s`);
+    this.ui?.showHint(`×${b.multiplier} 倍率！得分 ${score}`);
+    console.log(`[ShortcutRun] 奖励区结算：×${b.multiplier} 得分 ${score}（${bonusStars(b)}星线）`);
     // 插屏节流：前 3 关不弹；通关 L3/L6/…（进 L4/L7 前）各 1 次（k1 §4）
     if (shouldInterstitialAfterWin(this.levelNum)) {
       void adSys.showInterstitial();

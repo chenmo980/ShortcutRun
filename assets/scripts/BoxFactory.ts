@@ -7,12 +7,14 @@ import { _decorator, Node, Vec3, Mesh, MeshRenderer, Material, utils, primitives
 import { currentTheme, colorOf } from './Theme';
 
 export type BoxKind = 'road' | 'ground' | 'brick' | 'bridge' | 'plank' | 'player' | 'limb' | 'skin' | 'gate' | 'pillar'
-  | 'gateAdd' | 'gateMul' | 'shoe' | 'building1' | 'building2' | 'edge' | 'warn1' | 'warn2' | 'plankB' | 'smoke';
+  | 'gateAdd' | 'gateMul' | 'shoe' | 'building1' | 'building2' | 'edge' | 'warn1' | 'warn2' | 'plankB' | 'smoke'
+  | 'pad' | 'plate';
 
-// 固定色（不随主题）：道路边线 + 断崖警示条纹 + 铺板轨迹 + 铺路烟雾（J2/自由铺板）
+// 固定色（不随主题）：道路边线 + 断崖警示条纹 + 铺板轨迹 + 铺路烟雾 + 奖励区倍率台/气垛（J2/自由铺板/Bonus Run）
 // 必须在 colors = buildColors() 之前初始化，否则打包后 Object.keys(FIXED) 会拿到 undefined
 const FIXED: Partial<Record<BoxKind, number>> = {
   edge: 0xf5f5f5, warn1: 0xffc107, warn2: 0x37474f, plank: 0xa06a35, plankB: 0x8f5e2e, smoke: 0xffffff,
+  pad: 0x26c6da, plate: 0xffffff,
 };
 
 let sharedMesh: Mesh | null = null;

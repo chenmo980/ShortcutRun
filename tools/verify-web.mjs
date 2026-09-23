@@ -74,6 +74,25 @@ check('shortcut-pass', s2.offRoad && b1 - s2.bricks > 2 && s2.planksLaid > 3,
   `offRoad=${s2.offRoad} 耗板 ${(b1 - s2.bricks).toFixed(1)} 板子=${s2.planksLaid}`);
 await page.screenshot({ path: `${SHOTS}/03-shortcut.png` });
 
+// 4b. M5（原版“蹭路”）：对手铺的板也是持久地面——layPlank 统一记 trail，
+// 玩家/对手谁铺的板站上去都不耗砖不坠落
+await page.evaluate(() => window.__game.restart(1));
+await sleep(300);
+await page.mouse.move(450, 300);
+await page.mouse.down();
+await page.mouse.up();
+await sleep(300);
+const m5 = await page.evaluate(() => {
+  const st = window.__game.getState();
+  const before = window.__game.plankTrailCount();
+  window.__game.layPlankAt(-2.5, st.z + 3); // 模拟对手在玩家身边铺的板
+  const supported = window.__game.supportAt(-2.5, st.z + 3);
+  const notSupported = window.__game.supportAt(2.5, st.z + 3); // 没铺过的地方仍不应有支撑
+  return { supported, notSupported, grew: window.__game.plankTrailCount() === before + 1 };
+});
+check('opponent-plank-ground', m5.supported && m5.grew && !m5.notSupported,
+  `supported=${m5.supported} trail+1=${m5.grew} blank=${m5.notSupported}`);
+
 // 5. 坠落路径：重开 + 0 砖 + 冲出主路 → 最后一跃后坠落
 await page.evaluate(() => window.__game.restart(1));
 await sleep(300);
@@ -104,6 +123,29 @@ await page.screenshot({ path: `${SHOTS}/05-bonus.png` });
 await page.waitForFunction(() => { const b = window.__game.getState().bonus; return b && b.finished; }, null, { timeout: 40000 });
 s = await page.evaluate(() => window.__game.getState());
 check('bonus-settled', s.bonus.finished && s.bonus.mult >= 2, `mult=x${s.bonus.mult} traveled=${s.bonus.traveled}m`);
+
+// 6c. M10 奖励区回头机制：低气进门 → 按住 S 回头吃气垛(+15) → 松手冲刺 → 倍率高于不捡
+// 注意：必须在冲线前才把气降到 20，否则沿途吃砖会把气补回 80+（实测踩过的坑）
+await page.evaluate(() => window.__game.restart(7));
+await sleep(400);
+await page.evaluate(() => window.__game.setBricks(99)); // 高气只为跑得快
+await page.mouse.move(450, 300);
+await page.mouse.down();
+await page.mouse.up();
+await page.waitForFunction(() => { const s = window.__game.getState(); return s.z > s.gateZ - 10; }, null, { timeout: 40000 });
+await page.evaluate(() => window.__game.setBricks(20)); // 冲线前降到 20 气：直冲只够 ×3@9m
+await page.waitForFunction(() => window.__game.getState().bonus !== null, null, { timeout: 8000 });
+const gasIn = (await page.evaluate(() => window.__game.getState())).bonus.remaining;
+const zIn = (await page.evaluate(() => window.__game.getState())).z;
+await page.keyboard.down('s'); // 回头
+await page.waitForFunction((g) => window.__game.getState().bonus.remaining > g, gasIn + 5, { timeout: 8000 }); // 吃到 -3.5m 气垛
+const back = await page.evaluate(() => window.__game.getState());
+await page.keyboard.up('s');
+check('bonus-back-pickup', back.z < zIn - 1 && back.bonus.pilesTaken >= 1 && back.bonus.remaining > gasIn + 5,
+  `后退 ${(zIn - back.z).toFixed(1)}m 吃垛 ${back.bonus.pilesTaken} 气 ${gasIn}->${back.bonus.remaining}`);
+await page.waitForFunction(() => { const b = window.__game.getState().bonus; return b && b.finished; }, null, { timeout: 40000 });
+s = await page.evaluate(() => window.__game.getState());
+check('bonus-boost', s.bonus.mult >= 5, `20气+回头=×${s.bonus.mult}（不捡只到×3）`);
 await page.screenshot({ path: `${SHOTS}/06-settle.png` });
 
 // 6b. v4 道具门功能：L3 有 +5 门（itemsFor 分带），直行过门自动加砖
@@ -148,6 +190,7 @@ await page.mouse.up();
 await sleep(600);
 const vis = await page.evaluate(() => {
   const orig = window.__game.getState().playerColor;
+  window.__game.setRunPhase(0.8); // 固定跑步相位：消抖（不固定时 marker 36~78 乱窜会误杀）
   window.__game.setPlayerColor(0xff00ff); // 品红 marker
   window.__game.renderOnce(); // 同一任务内渲染后立刻读，避免 WebGL 缓冲被清
   const c = window.__game.canvas();
