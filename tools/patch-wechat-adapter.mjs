@@ -31,6 +31,51 @@ if (!existsSync(target)) {
   process.exit(1);
 }
 
+// —— 补丁⑥：window 全局扶正 + 裸赋值防护（2026-09-23 深夜）——
+// 根因：基础库 3.0.2 的 GameSubContext 里全局 window 缺失（typeof window === "undefined"），
+// 而 web-adapter 入口模块(27)的 devtools 分支只会往 window 上注射属性、从不创建 window
+// （创建逻辑在 else 分支的 window=i，严格模式下赋值未声明变量还会被 try 吞掉）。
+// 首炸点：裸语句 window.parent=window → "Cannot set properties of undefined (setting 'parent')"。
+// 连带炸点：window.DOMParser=r / window.fsUtils=... / window.__globalAdapter=...（全裸）。
+// 修法：①window 缺失时用 defineProperty 在 GameGlobal 上把 window 全局扶正（值=GameGlobal），
+//       之后所有 window.X 引用全部有对象可落；②4 个裸赋值补 try 防护（双保险）。
+const WIN_ENSURE_OLD = 'var i=GameGlobal;if(!GameGlobal.__isAdapterInjected){';
+const WIN_ENSURE_NEW = 'var i=GameGlobal;try{typeof window==="undefined"&&__wxSafeDP(i,"window",{value:i,configurable:!0,writable:!0})}catch(_e){}if(!GameGlobal.__isAdapterInjected){';
+const NAKED_FIXES = [
+  ['}window.parent=window}else{', '}try{window.parent=window}catch(_w6){}}else{'],
+  [',window.DOMParser=r}', ';try{window.DOMParser=r}catch(_e){}}'],
+  [';window.fsUtils=t.exports=a}', ';try{window.fsUtils=t.exports=a}catch(_e){}}'],
+  // 注意：此处原码是逗号表达式语句的一段（后面紧跟 ,window.__globalAdapter&&...），
+  // 必须用表达式安全的 IIFE 形态，语句级 try 会切断逗号链（polyfills 事件同款错误）
+  [';window.__globalAdapter=window.__globalAdapter||{}', ';(function(){try{window.__globalAdapter=window.__globalAdapter||{}}catch(_e){}})()'],
+];
+
+function patch6(src) {
+  let s = src;
+  if (!s.includes('typeof window==="undefined"&&__wxSafeDP(i,"window"')) {
+    const c = s.split(WIN_ENSURE_OLD).length - 1;
+    if (c !== 1) { console.error(`⑥ window 扶正: 目标片段出现 ${c} 次，预期 1 次`); process.exit(1); }
+    s = s.replace(WIN_ENSURE_OLD, WIN_ENSURE_NEW);
+    console.log('⑥ window 全局扶正: 已注入');
+  } else {
+    console.log('⑥ window 全局扶正: 已存在');
+  }
+  for (const [oldStr, newStr] of NAKED_FIXES) {
+    if (!s.includes(newStr)) {
+      const c = s.split(oldStr).length - 1;
+      if (c === 1) {
+        s = s.replace(oldStr, newStr);
+        console.log(`⑥ 裸赋值防护: ${oldStr.slice(0, 34)}...`);
+      } else if (c === 0 && !s.includes(oldStr)) {
+        console.log(`⑥ 裸赋值防护: ${oldStr.slice(0, 34)}... 目标不存在（版本可能已变）`);
+      }
+    }
+  }
+  return s;
+}
+// Cocos builder 每次重建都会往产物写 "miniprogramRoot":"./"——游戏项目带这个字段，
+// 开发者工具就会去编小程序部分（找 app.json），没有 → SummerCompiler.getAllPageAndComponent
+// Object.keys(null) 编译崩。builder 自己生成的，删一次不够，必须每次构建后自动删。
 // —— 补丁⑤：project.config.json 排毒（2026-09-23 深夜）——
 // Cocos builder 每次重建都会往产物写 "miniprogramRoot":"./"——游戏项目带这个字段，
 // 开发者工具就会去编小程序部分（找 app.json），没有 → SummerCompiler.getAllPageAndComponent
@@ -139,6 +184,12 @@ for (const rel of SAFE_TARGETS) {
   } else {
     console.log(`③ ${rel}: 无需改动`);
   }
+}
+// ⑥ 对入口模块做 window 扶正 + 裸赋值防护（仅 web-adapter.js 需要，幂等）
+{
+  const before6 = readFileSync(target, 'utf8');
+  const after6 = patch6(before6);
+  if (after6 !== before6) writeFileSync(target, after6);
 }
 console.log(`提示：共处理 ${total} 个 defineProperty 调用点；重新构建微信包后需要再跑一次本脚本`);
 fixProjectConfig();

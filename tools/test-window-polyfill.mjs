@@ -174,8 +174,40 @@ const frozen = runFrozenExportsTest();
 console.log(`[frozen-exports] 冻结 exports: ${frozen.ok ? '不抛异常 ✓' : '抛异常 -> ' + frozen.err}`);
 if (!frozen.ok) failed++;
 
+// ⑤ window 缺失扶正（补丁⑥）：模拟 3.0.2 subcontext 无 window 全局——
+//    扶正后 window 可解析、=== GameGlobal、parent 赋值成功；
+//    再验兜底：扶正也失败时 try 包裹的裸赋值不崩
+function runWindowEnsureTest(safeDpWorks) {
+  const sandbox = {};
+  vm.createContext(sandbox);
+  try {
+    vm.runInContext(`
+      "use strict";
+      var GameGlobal = globalThis;
+      var __wxSafeDP = function(t,k,d){
+        try { return Object.defineProperty(t,k,d); }
+        catch(e) { try { if(!("get"in d)&&!("set"in d)&&d.writable!==!1&&"value"in d) t[k]=d.value; } catch(_e){} return t; }
+      };
+      if (!${safeDpWorks}) { __wxSafeDP = function(){ return null; }; } // 扶正也失败的极端情况
+      var i = GameGlobal;
+      try { typeof window === "undefined" && __wxSafeDP(i,"window",{value:i,configurable:!0,writable:!0}); } catch(_e) {}
+      try { window.parent = window; } catch(_w6) {}
+      globalThis.__r = { winDefined: typeof window !== "undefined", same: typeof window !== "undefined" && window === i };
+    `, sandbox);
+    return { ok: true, r: sandbox.__r };
+  } catch (err) {
+    return { ok: false, err: err.message };
+  }
+}
+const we1 = runWindowEnsureTest(true);
+console.log(`[window扶正·defineProperty可用] 不抛=${we1.ok} window生效=${we1.r && we1.r.winDefined && we1.r.same}`);
+if (!we1.ok || !we1.r || !we1.r.winDefined || !we1.r.same) failed++;
+const we2 = runWindowEnsureTest(false);
+console.log(`[window扶正·极端失败兜底] 不抛异常=${we2.ok}`);
+if (!we2.ok) failed++;
+
 if (failed) {
   console.error(`FAIL: ${failed} 个补丁回归未过`);
   process.exit(1);
 }
-console.log('PASS: 补丁④必要且有效，frozen-exports 场景不抛，对照组按预期失败');
+console.log('PASS: 全部补丁回归通过');
