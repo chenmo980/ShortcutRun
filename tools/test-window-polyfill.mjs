@@ -104,13 +104,14 @@ if (!dpBad.ok || !dpBad.plain) failed++;
 function runInteropTest(mode) {
   const sandbox = {};
   vm.createContext(sandbox);
+  const ESM_HELPER = 'var __wxSetEsm=function(e){try{e&&!Object.isFrozen(e)&&(e.__esModule=!0)}catch(_e){}};';
   const wrappers = {
-    A: 'var __wxSafeDP=function(t,k,d){try{return Object.defineProperty(t,k,d)}catch(e){try{if(!("get"in d)&&!("set"in d)&&d.writable!==!1&&"value"in d)t[k]=d.value}catch(_e){}return t}};',
+    A: ESM_HELPER + 'var __wxSafeDP=function(t,k,d){try{return Object.defineProperty(t,k,d)}catch(e){try{if(!("get"in d)&&!("set"in d)&&d.writable!==!1&&"value"in d)t[k]=d.value}catch(_e){}return t}};',
     B: 'var __wxSafeDP=function(t,k,d){try{return Object.defineProperty(t,k,d)}catch(e){return t}};',
     C: 'var __wxSafeDP=function(t,k,d){try{return __wxSafeDP(t,k,d)}catch(e){return t}};',
   };
   const marks = {
-    A: '(__wxSafeDP(exports11,"__esModule",{value:!0}),exports11.__esModule=!0);',
+    A: '(__wxSafeDP(exports11,"__esModule",{value:!0}),__wxSetEsm(exports11));',
     B: '__wxSafeDP(exports11,"__esModule",{value:!0});',
     // C = 真实事故形态：wrapper 被自己的正则污染成自递归 + 当年还没有补丁④兜底
     C: '__wxSafeDP(exports11,"__esModule",{value:!0});',
@@ -149,8 +150,32 @@ const cBroken = !interopC.ok || !interopC.inherited;
 console.log(`[interop·自递归wrapper(对照)] ${cBroken ? '按预期失败（证明不能污染 wrapper 自身）' : '意外成立(?)'}`);
 if (!cBroken) failed++;
 
+// ④' frozen exports 场景（外部建议点化的用例）：exports 被 Object.freeze 时
+//     isFrozen 守卫 + try/catch 必须保证不抛（即使标记设不上也不崩）
+function runFrozenExportsTest() {
+  const sandbox = {};
+  vm.createContext(sandbox);
+  try {
+    vm.runInContext(`
+      "use strict";
+      Object.defineProperty = function(){ throw new TypeError("Object.defineProperty called on non-object"); };
+      var __wxSafeDP=function(t,k,d){try{return Object.defineProperty(t,k,d)}catch(e){try{if(!("get"in d)&&!("set"in d)&&d.writable!==!1&&"value"in d)t[k]=d.value}catch(_e){}return t}};
+      var __wxSetEsm=function(e){try{e&&!Object.isFrozen(e)&&(e.__esModule=!0)}catch(_e){}};
+      var exports11 = Object.freeze({ default: function ET(){} });
+      (__wxSafeDP(exports11,"__esModule",{value:!0}),__wxSetEsm(exports11));
+      globalThis.__r = "survived";
+    `, sandbox);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, err: err.message };
+  }
+}
+const frozen = runFrozenExportsTest();
+console.log(`[frozen-exports] 冻结 exports: ${frozen.ok ? '不抛异常 ✓' : '抛异常 -> ' + frozen.err}`);
+if (!frozen.ok) failed++;
+
 if (failed) {
   console.error(`FAIL: ${failed} 个补丁回归未过`);
   process.exit(1);
 }
-console.log('PASS: 补丁④必要且有效，对照组按预期失败');
+console.log('PASS: 补丁④必要且有效，frozen-exports 场景不抛，对照组按预期失败');
