@@ -496,6 +496,8 @@ const sfx = {
   bridge: () => { beep(160, 0.18, 'sawtooth', 0.16, -60); beep(320, 0.1, 'square', 0.07); },
   win: () => [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => beep(f, 0.15, 'triangle', 0.14), i * 90)),
   lose: () => beep(220, 0.4, 'sawtooth', 0.14, -160),
+  // J2 撞人顿挫：低频撞击 + 下扫（与 SfxSynth.ts hit 表逐值一致，smoke 漂移锁）
+  hit: () => { beep(140, 0.12, 'square', 0.2, -40); beep(90, 0.2, 'sawtooth', 0.16, -60); },
 };
 
 // ============ 角色：AI Studio 关节角色移植版（零外部素材） ============
@@ -1302,6 +1304,7 @@ function enterFall() {
   fell = true;
   slowT = 0.55;  // 失败慢动作
   shake(0.18, 0.2);
+  spawnSplash(player.position.x, player.position.z); // J3：落水水花
 }
 function win() {
   state = 'win';
@@ -1363,6 +1366,38 @@ function updateParticles(dt) {
       scene.remove(p.m);
       particles.splice(i, 1);
     }
+  }
+}
+// J3 落水水花：脚边一圈白蓝小点向上炸开（复用粒子池，无新系统）
+function spawnSplash(x, z) {
+  for (let i = 0; i < 14; i++) {
+    const m = new THREE.Mesh(BOX, new THREE.MeshBasicMaterial({
+      color: i % 2 ? 0xffffff : 0x4fc3f7, transparent: true, opacity: 0.9, depthWrite: false,
+    }));
+    m.scale.set(0.08, 0.08, 0.08);
+    m.position.set(x + (Math.random() - 0.5) * 0.6, 0.05, z + (Math.random() - 0.5) * 0.6);
+    scene.add(m);
+    particles.push({
+      m, life: 0.5 + Math.random() * 0.2,
+      vx: (Math.random() - 0.5) * 2.2, vy: 2.8 + Math.random() * 2.2, vz: (Math.random() - 0.5) * 2.2,
+    });
+  }
+}
+// J4 冲线彩带：终点上方撒一把彩色小纸片，飘落销毁（一次性氛围）
+function spawnConfetti(z) {
+  const colors = [0xff5252, 0xffd740, 0x69f0ae, 0x40c4ff, 0xe040fb];
+  for (let i = 0; i < 40; i++) {
+    const m = new THREE.Mesh(BOX, new THREE.MeshBasicMaterial({
+      color: colors[i % colors.length], transparent: true, opacity: 0.95, depthWrite: false,
+    }));
+    const s = 0.12 + Math.random() * 0.08;
+    m.scale.set(s, s * 0.4, s * 1.6);
+    m.position.set(bendX(z) + (Math.random() - 0.5) * 8, 3.5 + Math.random() * 2.5, z - 2 + Math.random() * 4);
+    scene.add(m);
+    particles.push({
+      m, life: 1.4 + Math.random() * 0.6,
+      vx: (Math.random() - 0.5) * 1.5, vy: -1.2 - Math.random() * 0.8, vz: (Math.random() - 0.5) * 1.2,
+    });
   }
 }
 function checkPickups(x, prevZ, z) {
@@ -1690,6 +1725,7 @@ let bonusPiles = [];     // { z, planks, taken, meshes[] }
 let bonusActive = false;
 let bonusBaseZ = 0;      // 进入奖励区时的 z（入口）
 let heldBack = false;    // S/↓ 按住=回头捡气
+let camPunchT = 0;       // C2：冲线推近剩余时间（秒，真实时间）
 
 function genBonusPads() {
   const pads = [];
@@ -1747,6 +1783,9 @@ function enterBonusRun() {
     }
   }
   showHint('奖励区！板=汽油；按 S 回头捡气，松手冲刺');
+  slowT = Math.max(slowT, 0.4);        // C2：冲线慢动作
+  camPunchT = 0.8;                     // C2：相机推近（更低更近）
+  spawnConfetti(bonusBaseZ);           // J4：冲线彩带
   console.log(`[ShortcutRun] 进入倍率奖励区，汽油 ${Math.floor(bricks)} 板（S 可回头捡气）`);
 }
 
@@ -1786,6 +1825,7 @@ function stepBonus(dt) {
 
 function finishBonus() {
   const score = 100 * bonusState.multiplier + Math.floor(bonusState.remainingPlanks);
+  floatText(`+${score}`, '#ffd54f'); // U2：结算飘分
   const stars = bonusState.multiplier >= 8 ? 3 : bonusState.multiplier >= 5 ? 2 : 1;
   showResult(true, `×${bonusState.multiplier} 倍率！`, stars,
     `得分 ${score}（基础 100 × ${bonusState.multiplier} + 余板 ${Math.floor(bonusState.remainingPlanks)}）`,
@@ -1887,6 +1927,7 @@ function updateOpponents(dt) {
 function knockOut(o, why) {
   o.alive = false;
   console.log('[ShortcutRun] 对手退场:' + why);
+  sfx.hit();    // J2：撞人顿挫（低频撞击）
   sfx.lose();
   shake(0.12, 0.2);
   const p = o.rig.position;
@@ -1982,12 +2023,16 @@ function loop() {
   const dx = bendX(camAnchorZ) + playerX * cfg.camXFactor;
   const dy = Math.max(t.y, 0) * 0.35 + cfg.camOffsetY;
   const dz = camAnchorZ;
-  if (!camInited) { camera.position.set(dx, dy, dz); camInited = true; }
+  if (camPunchT > 0) camPunchT = Math.max(0, camPunchT - raw);
+  const punch = camPunchT / 0.8;          // 1→0
+  const dyP = dy - punch * 0.9;           // C2：冲线推近（机位压低）
+  const dzP = dz + punch * 1.8;           // C2：冲线推近（距离拉近）
+  if (!camInited) { camera.position.set(dx, dyP, dzP); camInited = true; }
   else {
     const k = 1 - Math.exp(-cfg.camLerp * dt);
     camera.position.x += (dx - camera.position.x) * k;
-    camera.position.y += (dy - camera.position.y) * k;
-    camera.position.z += (dz - camera.position.z) * k;
+    camera.position.y += (dyP - camera.position.y) * k;
+    camera.position.z += (dzP - camera.position.z) * k;
   }
   camera.lookAt(t.x, t.y + 1.05, t.z); // 略高于胸，俯视追尾（胸前砖垛可见）
 

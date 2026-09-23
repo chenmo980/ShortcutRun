@@ -150,9 +150,10 @@ check('starsFor-parity', starsFor(1, 16.5, 5) === jsStarsFor(1, 16.5, 5)
   const expect: Record<string, [number, number, string, number, number]> = {
     pickup: [880, 0.08, 'square', 0.07, 400],
     lose: [220, 0.4, 'sawtooth', 0.14, -160],
+    hit: [140, 0.12, 'square', 0.2, -40], // J2 撞人顿挫（双音，锁第一音）
   };
   for (const [name] of Object.entries(expect)) {
-    const re = new RegExp(`${name}:\\s*\\(\\)\\s*=>\\s*(?:\\{[^}]*)?beep\\((\\d+(?:\\.\\d+)?),\\s*(\\d+(?:\\.\\d+)?),\\s*'([a-z]+)',\\s*(\\d+(?:\\.\\d+)?)(?:,\\s*(-?\\d+(?:\\.\\d+)?))?`);
+    const re = new RegExp(`${name}:\\s*\\(\\)\\s*=>\\s*(?:\\{[^}]*?)?beep\\((\\d+(?:\\.\\d+)?),\\s*(\\d+(?:\\.\\d+)?),\\s*'([a-z]+)',\\s*(\\d+(?:\\.\\d+)?)(?:,\\s*(-?\\d+(?:\\.\\d+)?))?`);
     const m = html.match(re);
     if (!m) { check(`sfx-inline-${name}`, false, '内联音效表抽取失败'); continue; }
     const mine = SFX[name as SfxName][0];

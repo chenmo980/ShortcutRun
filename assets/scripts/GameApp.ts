@@ -534,6 +534,7 @@ export class GameApp extends Component {
     this.fallVel = 1;
     this.fell = true;
     this.camFollow.addShake(0.18, 0.2); // J1：掉落实感
+    this.track.spawnSplash(this.player.position.x, this.player.position.z); // J3：落水水花
     // 失败慢动作（对齐浏览器版 slowT=0.55 / dt×0.35）：Scheduler 缩放，setTimeout 按真实时间恢复
     director.getScheduler()?.setTimeScale(0.35);
     setTimeout(() => { director.getScheduler()?.setTimeScale(1); }, 550);
@@ -567,6 +568,11 @@ export class GameApp extends Component {
     this.bonusEntryZ = this.player.position.z; // 入口=当前越过终点的位置
     this.track.buildBonusZone(this.bonusEntryZ, this.bonusPads, this.bonusPiles);
     this.ui?.showHint('奖励区！板=汽油；按 S 回头捡气，松手冲刺');
+    // C2：冲线慢动作 + 相机推近；J4：冲线彩带
+    director.getScheduler()?.setTimeScale(0.35);
+    setTimeout(() => { director.getScheduler()?.setTimeScale(1); }, 450);
+    this.camFollow.addPunch(1);
+    this.track.spawnConfetti(this.bonusEntryZ);
     console.log(`[ShortcutRun] 进入倍率奖励区，汽油 ${Math.floor(this.bonus.remainingPlanks)} 板（S 可回头捡气）`);
   }
 

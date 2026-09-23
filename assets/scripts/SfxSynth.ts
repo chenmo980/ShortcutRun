@@ -2,7 +2,7 @@
 // 与 web-preview/index.html 内联 sfx 表同源：改这里必须同步改那边（tools/smoke.ts 有漂移锁）
 // 用途：Cocos/微信侧素材缺失时降级为代码合成，零素材、零包体（wechat-build.md §3 方案①）
 
-export type SfxName = 'pickup' | 'bridge' | 'win' | 'lose';
+export type SfxName = 'pickup' | 'bridge' | 'win' | 'lose' | 'hit';
 
 export type OscType = 'sine' | 'square' | 'sawtooth' | 'triangle';
 
@@ -28,6 +28,11 @@ export const SFX: Record<SfxName, Tone[]> = {
     { freq: 1047, dur: 0.15, type: 'triangle', vol: 0.14, delay: 0.27 },
   ],
   lose: [{ freq: 220, dur: 0.4, type: 'sawtooth', vol: 0.14, slide: -160 }],
+  // J2 撞人顿挫：低频撞击 + 下扫（与 web-preview 内联 sfx.hit 逐值一致，smoke 漂移锁）
+  hit: [
+    { freq: 140, dur: 0.12, type: 'square', vol: 0.2, slide: -40 },
+    { freq: 90, dur: 0.2, type: 'sawtooth', vol: 0.16, slide: -60 },
+  ],
 };
 
 export interface ScheduledTone {

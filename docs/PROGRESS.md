@@ -41,6 +41,8 @@
 | 奖励区回头机制（M10：S 键回头捡气垛再冲） | ✅ | 双端；verify bonus-back-pickup/boost（20气×3→×10） |
 | Cocos 端奖励区补齐（此前到终点直接 win，BonusRun.ts 只被平衡工具用） | ✅ | GameApp enterBonus/stepBonusRun/winFromBonus 全接线 |
 | 完全复刻差距清单（机制/镜头/UI/juice 五维） | ✅ | `docs/replica-gap.md`，**G1 前 P0 全部清零** |
+| P1 批：M6 板刷新 / M8 扒边攀爬 / M13 堆到天高 | ✅ | 双端；verify pickup-respawn/edge-grab 断言 |
+| juice 批：J2 撞人音效(web) / J3 水花 / J4 彩带 / C2 冲线慢动作推近 / U2 飘分 | ✅ | 双端（J2 限 web，M4 对手整套仅 web 已标注） |
 
 ## 质量数据（QA 口径）
 

@@ -163,6 +163,37 @@ export class TrackBuilder extends Component {
     }
   }
 
+  // J3 落水水花：脚边白/青小点上炸后回落销毁（复用 smoke/pad 盒色，零新资源）
+  spawnSplash(x: number, z: number): void {
+    for (let i = 0; i < 10; i++) {
+      const n = this.box(i % 2 ? 'smoke' : 'pad', new Vec3(0.09, 0.09, 0.09),
+        new Vec3(x + (Math.random() - 0.5) * 0.6, 0.05, z + (Math.random() - 0.5) * 0.6), this.node);
+      const dur = 0.5 + Math.random() * 0.2;
+      tweenPos(n, dur, new Vec3(
+        n.position.x + (Math.random() - 0.5) * 1.2,
+        n.position.y + 1.2 + Math.random(),
+        n.position.z + (Math.random() - 0.5) * 1.2,
+      ), () => n.destroy());
+    }
+  }
+
+  // J4 冲线彩带：终点上方撒一把彩色小纸片飘落销毁（复用现有盒色）
+  spawnConfetti(z: number): void {
+    const kinds: BoxKind[] = ['warn1', 'gateMul', 'pad', 'smoke', 'plank'];
+    for (let i = 0; i < 24; i++) {
+      const kind = kinds[i % kinds.length];
+      const s = 0.12 + Math.random() * 0.08;
+      const n = this.box(kind, new Vec3(s, s * 0.4, s * 1.6),
+        new Vec3(bendX(z, this.curve) + (Math.random() - 0.5) * 8, 3.5 + Math.random() * 2.5, z - 2 + Math.random() * 4), this.node);
+      const dur = 1.2 + Math.random() * 0.6;
+      tweenPos(n, dur, new Vec3(
+        n.position.x + (Math.random() - 0.5) * 1.5,
+        n.position.y - 4,
+        n.position.z + (Math.random() - 0.5) * 1.2,
+      ), () => n.destroy());
+    }
+  }
+
   isOnMainRoad(x: number, z: number): boolean {
     if (z >= this.level.gateZ - 0.5) return true;
     if (Math.abs(x - bendX(z, this.curve)) > this.cfg.trackHalfWidth) return false;

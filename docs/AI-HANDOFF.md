@@ -155,3 +155,8 @@ G1 门禁：用户试玩“还想再来一把”= 立项。门禁不过，谁都
   - **Cocos 奖励区补齐（此前名不副实）**：`GameApp` 到终点直落 `win()`，BonusRun.ts 只有 bonus-balance 工具在用；现已全接线——`enterBonus`/奖励区移动走 `stepBonusRun`/`winFromBonus` 结算（倍率×100+余板，progression/遥测/插屏节流同口径）；`TrackBuilder.buildBonusZone`（倍率台+气垛视觉，BoxFactory 加 pad/plate 色）；`build()` 重建同步清 bonusPileNodes。
   - **踩坑记录**：①bonus-balance 工具一直在关卡起点 setBricks，冲线吃砖把气补回 80+，输出全是假数据（3气→×10）——已改为冲线前一刻才设气，真曲线 3/8→×2、20→×5、50→×15（吃两垛）；②像素检测 marker 随跑步相位抖（36~78）会误杀——加 `setRunPhase` QA 钩子固定相位后确定性通过；③E 盘被项目外数据塞满 0 字节致 smoke ENOSPC——删 Cocos 可再生缓存（library/temp/build）回 44MB。
   - **回归**：tsc 0 / smoke / sim 38 / verify-web 18/18（新增 M5/M10 四条断言）。
+- 2026-09-23 | step-5-preview | **P1 机制批 + juice 批（双端，两个提交）**：
+  - **机制批**：M6 板子 5 秒原地刷新（`takePickup` 从销毁改隐藏 + respawnAt，加速鞋一次性；config 加 `pickupRespawnSec`）；M8 板尽差一步扒住断崖边缘爬上去（`nearEdgeGrab` 逼近路口 ±0.65m 触发 0.55s 攀爬态 + 双臂上伸姿势，双端 CharState 加 'climb'）；M13 板堆 12→18 层距收紧（“堆到天高”）。verify 扩 20/20（新增 pickup-respawn / edge-grab 断言）。
+  - **juice 批**：J2 撞人音效（SfxSynth+web 内联同步加 `hit` 双音，smoke 漂移锁已扩——**仅 web**，Cocos 无 AI 对手）；J3 落水水花（双端，白/青粒子上炸）；J4 冲线彩带（双端，24~40 片飘落）；C2 冲线慢动作+推近（双端：setTimeScale 0.35 约 0.45s + CameraFollow.punch 机位压低拉近 0.8s）；U2 结算飘分（web floatText +score）。
+  - **诚实标注**：**M4 AI 对手整套仅 web 端**（Cocos 侧从未实现对手，replica-gap M4 行已从 ✅ 改为 ⚠️双端缺口）；Cocos 补对手是大工程（克隆 rig+经济+碰撞），留待排期。
+  - **回归**：tsc 0 / smoke / sim 38 / verify-web 20/20 全绿。

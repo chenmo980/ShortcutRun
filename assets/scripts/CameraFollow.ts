@@ -13,6 +13,7 @@ export class CameraFollow extends Component {
   speedFactor = 0; // 0~1，由 GameApp 每帧喂入（速度占比），驱动 FOV 冲刺
   pathAnchorX = 0; // 弯道中心线在相机锚点 z 处的世界 X（GameApp 每帧喂入）
   lateral = 0;     // 玩家逻辑横坐标（非世界 x），相机部分跟随
+  punch = 0;       // C2：冲线推近 1→0（机位压低+距离拉近，衰减）
   private cam: Camera | null = null;
   private baseFov = 45;
   private shakeT = 0;
@@ -33,6 +34,11 @@ export class CameraFollow extends Component {
     this.shakeT = Math.max(this.shakeT, dur);
   }
 
+  // C2：冲线推近（慢动作同步触发，punch=强度 0~1）
+  addPunch(v: number): void {
+    this.punch = Math.max(this.punch, v);
+  }
+
   lateUpdate(dt: number): void {
     if (!this.target) return;
     const t = this.target.worldPosition;
@@ -41,17 +47,21 @@ export class CameraFollow extends Component {
     const dz = t.z + this.offsetZ;
     const dx = this.pathAnchorX + this.lateral * this.xFactor;
     const dy = Math.max(t.y, 0) * 0.35 + this.offsetY;
+    // C2：冲线推近（机位压低 0.9m + 距离拉近 1.8m，随 punch 衰减回位）
+    if (this.punch > 0) this.punch = Math.max(0, this.punch - dt / 0.8);
+    const dyP = dy - this.punch * 0.9;
+    const dzP = dz + this.punch * 1.8;
 
     if (!this._inited) {
-      this.node.setWorldPosition(new Vec3(dx, dy, dz));
+      this.node.setWorldPosition(new Vec3(dx, dyP, dzP));
       this._inited = true;
     } else {
       const k = 1 - Math.exp(-this.lerp * dt);
       const p = this.node.worldPosition;
       this.node.setWorldPosition(new Vec3(
         p.x + (dx - p.x) * k,
-        p.y + (dy - p.y) * k,
-        p.z + (dz - p.z) * k,
+        p.y + (dyP - p.y) * k,
+        p.z + (dzP - p.z) * k,
       ));
     }
 
