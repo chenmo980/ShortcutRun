@@ -48,6 +48,8 @@
 <div id="progbar"><div id="progfill"></div></div>
 <div id="hint" class="hud" style="display:none"></div>
 <div id="floaterHost"></div>
+<!-- 版本戳：自证跑的是最新文件（用户曾反馈“看不到新改动”，实为浏览器缓存旧页；看不到这行=按 Ctrl+F5 强刷） -->
+<div id="buildStamp" style="position:fixed; right:10px; bottom:8px; font:11px monospace; color:rgba(255,255,255,.55); text-shadow:0 1px 3px rgba(0,0,0,.6); user-select:none; pointer-events:none; z-index:10;">build 2026-09-23 · M4-M13/J1-J4/C1-C3 已上线</div>
 
 <div id="startScreen" class="overlay">
   <div class="panel">
@@ -77,7 +79,7 @@ const CFG = {
   trackHalfWidth: 2.6,
   levelLength: 150, gapWidthMin: 2.5, gapWidthMax: 4.5,
   gapIntervalMin: 16, gapIntervalMax: 26,
-  brickCluster: 4, gateCost: 14, brickUnit: 0.3,
+  brickCluster: 4, gateCost: 14, brickUnit: 0.3, // 母本锁定值不许动；视觉放大走 BRICK_VISUAL_SCALE
   // 自由铺板捷径（原版核心机制）
   plankCostPerMeter: 1,  // 离开主路后每米消耗板子
   plankStride: 0.6,      // 每多少米留一块板（视觉）
@@ -1019,10 +1021,11 @@ let playerX = 0, targetX = 0, playerY = 0, fallVel = 0;
 let pickups = [], gateWalls = [], stackMeshes = [], anims = [];
 let curSeed = 1, shoeT = 0, itemMeshes = []; // v4：本局种子 / 加速鞋剩余时间 / 道具专属网格（plane 等，需显式清理）
 let camInited = false;
-// M13（原版“板子堆到天高”）：视觉堆叠上限 12→18，层距收紧 0.92→0.74 保持比例不穿模
+// M13+抱起显示强化（用户反馈“拿起来没有抱起效果”）：母本 brickUnit=0.3 不动，
+// 视觉倍率 1.6 → 地面砖 0.48m、胸前捧堆单块 0.30m，层距收紧、可见上限 14（再多只涨 HUD 数字）
 for (let i = 0; i < 18; i++) {
-  const s = cfg.brickUnit * 0.85;
-  const m = box(MAT.brick, s, s, s, 0, 0.08 + i * s * 0.74, 0.04, char.plankMount); // 头顶砖垛（挂 torso 下，随身体动）
+  const s = cfg.brickUnit * 1.0;
+  const m = box(MAT.brick, s, s, s, 0, 0.08 + i * s * 0.55, 0.04, char.plankMount); // 胸前双手捧握处
   m.visible = false;
   stackMeshes.push(m);
 }
@@ -1071,7 +1074,7 @@ function buildLevel(cur) {
       itemMeshes.push(g);
       pickups.push({ mesh: g, def: p, taken: false });
     } else {
-      const s = cfg.brickUnit;
+      const s = cfg.brickUnit * 1.6; // 视觉放大 0.3→0.48m（母本 brickUnit 不动，只放 mesh）
       const m = levelBox(MAT.brick, s, s, s, p.x, s / 2 + 0.05, p.z);
       pickups.push({ mesh: m, def: p, taken: false });
     }
@@ -2044,7 +2047,7 @@ function loop() {
     updateOpponents(dt);
     // 砖堆挂 plankMount（头顶），只需切可见性
     for (let i = 0; i < stackMeshes.length; i++) {
-      stackMeshes[i].visible = i < Math.min(bricks, stackMeshes.length);
+      stackMeshes[i].visible = i < Math.min(bricks, 14); // 可见上限 14，余量走 HUD 数字
     }
     setProgressUI(z, level.gateZ);
   } else if (state === 'ready') {
@@ -2181,6 +2184,7 @@ window.__game = {
     if (!r.rightArm || !r.rightArm.shoulder) missing.push('rightArm.shoulder');
     return {
       pos: [Math.round(o.rig.position.x * 100) / 100, Math.round(o.rig.position.y * 100) / 100, Math.round(o.rig.position.z * 100) / 100],
+      rot: [Math.round(o.rig.rotation.x * 100) / 100, Math.round(o.rig.rotation.y * 100) / 100, Math.round(o.rig.rotation.z * 100) / 100],
       alive: o.alive, finished: o.finished, bricks: Math.round(o.bricks),
       hipAngleX: r.leftLeg && r.leftLeg.hip ? Math.round(r.leftLeg.hip.rotation.x * 100) / 100 : null,
       torsoY: r.torso ? Math.round(r.torso.position.y * 100) / 100 : null,

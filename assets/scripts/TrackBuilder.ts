@@ -404,7 +404,7 @@ export class TrackBuilder extends Component {
         this.box('shoe', new Vec3(0.3, 0.2, 0.24), new Vec3(-0.08, 0.24, 0), g);
         return { node: g, def, taken: false, respawnAt: null };
       }
-      const s = this.cfg.brickUnit;
+      const s = this.cfg.brickUnit * 1.6; // 视觉放大 0.3→0.48m（母本 brickUnit 不动，只放 mesh）
       const node = this.lbox('brick', new Vec3(s, s, s), new Vec3(def.x, s / 2 + 0.05, def.z));
       return { node, def, taken: false, respawnAt: null };
     });
@@ -471,10 +471,11 @@ export class TrackBuilder extends Component {
     }
     this.rig = buildCharacter(player);
 
-    // 胸前手抱砖垛：携带量可视化（挂 plankMount）。M13（原版“堆到天高”）12→18，层距 0.92→0.74
+    // 胸前手抱砖垛：携带量可视化（挂 plankMount）。M13+抱起显示强化：
+    // 视觉倍率 1.0（0.3m 单块）、捧堆层距 0.55、可见上限 14（再多只涨 HUD 数字，避免高塔糊镜头）
     for (let i = 0; i < 18; i++) {
-      const s = cfg.brickUnit * 0.85;
-      const brick = this.box('brick', new Vec3(s, s, s), new Vec3(0, 0.08 + i * s * 0.74, 0.04), this.rig.plankMount);
+      const s = cfg.brickUnit * 1.0;
+      const brick = this.box('brick', new Vec3(s, s, s), new Vec3(0, 0.08 + i * s * 0.55, 0.04), this.rig.plankMount);
       brick.active = false;
       this.stackNodes.push(brick);
     }
@@ -489,7 +490,7 @@ export class TrackBuilder extends Component {
   }
 
   syncStack(count: number): void {
-    const shown = clamp(Math.round(count), 0, this.stackNodes.length);
+    const shown = clamp(Math.round(count), 0, 14); // 可见上限 14，余量走 HUD 数字
     for (let i = 0; i < this.stackNodes.length; i++) {
       this.stackNodes[i].active = i < shown;
     }
