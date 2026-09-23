@@ -93,6 +93,31 @@ const m5 = await page.evaluate(() => {
 check('opponent-plank-ground', m5.supported && m5.grew && !m5.notSupported,
   `supported=${m5.supported} trail+1=${m5.grew} blank=${m5.notSupported}`);
 
+// 4c. M6 板子几秒后原地刷新：吃到后 5s 该堆复活（waitForFunction 盯 taken 翻回 false）
+await page.evaluate(() => window.__game.restart(1));
+await sleep(300);
+await page.mouse.move(450, 300);
+await page.mouse.down();
+await page.mouse.up();
+await page.waitForFunction(() => window.__game.getState().pickupList.some((p) => p.taken), null, { timeout: 15000 });
+await page.waitForFunction(() => window.__game.getState().pickupList.some((p) => !p.taken), null, { timeout: 15000 });
+const m6 = await page.evaluate(() => {
+  const s = window.__game.getState();
+  return { taken: s.pickupList.filter((p) => p.taken).length, alive: s.pickupList.filter((p) => !p.taken).length };
+});
+check('pickup-respawn', m6.alive > 0, `taken=${m6.taken} 复活=${m6.alive}`);
+
+// 4d. M8 板尽差一步扒边判定：贴近断崖尽头=可扒（返回落点），远离=不可扒
+const m8 = await page.evaluate(() => {
+  const s = window.__game.getState();
+  const g = s.gapList[0];
+  return {
+    near: window.__game.grabCheck(0, g.zEnd - 0.3),
+    far: window.__game.grabCheck(0, (g.zStart + g.zEnd) / 2),
+  };
+});
+check('edge-grab', m8.near != null && m8.far === null, `near=${JSON.stringify(m8.near)} far=${m8.far}`);
+
 // 5. 坠落路径：重开 + 0 砖 + 冲出主路 → 最后一跃后坠落
 await page.evaluate(() => window.__game.restart(1));
 await sleep(300);

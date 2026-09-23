@@ -26,7 +26,7 @@ import { GameUI } from './GameUI';
 import { tweenPos, clamp } from './util';
 import { adSys, shouldInterstitialAfterWin, AdTelemetry } from './AdMgr';
 
-type State = 'ready' | 'run' | 'fall' | 'win' | 'lose';
+type State = 'ready' | 'run' | 'fall' | 'win' | 'lose' | 'climb';
 
 @ccclass('GameApp')
 export class GameApp extends Component {
@@ -87,6 +87,10 @@ export class GameApp extends Component {
   private bonusEntryZ = 0;
   private bonusPileDone: boolean[] = []; // 气垛下沉动画是否已播（防重复 tween 已销毁节点）
   private heldBack = false; // S/↓ 按住=奖励区回头
+  // M8：板尽差一步扒住边缘爬上去
+  private climbT = 0;
+  private climbToX = 0;
+  private climbToZ = 0;
 
   onLoad(): void {
     if (!this.boxPrefab) {
@@ -173,6 +177,7 @@ export class GameApp extends Component {
     this.heldLeft = false;
     this.heldRight = false;
     this.heldBack = false;
+    this.climbT = 0; // M8 攀爬状态整局复位
     this.bonusActive = false; // 奖励区状态整局重置（网格已随 track.build 重建回收）
     this.bonus = null;
     this.bonusPads = [];
@@ -360,13 +365,21 @@ export class GameApp extends Component {
       this.fallVel += 22 * dt;
       y -= this.fallVel * dt;
       if (y < -8) { this.lose('掉落！'); return; }
+    } else if (this.state === 'climb') {
+      // M8：挂边攀爬（0.55s）——横纵两轴插值爬上路口，躯干起伏由动画驱动
+      this.climbT -= dt;
+      const kk = Math.min(1, dt * 8);
+      x += (this.climbToX - x) * kk;
+      z += (this.climbToZ - z) * kk;
+      y = 0.22 * Math.sin(Math.min(1, 1 - this.climbT / 0.55) * Math.PI);
+      if (this.climbT <= 0) { this.state = 'run'; y = 0; }
     }
     this.laneX = x;
 
     this.player.setPosition(new Vec3(
       bendX(z, this.curve) + x * Math.cos(headingAt(z, this.curve)), y, z)); // rig 根节点在脚底，随弯道
     this.player.eulerAngles = new Vec3(0, headingAt(z, this.curve), 0); // 朝向=切线
-    // 角色姿势由 CharacterRig 接管（含转向侧倾/落水），这里不再手动旋转根节点
+    // 角色姿势由 CharacterRig 接管（含转向侧倾/落水/扒边攀爬），这里不再手动旋转根节点
     if (this.state === 'run') this.runCycle += dt * (8 + this.speed * 0.7);
     if (this.bridgeT > 0) this.bridgeT -= dt;
 
@@ -379,6 +392,7 @@ export class GameApp extends Component {
     this.track.syncStack(this.bricks);
     const charState = this.state === 'fall' ? 'drowned'
       : this.state === 'run' ? (this.bridgeT > 0 ? 'bridging' : 'running')
+      : this.state === 'climb' ? 'climb'
       : (this.fell ? 'drowned' : 'stand');
     this.pickupPulse = Math.max(0, this.pickupPulse - dt * 2.2);
     this.track.syncRig(charState, this.runCycle, this.targetX - x, this.bricks, dt, this.pickupPulse);
@@ -393,10 +407,19 @@ export class GameApp extends Component {
   // 拾取判定：本帧位移区间 [prevZ, z] 与拾取点区间相交即吃到（防高帧移动量穿透）
   private checkPickups(x: number, prevZ: number, z: number): void {
     for (const p of this.pickups) {
-      if (p.taken) continue;
+      if (p.taken) {
+        // M6（原版规则）：砖堆几秒后原地刷新（加速鞋一次性不刷）
+        if (p.respawnAt != null && this.elapsed >= p.respawnAt) {
+          p.taken = false; p.respawnAt = null; p.node.active = true;
+          console.log('[ShortcutRun] 板子刷新');
+        }
+        continue;
+      }
       const hitZ = z >= p.def.z - 0.7 && prevZ <= p.def.z + 0.7;
       if (hitZ && Math.abs(x - p.def.x) < 0.95) {
         this.track.takePickup(p);
+        // M6：砖堆 5 秒后原地复活（鞋类一次性）
+        p.respawnAt = p.def.kind === 'shoe' ? null : this.elapsed + (this.cfg.pickupRespawnSec ?? 5);
         if (p.def.kind === 'shoe') {
           // v4 加速鞋：不产砖，speed ×1.35 持续 3.5s（母本 botRun 同口径）
           this.shoeT = 3.5;
@@ -439,6 +462,9 @@ export class GameApp extends Component {
     // 最后一跃优先于支撑清零（否则 leapGrace 被立即清掉永坠不了）
     if (this.leapGrace > 0) {
       if (supported) { this.leapGrace = 0; this.offRoad = false; return; } // 落到主路/自己的板子上=生还
+      // M8（原版规则）：最后一跃差一步——逼近主路路口时扒住边缘爬上去，不判坠落
+      const grab = this.nearEdgeGrab(x, z);
+      if (grab) { this.enterClimb(grab); return; }
       this.leapGrace -= adv;
       if (this.leapGrace <= 0) { this.enterFall(); return; }
       return;
@@ -472,6 +498,33 @@ export class GameApp extends Component {
       this.plankAcc = 0;
       this.track.spawnPlank(z, x);
     }
+  }
+
+  // ===== M8 板尽差一步：扒住断崖边缘爬上去（原版规则，替代直接坠落） =====
+  // 最后一跃中若已逼近前方主路的路口（±0.65m 内且横向在路幅+0.7m 内），挂边 0.55s 后爬上去生还
+  private nearEdgeGrab(x: number, z: number): { x: number; z: number } | null {
+    for (const g of this.levelDef.gaps) {
+      if (z >= g.zEnd - 0.65 && z <= g.zEnd + 0.2) {
+        const c = bendX(z, this.curve);
+        if (Math.abs(x - c) <= this.cfg.trackHalfWidth + 0.7) {
+          const lx = Math.max(-this.cfg.trackHalfWidth * 0.6, Math.min(this.cfg.trackHalfWidth * 0.6, x - c));
+          return { x: lx, z: g.zEnd + 0.35 };
+        }
+      }
+    }
+    return null;
+  }
+
+  private enterClimb(g: { x: number; z: number }): void {
+    this.state = 'climb';
+    this.climbT = 0.55;
+    this.climbToX = g.x;
+    this.climbToZ = g.z;
+    this.leapGrace = 0;
+    this.offRoad = false;
+    this.ui?.showHint('扒住边缘，爬了上去！');
+    this.audio?.play('bridge');
+    console.log('[ShortcutRun] M8：板尽差一步，扒住边缘爬上去生还');
   }
 
   private enterFall(): void {

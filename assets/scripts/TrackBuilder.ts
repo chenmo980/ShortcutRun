@@ -25,6 +25,7 @@ export interface RuntimePickup {
   node: Node;
   def: PickupDef;
   taken: boolean;
+  respawnAt: number | null; // M6：砖堆刷新时刻（秒，shoe 为 null 一次性）
 }
 
 @ccclass('TrackBuilder')
@@ -319,11 +320,11 @@ export class TrackBuilder extends Component {
         g.setRotationFromEuler(new Vec3(0, 34, 0));
         this.box('shoe', new Vec3(0.5, 0.14, 0.26), new Vec3(0, 0.07, 0), g);
         this.box('shoe', new Vec3(0.3, 0.2, 0.24), new Vec3(-0.08, 0.24, 0), g);
-        return { node: g, def, taken: false };
+        return { node: g, def, taken: false, respawnAt: null };
       }
       const s = this.cfg.brickUnit;
       const node = this.lbox('brick', new Vec3(s, s, s), new Vec3(def.x, s / 2 + 0.05, def.z));
-      return { node, def, taken: false };
+      return { node, def, taken: false, respawnAt: null };
     });
   }
 
@@ -343,9 +344,10 @@ export class TrackBuilder extends Component {
     this.lbox(kind, new Vec3(halfW * 2 + 0.4, 0.7, 0.35), new Vec3(0, 2.55, g.z));
   }
 
+  // M6（原版规则）：不吃掉只隐藏——砖堆几秒后原地刷新；加速鞋仍由调用方决定一次性
   takePickup(p: RuntimePickup): void {
     p.taken = true;
-    tweenScale(p.node, 0.12, new Vec3(0.01, 0.01, 0.01), () => p.node.destroy());
+    p.node.active = false;
   }
 
   private buildGate(): void {
@@ -387,10 +389,10 @@ export class TrackBuilder extends Component {
     }
     this.rig = buildCharacter(player);
 
-    // 胸前手抱砖垛：携带量可视化（挂 plankMount，最多 12 块）
-    for (let i = 0; i < 12; i++) {
+    // 胸前手抱砖垛：携带量可视化（挂 plankMount）。M13（原版“堆到天高”）12→18，层距 0.92→0.74
+    for (let i = 0; i < 18; i++) {
       const s = cfg.brickUnit * 0.85;
-      const brick = this.box('brick', new Vec3(s, s, s), new Vec3(0, 0.08 + i * s * 0.92, 0.04), this.rig.plankMount);
+      const brick = this.box('brick', new Vec3(s, s, s), new Vec3(0, 0.08 + i * s * 0.74, 0.04), this.rig.plankMount);
       brick.active = false;
       this.stackNodes.push(brick);
     }

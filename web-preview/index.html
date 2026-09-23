@@ -907,6 +907,23 @@ function animateChar(char, runCycle, steerVelocity, carriedPlanks, state, delta,
     char.leftLeg.knee.rotation.x = 0.1; char.rightLeg.knee.rotation.x = 0.1;
     return;
   }
+  if (state === 'climb') {
+    // M8 挂边攀爬：双臂上伸扒住边缘，双腿屈膝蹬踏，躯干随攀爬频率起伏
+    char.torso.rotation.x = lerp(char.torso.rotation.x, -0.32, delta * 8);
+    char.torso.rotation.z = lerp(char.torso.rotation.z, 0, delta * 8);
+    char.torso.position.y = lerp(char.torso.position.y, 0.72 + Math.sin(runCycle * 6) * 0.08, delta * 10);
+    char.leftArm.shoulder.rotation.x = lerp(char.leftArm.shoulder.rotation.x, -2.9, delta * 9);
+    char.leftArm.shoulder.rotation.z = lerp(char.leftArm.shoulder.rotation.z, -0.5, delta * 9);
+    char.leftArm.elbow.rotation.x = lerp(char.leftArm.elbow.rotation.x, -0.25, delta * 9);
+    char.rightArm.shoulder.rotation.x = lerp(char.rightArm.shoulder.rotation.x, -2.9, delta * 9);
+    char.rightArm.shoulder.rotation.z = lerp(char.rightArm.shoulder.rotation.z, 0.5, delta * 9);
+    char.rightArm.elbow.rotation.x = lerp(char.rightArm.elbow.rotation.x, -0.25, delta * 9);
+    char.leftLeg.hip.rotation.x = lerp(char.leftLeg.hip.rotation.x, -0.9, delta * 8);
+    char.leftLeg.knee.rotation.x = lerp(char.leftLeg.knee.rotation.x, 1.2, delta * 8);
+    char.rightLeg.hip.rotation.x = lerp(char.rightLeg.hip.rotation.x, 0.7, delta * 8);
+    char.rightLeg.knee.rotation.x = lerp(char.rightLeg.knee.rotation.x, 0.9, delta * 8);
+    return;
+  }
   const stride = Math.sin(runCycle);
   // 负重反作用平衡（v2 增强）：搬得越多躯干抗压后仰、手臂内收、砖垛甩尾更重
   const loadFactor = Math.min(carriedPlanks / 25, 1.0);
@@ -998,9 +1015,10 @@ let playerX = 0, targetX = 0, playerY = 0, fallVel = 0;
 let pickups = [], gateWalls = [], stackMeshes = [], anims = [];
 let curSeed = 1, shoeT = 0, itemMeshes = []; // v4：本局种子 / 加速鞋剩余时间 / 道具专属网格（plane 等，需显式清理）
 let camInited = false;
-for (let i = 0; i < 12; i++) {
+// M13（原版“板子堆到天高”）：视觉堆叠上限 12→18，层距收紧 0.92→0.74 保持比例不穿模
+for (let i = 0; i < 18; i++) {
   const s = cfg.brickUnit * 0.85;
-  const m = box(MAT.brick, s, s, s, 0, 0.08 + i * s * 0.92, 0.04, char.plankMount); // 头顶砖垛（挂 torso 下，随身体动）
+  const m = box(MAT.brick, s, s, s, 0, 0.08 + i * s * 0.74, 0.04, char.plankMount); // 头顶砖垛（挂 torso 下，随身体动）
   m.visible = false;
   stackMeshes.push(m);
 }
@@ -1080,6 +1098,7 @@ function buildLevel(cur) {
   heldLeft = false; heldRight = false; dragging = false;
   fell = false; bridgeT = 0;
   offRoad = false; plankAcc = 0; leapGrace = 0;
+  climbT = 0; // M8 攀爬状态整局复位
   plankTrail.length = 0; // 清空持久地面（新关卡）
   bonusActive = false; bonusState = null; bonusPads = []; // 重置倍率奖励区
   for (const m of smokes) { m.alive = false; m.visible = false; } // 清烟雾
@@ -1348,11 +1367,20 @@ function updateParticles(dt) {
 }
 function checkPickups(x, prevZ, z) {
   for (const p of pickups) {
-    if (p.taken) continue;
+    if (p.taken) {
+      // M6（原版规则）：砖堆几秒后原地刷新（加速鞋一次性不刷）
+      if (p.respawnAt != null && elapsed >= p.respawnAt) {
+        p.taken = false; p.respawnAt = null; p.mesh.visible = true;
+        floatText('板子刷新！', '#bcaaa4');
+      }
+      continue;
+    }
     const hitZ = z >= p.def.z - 0.7 && prevZ <= p.def.z + 0.7;
       if (hitZ && Math.abs(x - p.def.x) < 0.95) {
         p.taken = true;
         p.mesh.visible = false;
+        // M6：砖堆 5 秒后原地复活（鞋类一次性）
+        p.respawnAt = p.def.kind === 'shoe' ? null : elapsed + (cfg.pickupRespawnSec ?? 5);
         if (p.def.kind === 'shoe') {
           // v4 加速鞋：不产砖，speed ×1.35 持续 3.5s（母本 botRun 同口径）
           shoeT = 3.5;
@@ -1433,6 +1461,9 @@ function updateShortcut(x, z, adv, dt) {
   // 最后一跃优先于支撑清零（否则 leapGrace 被立即清掉永坠不了）
   if (leapGrace > 0) {
     if (supported) { leapGrace = 0; offRoad = false; return; } // 落到主路/自己的板子上=生还
+    // M8（原版规则）：板尽最后一跃差一步——逼近主路边缘时扒住爬上去，不判坠落
+    const grab = nearEdgeGrab(x, z);
+    if (grab) { enterClimb(grab); return; }
     leapGrace -= adv;
     if (leapGrace <= 0) { enterFall(); return; }
     return;
@@ -1471,6 +1502,31 @@ function updateShortcut(x, z, adv, dt) {
     plankAcc = 0;
     layPlank(z, x);
   }
+}
+
+// ===== M8 板尽差一步：扒住断崖边缘爬上去（原版规则，替代直接坠落） =====
+// 最后一跃中若已逼近前方主路的路口（±0.65m 内且横向在路幅+0.7m 内），挂边 0.55s 后爬上去生还
+let climbT = 0, climbToX = 0, climbToZ = 0;
+function nearEdgeGrab(x, z) {
+  for (const g of level.gaps) {
+    if (z >= g.zEnd - 0.65 && z <= g.zEnd + 0.2) {
+      const c = bendX(z);
+      if (Math.abs(x - c) <= cfg.trackHalfWidth + 0.7) {
+        const lx = Math.max(-cfg.trackHalfWidth * 0.6, Math.min(cfg.trackHalfWidth * 0.6, x - c));
+        return { x: lx, z: g.zEnd + 0.35 };
+      }
+    }
+  }
+  return null;
+}
+function enterClimb(g) {
+  state = 'climb';
+  climbT = 0.55; climbToX = g.x; climbToZ = g.z;
+  leapGrace = 0; offRoad = false;
+  sfx.bridge();
+  floatText('扒住边缘！', '#ffd54f');
+  showHint('扒住边缘，爬了上去！');
+  console.log('[ShortcutRun] M8：板尽差一步，扒住边缘爬上去生还');
 }
 
 // 在 (x,z) 留一块板（玩家与 AI 对手共用）
@@ -1850,7 +1906,7 @@ function loop() {
   elapsed += dt;
   stepAnims(dt);
 
-  if (state === 'run' || state === 'fall' || state === 'win' || state === 'lose') {
+  if (state === 'run' || state === 'climb' || state === 'fall' || state === 'win' || state === 'lose') {
     if (heldLeft) targetX += cfg.keySteerSpeed * dt;   // 屏幕左 = 世界 +X（手性修正）
     if (heldRight) targetX -= cfg.keySteerSpeed * dt;
     clampTarget();
@@ -1872,6 +1928,14 @@ function loop() {
       x += (targetX - x) * k;
       playerY = 0;
       updateShortcut(x, z, adv, dt); // 自由铺板核心：离开主路即脚下耗板铺路
+    } else if (state === 'climb') {
+      // M8：挂边攀爬（0.55s）——横纵两轴插值爬上路口，躯干起伏由动画驱动
+      climbT -= dt;
+      const kk = Math.min(1, dt * 8);
+      x += (climbToX - x) * kk;
+      z += (climbToZ - z) * kk;
+      playerY = 0.22 * Math.sin(Math.min(1, 1 - climbT / 0.55) * Math.PI);
+      if (climbT <= 0) { state = 'run'; playerY = 0; }
     } else if (state === 'fall') {
       fallVel += 22 * dt;
       playerY -= fallVel * dt;
@@ -1884,6 +1948,7 @@ function loop() {
     if (state === 'run') runCycle += dt * (8 + speed * 0.7); // 步频随速度
     const charState = state === 'ready' ? 'idle'
       : state === 'run' ? (bridgeT > 0 ? 'bridging' : 'running')
+      : state === 'climb' ? 'climb'
       : state === 'fall' ? 'drowned'
       : state === 'win' ? 'finished'
       : (fell ? 'drowned' : 'idle'); // lose：掉下去的旋水，够砖差一步的站着
@@ -1985,6 +2050,8 @@ window.__game = {
   layPlankAt: (x, z) => layPlank(z, x),
   supportAt: (x, z) => onPlankTrail(x, z),
   plankTrailCount: () => plankTrail.length,
+  // M8 验证钩子：给定坐标是否触发“扒住边缘”（近断崖尽头=目标点，否则 null）
+  grabCheck: (x, z) => nearEdgeGrab(x, z),
   setTheme: (k) => { if (THEMES[k]) { themeKey = k; applyTheme(); } },
   setPlayerColor: (hex) => { MAT.player.color.setHex(hex); CHAR_MATS.clothTop.color.setHex(hex); }, // QA 用：像素检测 marker 色（新角色用 clothTop）
   // QA 用：固定跑步相位后立刻摆一帧，消除像素检测的相位抖动（实测 marker 36~78 大幅波动）

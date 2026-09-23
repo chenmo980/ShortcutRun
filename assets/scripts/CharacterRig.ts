@@ -8,7 +8,7 @@ import { _decorator, Node, Vec3, Mesh, MeshRenderer, Material, utils, primitives
 import { currentTheme, colorOf } from './Theme';
 import { spawnBox } from './BoxFactory';
 
-export type CharState = 'idle' | 'running' | 'bridging' | 'drowned' | 'finished';
+export type CharState = 'idle' | 'running' | 'bridging' | 'drowned' | 'finished' | 'climb';
 
 export interface CharRig {
   root: Node;
@@ -430,6 +430,18 @@ export function animateCharacter(r: CharRig, runCycle: number, steerVel: number,
     r.rightArm.shoulder.eulerAngles = new Vec3(lerp(r.rightArm.shoulder.eulerAngles.x, -2.8, dt * 6), 0, lerp(r.rightArm.shoulder.eulerAngles.z, 0.4, dt * 6));
     rot(r.leftLeg.hip, 0); rot(r.rightLeg.hip, 0);
     rot(r.leftLeg.knee, 0.1); rot(r.rightLeg.knee, 0.1);
+    return;
+  }
+  if (state === 'climb') {
+    // M8 挂边攀爬：双臂上伸扒住边缘，双腿屈膝蹬踏，躯干随攀爬频率起伏
+    r.torso.eulerAngles = new Vec3(lerp(r.torso.eulerAngles.x, -0.32, dt * 8), 0, lerp(r.torso.eulerAngles.z, 0, dt * 8));
+    r.torso.setPosition(new Vec3(r.torso.position.x, lerp(r.torso.position.y, 0.72 + Math.sin(runCycle * 6) * 0.08, dt * 10), r.torso.position.z));
+    r.leftArm.shoulder.eulerAngles = new Vec3(lerp(r.leftArm.shoulder.eulerAngles.x, -2.9, dt * 9), 0, lerp(r.leftArm.shoulder.eulerAngles.z, -0.5, dt * 9));
+    r.leftArm.elbow.eulerAngles = new Vec3(lerp(r.leftArm.elbow.eulerAngles.x, -0.25, dt * 9), 0, 0);
+    r.rightArm.shoulder.eulerAngles = new Vec3(lerp(r.rightArm.shoulder.eulerAngles.x, -2.9, dt * 9), 0, lerp(r.rightArm.shoulder.eulerAngles.z, 0.5, dt * 9));
+    r.rightArm.elbow.eulerAngles = new Vec3(lerp(r.rightArm.elbow.eulerAngles.x, -0.25, dt * 9), 0, 0);
+    rot(r.leftLeg.hip, -0.9); rot(r.leftLeg.knee, 1.2);
+    rot(r.rightLeg.hip, 0.7); rot(r.rightLeg.knee, 0.9);
     return;
   }
   const stride = Math.sin(runCycle);
