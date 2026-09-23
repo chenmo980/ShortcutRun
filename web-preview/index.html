@@ -1075,6 +1075,7 @@ function buildLevel(cur) {
   fell = false; bridgeT = 0;
   offRoad = false; plankAcc = 0; leapGrace = 0;
   plankTrail.length = 0; // 清空持久地面（新关卡）
+  bonusActive = false; bonusState = null; bonusPads = []; // 重置倍率奖励区
   buildIslands();        // 孤岛（原版机制：主路外板堆冒险）
   buildOpponents(); // AI 对手竞速（原版机制）
   player.position.set(bendX(0), 0, 0);
@@ -1546,7 +1547,83 @@ function checkIslands(x, z) {
 }
 
 function checkGate(z) {
-  if (z >= level.gateZ - 0.5) win(); // 原版规则：到达终点即过关（星级按用时/余砖）
+  if (z >= level.gateZ - 0.5) enterBonusRun(); // 原版规则：到达终点 → 倍率奖励区
+}
+
+// ===== 终点倍率 Bonus Run（原版核心计分玩法） =====
+// 冲过终点不重开，进入奖励区：一排倍率悬浮台，剩余板子是汽油，每米烧 1 块，
+// 烧完即停，停在哪个台乘哪个倍率。分数 = 100×倍率 + 剩余板数。
+// 倍率台布局：烧板速度 = 跑步速度×1.4（冲刺费油），台距拉大形成真实取舍——
+// 少量余板只够到低倍率台，板多才冲得到 ×15（原版张力：停在半路比冲不到更难受）
+const BONUS_MULTS = [2, 3, 5, 8, 10, 12, 15];
+const BONUS_BURN = 1.4;   // 奖励区烧板倍率（每米烧 1.4 板）
+let bonusState = null;   // { traveled, remainingPlanks, multiplier, finished }
+let bonusPads = [];      // { z, mult, padMesh, plateMesh }
+let bonusActive = false;
+
+function genBonusPads() {
+  const pads = [];
+  let z = 3;
+  // 间距 = 5 + m*0.7：×2@3 ×3@9 ×5@15.5 ×8@24 ×10@34 ×12@46.5 ×15@62
+  // 配合 BONUS_BURN=1.4：约需汽油 4/13/22/34/48/65/87 板，档差清晰
+  for (const m of BONUS_MULTS) { pads.push({ z, mult: m }); z += 5 + m * 0.7; }
+  return pads;
+}
+
+function enterBonusRun() {
+  if (bonusActive) return;
+  bonusActive = true;
+  bonusState = { traveled: 0, remainingPlanks: bricks, multiplier: 1, finished: false };
+  bonusPads = genBonusPads();
+  const baseZ = level.gateZ + 6;
+  // 视觉：倍率台（青色悬浮台 + 白色倍率牌）
+  for (const p of bonusPads) {
+    const h = headingAt(baseZ);
+    const px = bendX(baseZ) + p.z * Math.sin(h) * 0; // 倍率区沿路中心延伸
+    const pad = new THREE.Mesh(BOX, new THREE.MeshLambertMaterial({ color: 0x26c6da }));
+    pad.scale.set(3.2, 0.3, 1.6);
+    pad.position.set(px, 0.1, baseZ + p.z);
+    pad.rotation.y = h;
+    scene.add(pad);
+    p.padMesh = pad;
+    const plate = new THREE.Mesh(BOX, new THREE.MeshLambertMaterial({ color: 0xffffff }));
+    plate.scale.set(1.2, 0.5, 0.1);
+    plate.position.set(px, 0.7, baseZ + p.z);
+    plate.rotation.y = h;
+    scene.add(plate);
+    p.plateMesh = plate;
+  }
+  showHint('奖励区！剩余板子=汽油，烧完即停');
+  console.log(`[ShortcutRun] 进入倍率奖励区，汽油 ${Math.floor(bricks)} 板`);
+}
+
+function stepBonus(dt) {
+  if (!bonusActive || !bonusState || bonusState.finished) return;
+  const adv = speed * dt;
+  bonusState.traveled += adv;
+  bonusState.remainingPlanks = Math.max(0, bonusState.remainingPlanks - adv * BONUS_BURN);
+  for (const p of bonusPads) {
+    if (bonusState.traveled >= p.z && p.mult > bonusState.multiplier) {
+      bonusState.multiplier = p.mult;
+      showHint(`×${p.mult} 锁定！`);
+      sfx.bridge();
+      shake(0.15, 0.2);
+    }
+  }
+  if (bonusState.remainingPlanks <= 0) {
+    bonusState.finished = true;
+    finishBonus();
+  }
+}
+
+function finishBonus() {
+  const score = 100 * bonusState.multiplier + Math.floor(bonusState.remainingPlanks);
+  const stars = bonusState.multiplier >= 8 ? 3 : bonusState.multiplier >= 5 ? 2 : 1;
+  showResult(true, `×${bonusState.multiplier} 倍率！`, stars,
+    `得分 ${score}（基础 100 × ${bonusState.multiplier} + 余板 ${Math.floor(bonusState.remainingPlanks)}）`,
+    '再来一局', () => { resultScreen.style.display = 'none'; syncLevel(); });
+  console.log(`[ShortcutRun] 结算: ×${bonusState.multiplier} 得分 ${score} ${stars}星`);
+  sfx.win();
 }
 
 // ===== AI 对手竞速（原版标志性机制复刻） =====
@@ -1705,6 +1782,7 @@ function loop() {
       checkGate(z);
       checkIslands(x, z); // 孤岛拾取（原版机制）
     }
+    if (bonusActive && state === 'run') stepBonus(dt); // 倍率奖励区推进
     updateOpponents(dt);
     // 砖堆挂 plankMount（头顶），只需切可见性
     for (let i = 0; i < stackMeshes.length; i++) {
@@ -1777,6 +1855,7 @@ window.__game = {
     offRoad, planksLaid: planks.length,
     islandCount: islands.filter((i) => !i.taken).length,
     islandList: islands.map((i) => ({ x: Math.round(i.def.x * 10) / 10, z: Math.round(i.def.z * 10) / 10, planks: i.def.planks, taken: i.taken })),
+    bonus: bonusActive ? { traveled: Math.round(bonusState.traveled * 10) / 10, remaining: Math.round(bonusState.remainingPlanks), mult: bonusState.multiplier, finished: bonusState.finished } : null,
     islandTaken: islands.filter((i) => i.taken).length,
     opponents: opponents.filter((o) => o.alive).length,
     opponentsDone: opponents.filter((o) => o.finished || !o.alive).length,

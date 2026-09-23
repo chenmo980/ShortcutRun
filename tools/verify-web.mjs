@@ -88,17 +88,23 @@ s = await page.evaluate(() => window.__game.getState());
 check('fall-state', s.state === 'fall', `bricks=${s.bricks} z=${s.z.toFixed(1)}`);
 await page.screenshot({ path: `${SHOTS}/04-fall.png` });
 
-// 6. 胜利路径：重开 + 99 砖 → 冲到终点门
+// 6. 胜利路径（原版流程）：重开 + 99 砖 → 过终点门进倍率奖励区 → 油尽结算
 await page.evaluate(() => window.__game.restart(7));
 await sleep(400);
 await page.evaluate(() => window.__game.setBricks(99));
 await page.mouse.move(450, 300);
 await page.mouse.down();
 await page.mouse.up();
-await page.waitForFunction(() => window.__game.getState().state === 'win', null, { timeout: 40000 });
+// 6a. 先到终点 → 进入倍率奖励区
+await page.waitForFunction(() => window.__game.getState().bonus !== null, null, { timeout: 40000 });
 s = await page.evaluate(() => window.__game.getState());
-check('win-state', s.state === 'win' && s.z >= s.gateZ - 1, `z=${s.z.toFixed(1)} gateZ=${s.gateZ.toFixed(1)}`);
-await page.screenshot({ path: `${SHOTS}/05-win.png` });
+check('bonus-entered', s.bonus !== null, `gas=${s.bonus.remaining}`);
+await page.screenshot({ path: `${SHOTS}/05-bonus.png` });
+// 6b. 油尽 → 结算出倍率与分数
+await page.waitForFunction(() => { const b = window.__game.getState().bonus; return b && b.finished; }, null, { timeout: 40000 });
+s = await page.evaluate(() => window.__game.getState());
+check('bonus-settled', s.bonus.finished && s.bonus.mult >= 2, `mult=x${s.bonus.mult} traveled=${s.bonus.traveled}m`);
+await page.screenshot({ path: `${SHOTS}/06-settle.png` });
 
 // 6b. v4 道具门功能：L3 有 +5 门（itemsFor 分带），直行过门自动加砖
 await page.evaluate(() => window.__game.restart(3));
