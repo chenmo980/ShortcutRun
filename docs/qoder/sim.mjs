@@ -522,7 +522,7 @@ const N = 2000;
   const { createHash } = await import('node:crypto');
   const H = (s) => createHash('sha256').update(s).digest('hex').slice(0, 16);
   const ANCHORS = [
-    [3, 2, 'f90fdb59f0c26fad'], [77, 9, '7fef651c042bc33d'], [1001, 5, '945686c2ac0e2fb1'],
+    [3, 2, '2528632483ed8086'], [77, 9, 'eafe7775e9511863'], [1001, 5, '945686c2ac0e2fb1'],
     [20260921, 12, 'edc995f05bee41e0'], [42, 7, '6827be087d9a0916'], [999, 15, 'b1174ad314a7f19d'],
   ];
   let bad19 = '';

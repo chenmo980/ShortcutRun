@@ -222,12 +222,26 @@ export function genLevelV2(seed: number, cfg: Cfg): LevelDef {
   return level;
 }
 
-// v3 生产版：tailSafe + margin/k 双目标供给修复 + 拾取摊开
+// 起步保底（2026-09-23 母本注册，与 docs/qoder/bridge-rules.mjs 字节级一致）：
+// 第一道断崖前必须有一颗近路中心(|x|<=0.9)砖堆且距崖>=3.5m（真人反应+转向窗口）。
+// L12(seed 12001)曾出现崖前唯一砖堆 z=6.94/x=+1.63 而崖 z=8——不预转向就 0 砖掉崖。
+function ensureStarterPickup(level: LevelDef, cfg: Cfg): void {
+  const g0 = level.gaps[0];
+  if (!g0) return;
+  const ok = level.pickups.some((p) => !p.kind && p.z <= g0.zStart - 3.5 && Math.abs(p.x) <= 0.9);
+  if (ok) return;
+  const z = Math.min(2.5, Math.max(1, g0.zStart - 3.5));
+  level.pickups.push({ x: 0, z: +z.toFixed(2) });
+  level.pickups.sort((a, b) => a.z - b.z);
+}
+
+// v3 生产版：tailSafe + margin/k 双目标供给修复 + 起步保底 + 拾取摊开
 export function genLevelV3(seed: number, cfg: Cfg, opts: { margin?: number; supplyRatio?: number; items?: ItemsPlan } = {}): LevelDef {
   const margin = opts.margin ?? cfg.supplyMargin ?? 2;
   const k = opts.supplyRatio ?? cfg.supplyRatio ?? 1;
   const level = genLevel(seed, cfg, { tailSafe: true });
   repairPrefixSupply(level, cfg, seed, margin, k);
+  ensureStarterPickup(level, cfg); // 起步保底（2026-09-23 母本注册，与 docs/qoder/bridge-rules.mjs 字节级一致）
   spaceOutPickups(level, zonesOf(level));
   // v4 道具开关:opts.items 显式传入,或 cfg.enableItems 走 ITEMS_DEFAULT。
   // **默认关闭 = 输出与 v3 逐字节一致(§14 parity 锚不失效)**;开启时仅追加 level.gates 与 kind:'shoe' 拾取。

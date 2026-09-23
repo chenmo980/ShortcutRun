@@ -167,12 +167,18 @@ G1 门禁：用户试玩“还想再来一把”= 立项。门禁不过，谁都
   - **C3**：bridging 时 head 上抬 0.22rad（双端 animateChar/CharacterRig）。
   - **回归**：tsc 0 / smoke / sim 38 / verify-web **22/22**（新增 bonus-pads-14 / rank-base-lock）；bonus-balance 曲线重跑。
   - replica-gap 剩余：M9 分支路径（P2 大工程）/ C1 低机位（待 G1 手感）。
+- 2026-09-23 | step-5-preview | **【母本变更登记·先登记后改】genLevelV3 起步保底 + 用户反馈深挖（原地掉落根因）**：
+  - **背景**：用户反馈“刚开始就原地掉落/看不到新改动/模型趴着/物品小无抱起效果”。web 无头实跑复现出：**L12(seed 12001) 第一道断崖前唯一砖堆 z=6.94/x=+1.63，崖 z=8**——不预转向就 0 砖掉崖；L7 更极端（崖 cost6 崖前只有 4 砖）。确认是**生成器公平性缺陷**（供需锁只验总量，不验“第一崖前的可达性+反应窗口”）。
+  - **母本规则**：`ensureStarterPickup`——第一道断崖前必须存在 |x|≤0.9 且距崖 ≥3.5m 的砖堆，否则插入确定性砖堆（x=0, z=min(2.5, zStart-3.5)）。插入点在 `repairPrefixSupply` 后、`spaceOutPickups` 前；已有合格砖则不动（不破坏供需锁）。
+  - **三端同步**：`docs/qoder/bridge-rules.mjs`（母本先行）+ web-preview 内联 + `assets/scripts/LevelGen.ts` 字节级一致；**items-off 字节锚 6 个中 2 个随母本变更更新**（seed3/L2、seed77/L9——正是缺起步砖的两个种子；另 4 个输出不变证明改动精准）。
+  - **顺带修**：web `buildLevel` 不清 `planks` 池（Cocos 早就清）→ 重开后铺的板复用 detached 节点变隐形，已对齐；tumble 对手翻滚 1.3→0.55rad（原来 75~103° 全身侧翻像“趴着”）。
+  - **诊断设施**：`__game.diag()` 一键快照（state/bricks/pose/对手/errors）+ `playerPose()` + 开局 4 秒内掉落打 `[DIAG]` console 告警 + web 右下角版本戳。
+  - **回归**：tsc 0 / smoke / sim 38（含新锚）/ verify-web 22/22（新增 plank-pool-reset 断言）。
 - 2026-09-23 | step-5-preview | **人物系统审计 + 3 个角色表现缺口修复（双端）**：
   - 审计结论（已逐条验证）：**模型/状态机/捡起/抱起都已做**——6 套皮肤（大圣 AI Studio 规范：紧箍 specialGold/虎皮赭石裙/雉翎/飘带/腮红/微笑/步云履/锁子甲）、状态 idle/running/bridging/climb/drowned/finished、pickupPulse 右手探前下捞（外展避遮挡）、左手环抱+plankMount 双手捧握+堆叠可见性+甩尾惯性+负重后仰、铺板推掷/转向侧倾/脚踝滚动全部双端在岗。
-  - **修的 3 个缺口**：①奖励区结算无庆祝跳——我此前重构 bonus 路径把老 win() 的跳跃弄丢了（回归，双端补）；②被撞飞无专属姿态——knockOut 原为直挺挺下沉，加失衡翻滚（Cocos 新增 util.tweenEulerZ）；③加速鞋零视觉——shoeT 只进速度公式，补金色尘土粒子（web 粒子池/Cocos spawnDust，每 0.1s 两颗）。
+  - **修的 3 个缺口**：①奖励区结算无庆祝跳——此前重构 bonus 路径把老 win() 的跳跃弄丢了（回归，双端补）；②被撞飞无专属姿态——knockOut 原为直挺挺下沉，加失衡翻滚（Cocos 新增 util.tweenEulerZ，2026-09-23 晚些时候把角度从 1.3 调到 0.55rad，原 75~103 度全身侧翻像“趴着”）；③加速鞋零视觉——shoeT 只进速度公式，补金色尘土粒子（web 粒子池/Cocos spawnDust，每 0.1s 两颗）。
   - 教训：一次“删注释行尾换行”的空操作编辑把注释下一行函数头吞掉，sim 的 whole-page compile lock 立刻抓到（Unexpected identifier 'let'）——该锁价值再次兑现。
-  - 回归：tsc 0 / smoke / sim 38 / verify-web 22/22。
-- 2026-09-23 | step-5-preview | **用户试玩反馈排查（4 条，web 侧实跑均不复现）+ 视觉放大 + 版本戳**：
+  - 回归：tsc 0 / smoke / sim 38 / verify-web 22/22。- 2026-09-23 | step-5-preview | **用户试玩反馈排查（4 条，web 侧实跑均不复现）+ 视觉放大 + 版本戳**：
   - 用户反馈：①刚开始原地掉落 ②看不到新模型/新改动 ③很多模型趴着移动 ④地上物品太小+拿起无抱起效果（截图因模型不支持图片输入未收到）。
   - **web-preview 实跑证据**（无头 Chromium）：开局/完整一局/结算后重开三条路径 state 全程 run 无 fall；3 对手 root 旋转 [0,0,0] 直立、髋摆 ±0.8 步态正常、关节 missing=0；玩家 y=0。→ 用户看到的不是仓库当前文件，疑似**浏览器缓存旧页 / 微信 devtools 旧包（build/ 已在磁盘清理时被删，需重新构建）/ Cocos 编辑器**。
   - **已修（双端）**：④地面砖视觉 0.3→0.48m（母本 brickUnit=0.3 不动——首次直接改母本值被 sim curve-drift 锁抓住，改为 mesh 视觉倍率 1.6 解耦）；抱起捧堆单块 0.30m+层距 0.55+可见上限 14（再多只涨 HUD 数字，防高塔糊镜头）。

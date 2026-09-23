@@ -135,10 +135,25 @@ export function genLevelV3(seed, cfg = DEFAULT_CFG, opts = {}) {
   const k = opts.supplyRatio ?? cfg.supplyRatio ?? 1;
   const level = genLevel(seed, cfg, { tailSafe: true });
   repairPrefixSupply(level, cfg, seed, margin, k);
+  ensureStarterPickup(level, cfg); // 起步保底（2026-09-23 step-5 注册，见函数注释）
   spaceOutPickups(level, zonesOf(level));
   const items = opts.items ?? (cfg.enableItems ? ITEMS_DEFAULT : null);
   if (items) placeItems(level, cfg, seed, items);
   return level;
+}
+
+// 起步保底（2026-09-23 step-5 注册的母本规则变更）：第一道断崖前必须有一颗近路中心
+// （|x|<=0.9）的砖堆，且距崖 >=3.5m（真人反应+转向窗口）。L12(seed 12001)曾出现崖前
+// 唯一砖堆 z=6.94/x=+1.63 而崖 z=8——不预转向就 0 砖掉崖，用户反馈"刚开始就原地掉落"。
+// 已有合格崖前砖则不动（不破坏供需锁）；否则插入一颗确定性砖堆（x=0，距崖>=3.5m）。
+function ensureStarterPickup(level, cfg) {
+  const g0 = level.gaps[0];
+  if (!g0) return;
+  const ok = level.pickups.some((p) => !p.kind && p.z <= g0.zStart - 3.5 && Math.abs(p.x) <= 0.9);
+  if (ok) return;
+  const z = Math.min(2.5, Math.max(1, g0.zStart - 3.5));
+  level.pickups.push({ x: 0, z: +z.toFixed(2) });
+  level.pickups.sort((a, b) => a.z - b.z);
 }
 
 // 道具布置（独立子种子，确定性）：门放在可跑区间内、避开断崖与彼此；

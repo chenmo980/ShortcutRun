@@ -622,7 +622,7 @@ export class GameApp extends Component {
     this.camFollow.addShake(0.12, 0.2);
     const p = o.root.position;
     tweenPos(o.root, 0.8, new Vec3(p.x, p.y - 6, p.z));
-    tweenEulerZ(o.root, 1.3 + Math.random() * 0.5, 0.5); // 被撞飞失衡翻滚（非直挺挺下沉）
+    tweenEulerZ(o.root, 0.55 + Math.random() * 0.25, 0.5); // 被撞飞失衡翻滚（0.55rad≈31°，不“趴着”）
   }
 
   // 孤岛：踩上就收板（原版经典的风险回报机制）

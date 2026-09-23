@@ -241,11 +241,24 @@ function spaceOutPickups(level, zones, minGap = 4) {
     }
   }
 }
+// 起步保底（2026-09-23 母本注册，与 docs/qoder/bridge-rules.mjs 字节级一致）：
+// 第一道断崖前必须有一颗近路中心(|x|<=0.9)砖堆且距崖>=3.5m（真人反应+转向窗口）。
+// L12(seed 12001)曾出现崖前唯一砖堆 z=6.94/x=+1.63 而崖 z=8——不预转向就 0 砖掉崖。
+function ensureStarterPickup(level, cfg) {
+  const g0 = level.gaps[0];
+  if (!g0) return;
+  const ok = level.pickups.some((p) => !p.kind && p.z <= g0.zStart - 3.5 && Math.abs(p.x) <= 0.9);
+  if (ok) return;
+  const z = Math.min(2.5, Math.max(1, g0.zStart - 3.5));
+  level.pickups.push({ x: 0, z: +z.toFixed(2) });
+  level.pickups.sort((a, b) => a.z - b.z);
+}
 function genLevelV3(seed, cfg, opts = {}) {
   const margin = opts.margin ?? cfg.supplyMargin ?? 2;
   const k = opts.supplyRatio ?? cfg.supplyRatio ?? 1;
   const level = genLevel(seed, cfg, { tailSafe: true });
   repairPrefixSupply(level, cfg, seed, margin, k);
+  ensureStarterPickup(level, cfg); // 起步保底（2026-09-23 母本注册，与 docs/qoder/bridge-rules.mjs 字节级一致）
   spaceOutPickups(level, zonesOf(level));
   // v4 道具开关（移植自母本/TS 版，§14/§21 parity 锚）：opts.items 显式传入，或
   // cfg.enableItems 走 ITEMS_DEFAULT。**默认关闭 = 输出与 v3 逐字节一致**；
@@ -1106,6 +1119,9 @@ function buildLevel(cur) {
   heldLeft = false; heldRight = false; dragging = false;
   fell = false; bridgeT = 0;
   offRoad = false; plankAcc = 0; leapGrace = 0;
+  // 板子池整局重置：buildLevel 的 BOX 清扫会把池内网格从场景摘掉，
+  // 不清池的话之后 layPlank 复用的是已 detached 节点 → 铺了板却看不见（Cocos 侧早就清了，双端对齐）
+  planks.length = 0; plankCursor = 0; plankSeq = 0;
   climbT = 0; // M8 攀爬状态整局复位
   plankTrail.length = 0; // 清空持久地面（新关卡）
   bonusActive = false; bonusState = null; bonusPads = []; // 重置倍率奖励区
@@ -1305,6 +1321,10 @@ function startRun() {
 }
 function enterFall() {
   console.log('[ShortcutRun] 砖不够，掉落！');
+  // 诊断：开局 4 秒内掉落 = 异常路径（用户回报“刚开始就原地掉落”时用于量化）
+  if (elapsed - runT0 < 4 && elapsed - runT0 >= 0) {
+    console.warn(`[DIAG] 开局早掉 z=${player.position.z.toFixed(1)} bricks=${bricks} offRoad=${offRoad} trail=${plankTrail.length}`);
+  }
   showHint('掉落！');
   state = 'fall'; fallVel = 1;
   fell = true;
@@ -1470,6 +1490,7 @@ function checkGates(prevZ, z) {
 }
 // （v3 起：断崖自动扣费桥已废弃，改为持续自由铺板机制，见下方 updateShortcut）
 window.addEventListener('error', (e) => {
+  (window.__errs = window.__errs || []).push(String(e.message || e.type).slice(0, 200));
   const d = document.createElement('div');
   d.textContent = '运行错误: ' + (e.message || e.type);
   d.style.cssText = 'position:fixed;left:8px;bottom:8px;right:8px;background:#c62828;color:#fff;font:13px monospace;padding:10px;border-radius:8px;z-index:99;white-space:pre-wrap;';
@@ -1967,8 +1988,8 @@ function knockOut(o, why) {
   shake(0.12, 0.2);
   const p = o.rig.position;
   tweenTo(o.rig.position, 'y', p.y - 6, 0.8);
-  // 被撞飞失衡翻滚（原版退场姿态，非直挺挺下沉）
-  tweenTo(o.rig.rotation, 'z', 1.3 + Math.random() * 0.5, 0.5);
+  // 被撞飞失衡翻滚（原版退场姿态，非直挺挺下沉；0.55rad≈31°：侧翻失衡但不“趴着”）
+  tweenTo(o.rig.rotation, 'z', 0.55 + Math.random() * 0.25, 0.5);
 }
 
 // ============ 主循环 ============
@@ -2154,6 +2175,20 @@ window.__game = {
     for (let i = 1; i < (lv || 1); i++) prog.win(999, 0); // 快进到指定关（QA 用）
     syncLevel();
   },
+  // QA：玩家自身姿势（root 旋转+躯干高度）——定位“躺着移动”类问题
+  playerPose: () => ({
+    root: [+player.rotation.x.toFixed(3), +player.rotation.y.toFixed(3), +player.rotation.z.toFixed(3)],
+    torsoY: +char.torso.position.y.toFixed(3),
+    state,
+  }),
+  // 一键诊断快照：用户回报异常时，F12→Console→输入 __game.diag() 把结果贴回来
+  diag: () => ({
+    build: '2026-09-23', state, z: +player.position.z.toFixed(1),
+    bricks: +bricks.toFixed(1), offRoad, planks: planks.length, trail: plankTrail.length,
+    level: levelNum, skin: currentSkinKey, camInited,
+    opponents: window.__game.debugOpponents().map((o) => ({ alive: o.alive, z: o.pos[2], rot: o.rot })),
+    errors: (window.__errs || []).slice(-3),
+  }),
   progress: () => prog.state(),
   resetProgress: () => { qaSession = true; prog.reset(); },
   renderOnce: () => renderer.render(scene, camera),
