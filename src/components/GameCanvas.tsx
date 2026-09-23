@@ -111,6 +111,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     playerVelX: number;
     targetPlayerX: number;
     steerOffset: number;
+    steerVelocityX: number;
     isPaused: boolean;
     isOverWater: boolean;
     carriedPlanks: number;
@@ -143,6 +144,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     playerVelX: 0,
     targetPlayerX: 0,
     steerOffset: 0,
+    steerVelocityX: 0,
     isPaused: false,
     isOverWater: false,
     carriedPlanks: 16,
@@ -169,6 +171,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     g.playerZ = targetZ;
     g.targetPlayerX = startX;
     g.steerOffset = 0;
+    g.steerVelocityX = 0;
     g.manualOverride = false;
     g.carriedPlanks = settingsRef.current.infinitePlanks ? 30 : 16;
     g.state = 'running';
@@ -498,6 +501,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       playerVelX: 0,
       targetPlayerX: 0,
       steerOffset: 0,
+      steerVelocityX: 0,
       isPaused: false,
       isOverWater: false,
       carriedPlanks: 12,
@@ -539,6 +543,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       left: false,
       right: false,
     };
+    const keyHoldTime = {
+      left: 0,
+      right: 0,
+    };
 
     const isLeftKey = (e: KeyboardEvent) =>
       e.code === 'KeyA' ||
@@ -571,8 +579,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       lastClientX = clientX;
 
       // Adjust steer offset relative to track centerline (subtracted to align screen drag right -> character moves right)
-      gameRef.current.steerOffset -= deltaX * 0.042;
+      const moveDist = -deltaX * 0.042;
+      gameRef.current.steerOffset += moveDist;
       gameRef.current.steerOffset = Math.max(-14, Math.min(14, gameRef.current.steerOffset));
+
+      // 同步鼠标滑动瞬时速度矢量到 steerVelocityX，释放鼠标时与键盘享受一致的速度矢量阻尼插值
+      const instantMouseVel = moveDist / 0.016;
+      gameRef.current.steerVelocityX = THREE.MathUtils.lerp(
+        gameRef.current.steerVelocityX,
+        Math.max(-28, Math.min(28, instantMouseVel)),
+        0.5
+      );
     };
 
     const onPointerUp = () => {
@@ -583,17 +600,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       if (isLeftKey(e)) {
         gameRef.current.manualOverride = true;
         if (!keysPressed.left) {
-          // Snappy instant tap response
-          gameRef.current.steerOffset += 1.2;
-          gameRef.current.steerOffset = Math.max(-14, Math.min(14, gameRef.current.steerOffset));
+          keyHoldTime.left = 0;
+          // 初速度矢量响应（不瞬移位置，由速度矢量插值驱动位移，与鼠标轻推手感一致）
+          gameRef.current.steerVelocityX = Math.max(gameRef.current.steerVelocityX, 5.0);
         }
         keysPressed.left = true;
       } else if (isRightKey(e)) {
         gameRef.current.manualOverride = true;
         if (!keysPressed.right) {
-          // Snappy instant tap response
-          gameRef.current.steerOffset -= 1.2;
-          gameRef.current.steerOffset = Math.max(-14, Math.min(14, gameRef.current.steerOffset));
+          keyHoldTime.right = 0;
+          // D 键专属初速度矢量强化：增加对 D 键按下的灵敏度响应，瞬时赋予向右初速度 (-6.5)，消除触键迟滞
+          gameRef.current.steerVelocityX = Math.min(gameRef.current.steerVelocityX, -6.5);
         }
         keysPressed.right = true;
       } else if (e.key === ' ' || e.code === 'Space') {
@@ -615,14 +632,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const onKeyUp = (e: KeyboardEvent) => {
       if (isLeftKey(e)) {
         keysPressed.left = false;
+        keyHoldTime.left = 0;
       } else if (isRightKey(e)) {
         keysPressed.right = false;
+        keyHoldTime.right = 0;
       }
     };
 
     const onWindowBlur = () => {
       keysPressed.left = false;
       keysPressed.right = false;
+      keyHoldTime.left = 0;
+      keyHoldTime.right = 0;
       isDragging = false;
     };
 
@@ -734,14 +755,45 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       // Game state machine
       if (g.state === 'running' || g.state === 'bridging') {
-        // Continuous smooth keyboard steering with agile acceleration
+        // --- 键盘 A/D 速度矢量插值 (Velocity Interpolation) 与 D 键灵敏度曲线微调 ---
+        const baseSteerSpeed = 17.0;
+        let targetVelocityX = 0;
+
         if (keysPressed.left) {
-          g.steerOffset += 16.0 * delta;
-          g.steerOffset = Math.min(14, g.steerOffset);
+          keyHoldTime.left += delta;
+          // A 键（向左 +X）响应曲线：平滑非线性缓入到满速
+          const t = Math.min(1.0, keyHoldTime.left / 0.26);
+          const curveA = 1.0 - Math.pow(1.0 - t, 2.2);
+          const sensitivityA = 0.92 + 0.18 * curveA;
+          targetVelocityX += baseSteerSpeed * sensitivityA;
         }
+
         if (keysPressed.right) {
-          g.steerOffset -= 16.0 * delta;
-          g.steerOffset = Math.max(-14, g.steerOffset);
+          keyHoldTime.right += delta;
+          // D 键（向右 -X）专属灵敏度曲线微调：
+          // 针对右侧水面抄近道与对抗左弯赛道离心力，采用更强劲的非线性攻击曲线（Attack Curve）与灵敏度增益
+          // 初始响应区间提升（1.16x 起步增益），在 0.18s 内迅速达到充沛滑移速度，
+          // 与鼠标向右快速滑动的敏捷反馈完全统一
+          const t = Math.min(1.0, keyHoldTime.right / 0.18);
+          const curveD = 1.0 - Math.pow(1.0 - t, 2.8);
+          const sensitivityD = 1.16 + 0.24 * curveD;
+          targetVelocityX -= baseSteerSpeed * sensitivityD;
+        }
+
+        // 速度矢量插值 (Velocity Interpolation):
+        // 输入激活时高响应加速逼近目标速度（blendRate = 28），松开后平滑阻尼滑行缓冲（blendRate = 14）
+        if (!isDragging) {
+          const hasKeyInput = keysPressed.left || keysPressed.right;
+          const blendRate = hasKeyInput ? 28.0 : 14.0;
+          g.steerVelocityX = THREE.MathUtils.lerp(
+            g.steerVelocityX,
+            targetVelocityX,
+            Math.min(1.0, delta * blendRate)
+          );
+
+          // 积分速度矢量到位移偏移量 (Velocity to Position Offset)
+          g.steerOffset += g.steerVelocityX * delta;
+          g.steerOffset = Math.max(-14, Math.min(14, g.steerOffset));
         }
 
         // Track centerline & intelligent lateral positioning
@@ -752,6 +804,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         // ONLY active when enabled AND user has not actively taken over manual steering.
         // Once the user presses A/D or drags mouse, manualOverride is true and Auto-Pilot will not fight the player!
         if (curSettings.autoPilot && !g.manualOverride) {
+          g.steerVelocityX = 0;
           // Gently glide toward track center
           g.steerOffset = THREE.MathUtils.lerp(g.steerOffset, 0, delta * 3.2);
 
@@ -1183,6 +1236,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   // When autoPilot toggle changes in settings, reset manualOverride
   useEffect(() => {
     gameRef.current.manualOverride = false;
+    gameRef.current.steerVelocityX = 0;
   }, [settings.autoPilot]);
 
   return (
