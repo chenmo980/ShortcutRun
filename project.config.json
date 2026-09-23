@@ -22,13 +22,12 @@
     "condition": false
   },
   "compileType": "game",
-  "miniprogramRoot": "build/wechatgame-001/",
   "simulatorPluginLibVersion": {},
   "packOptions": {
     "ignore": [],
     "include": []
   },
   "isGameTourist": false,
-  "appid": "wx52ce325e602cfcee",
+  "appid": "wx6ac3f5090a6b99c5",
   "editorSetting": {}
 }
