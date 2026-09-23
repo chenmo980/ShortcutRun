@@ -23,7 +23,7 @@ import { AudioMgr } from './AudioMgr';
 import { TrackBuilder, RuntimePickup, Opponent } from './TrackBuilder';
 import { CameraFollow } from './CameraFollow';
 import { GameUI } from './GameUI';
-import { tweenPos, clamp } from './util';
+import { tweenPos, tweenEulerZ, clamp } from './util';
 import { adSys, shouldInterstitialAfterWin, AdTelemetry } from './AdMgr';
 
 type State = 'ready' | 'run' | 'fall' | 'win' | 'lose' | 'climb';
@@ -77,6 +77,7 @@ export class GameApp extends Component {
   private offRoad = false; // 当前是否在主路外（铺板模式）
   private plankAcc = 0;    // 累计铺板距离（米）
   private smokeTimer = 0;  // 铺路烟雾生成间隔计时（原版标志性反馈）
+  private shoeDustT = 0;   // 加速鞋尘土生成间隔计时
   private leapGrace = 0;   // 剩余最后一跃距离（米），>0 表示飞跃中不耗板
   private curve: CurveState = { amp: 0, freq: 0.12, phase: 0 }; // 弯道（表现层）
   // 终点倍率奖励区（原版核心计分玩法；M10：S 键回头捡气垛）
@@ -336,6 +337,13 @@ export class GameApp extends Component {
 
     if (this.state === 'run') {
       if (this.shoeT > 0) this.shoeT -= dt;
+      if (this.shoeT > 0) { // 加速鞋视觉：金色尘土
+        this.shoeDustT -= dt;
+        if (this.shoeDustT <= 0) {
+          this.shoeDustT = 0.1;
+          this.track.spawnDust(this.player.position.x, this.player.position.z);
+        }
+      }
       if (this.bridgeT > 0) this.bridgeT -= dt;
       // 提速鞋：终速 ×1.35（可短暂超 maxSpeed，提速感优先；母本 botRun 同口径）
       // 铺捷径加速 ×offRoadBoost（赌板子换速度，原版 Shortcut Run 规则）
@@ -614,6 +622,7 @@ export class GameApp extends Component {
     this.camFollow.addShake(0.12, 0.2);
     const p = o.root.position;
     tweenPos(o.root, 0.8, new Vec3(p.x, p.y - 6, p.z));
+    tweenEulerZ(o.root, 1.3 + Math.random() * 0.5, 0.5); // 被撞飞失衡翻滚（非直挺挺下沉）
   }
 
   // 孤岛：踩上就收板（原版经典的风险回报机制）
@@ -684,6 +693,11 @@ export class GameApp extends Component {
     const best = this.prog.state().best[this.levelNum];
     this.ui?.setResult(true, r.stars, timeSec, score, `${best.stars}★ ${best.time}s`);
     this.ui?.showHint(`第 ${this.bonusRank} 名 · ×${b.multiplier} 倍率！得分 ${score}`);
+    // 庆祝跳（老 win() 有，bonus 路径补齐——回归修复）
+    const p0 = this.player.position;
+    tweenPos(this.player, 0.25, new Vec3(p0.x, p0.y + 0.7, p0.z), () => {
+      tweenPos(this.player, 0.25, new Vec3(p0.x, p0.y, p0.z));
+    });
     console.log(`[ShortcutRun] 奖励区结算：第${this.bonusRank}名 ×${b.multiplier} 得分 ${score}（${bonusStars(b)}星线）`);
     // 插屏节流：前 3 关不弹；通关 L3/L6/…（进 L4/L7 前）各 1 次（k1 §4）
     if (shouldInterstitialAfterWin(this.levelNum)) {

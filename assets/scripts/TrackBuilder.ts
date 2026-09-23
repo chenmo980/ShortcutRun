@@ -139,6 +139,21 @@ export class TrackBuilder extends Component {
     }
   }
 
+  // 加速鞋尘土：shoeT>0 时脚边金色小点（此前 shoeT 只进速度公式、无任何视觉）
+  spawnDust(x: number, z: number, n = 2): void {
+    for (let i = 0; i < n; i++) {
+      const s = 0.06 + Math.random() * 0.04;
+      const p = this.box('warn1', new Vec3(s, s, s),
+        new Vec3(x + (Math.random() - 0.5) * 0.5, 0.08, z - 0.2), this.node);
+      const dur = 0.35 + Math.random() * 0.15;
+      tweenPos(p, dur, new Vec3(
+        p.position.x + (Math.random() - 0.5) * 0.6,
+        p.position.y + 1 + Math.random() * 0.8,
+        p.position.z + (Math.random() - 0.5) * 0.6,
+      ), () => p.destroy());
+    }
+  }
+
   // ===== 终点倍率奖励区（原版核心计分玩法，M10 含回头气垛） =====
   // entryZ = 玩家冲过终点的 z（入口）。倍率台青色悬浮台+白色倍率牌；
   // 气垛三块叠：入口后褐色（回头才拿得到），前方青色（冲刺路上顺手）

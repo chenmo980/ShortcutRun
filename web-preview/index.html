@@ -1386,6 +1386,23 @@ function spawnSplash(x, z) {
     });
   }
 }
+// 加速鞋尘土：shoeT>0 时每 0.1s 脚边两颗金色小点（shoeT 此前进速度公式、无任何视觉）
+let shoeDustT = 0;
+function spawnShoeDust() {
+  for (let i = 0; i < 2; i++) {
+    const m = new THREE.Mesh(BOX, new THREE.MeshBasicMaterial({
+      color: 0xffd54f, transparent: true, opacity: 0.9, depthWrite: false,
+    }));
+    const s = 0.06 + Math.random() * 0.04;
+    m.scale.set(s, s, s);
+    m.position.set(player.position.x + (Math.random() - 0.5) * 0.5, 0.08, player.position.z - 0.2);
+    scene.add(m);
+    particles.push({
+      m, life: 0.35 + Math.random() * 0.15,
+      vx: (Math.random() - 0.5) * 1.2, vy: 1.6 + Math.random() * 1.2, vz: (Math.random() - 0.5) * 1.2,
+    });
+  }
+}
 // J4 冲线彩带：终点上方撒一把彩色小纸片，飘落销毁（一次性氛围）
 function spawnConfetti(z) {
   const colors = [0xff5252, 0xffd740, 0x69f0ae, 0x40c4ff, 0xe040fb];
@@ -1844,6 +1861,9 @@ function finishBonus() {
     '再来一局', () => { resultScreen.style.display = 'none'; syncLevel(); });
   console.log(`[ShortcutRun] 结算: 第${bonusRank}名 ×${bonusState.multiplier} 得分 ${score} ${stars}星`);
   sfx.win();
+  // 庆祝跳（老 win() 有，bonus 路径补齐——回归修复）
+  const y0 = player.position.y;
+  tweenTo(player.position, 'y', y0 + 0.7, 0.25, () => tweenTo(player.position, 'y', y0, 0.25));
 }
 
 // ===== AI 对手竞速（原版标志性机制复刻） =====
@@ -1944,6 +1964,8 @@ function knockOut(o, why) {
   shake(0.12, 0.2);
   const p = o.rig.position;
   tweenTo(o.rig.position, 'y', p.y - 6, 0.8);
+  // 被撞飞失衡翻滚（原版退场姿态，非直挺挺下沉）
+  tweenTo(o.rig.rotation, 'z', 1.3 + Math.random() * 0.5, 0.5);
 }
 
 // ============ 主循环 ============
@@ -1970,6 +1992,10 @@ function loop() {
 
     if (state === 'run') {
       if (shoeT > 0) shoeT -= dt;
+      if (shoeT > 0) { // 加速鞋视觉：金色尘土
+        shoeDustT -= dt;
+        if (shoeDustT <= 0) { shoeDustT = 0.1; spawnShoeDust(); }
+      }
       if (speedDip > 0) speedDip -= dt;
       if (bridgeT > 0) bridgeT -= dt;
       speed = Math.min(cfg.maxSpeed, cfg.runSpeed + bricks * cfg.speedPerBrick) * (shoeT > 0 ? 1.35 : 1) * (offRoad ? cfg.offRoadBoost : 1);

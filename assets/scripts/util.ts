@@ -14,12 +14,23 @@ export function tweenPos(node: Node, dur: number, to: Vec3, onDone?: () => void)
 
 export function tweenScale(node: Node, dur: number, to: Vec3, onDone?: () => void): void {
   const cur = new Vec3();
-  node.getScale(cur);
+  node.getPosition(cur);
   const tw = tween(cur).to(dur, to, {
     onUpdate: (v: Vec3) => { if (node.isValid) node.setScale(v); },
   });
   if (onDone) tw.call(() => { if (node.isValid) onDone(); });
   tw.start();
+}
+
+// 绕 Z 轴翻滚 tween（被撞飞失衡姿态用）；node 可能已被销毁，onUpdate 必须 isValid 守卫
+export function tweenEulerZ(node: Node, to: number, dur: number): void {
+  const obj = { z: node.eulerAngles.z };
+  tween(obj).to(dur, { z: to }, {
+    onUpdate: (v: { z: number }) => {
+      if (!node.isValid) return;
+      node.eulerAngles = new Vec3(node.eulerAngles.x, node.eulerAngles.y, v.z);
+    },
+  }).start();
 }
 
 export function clamp(v: number, min: number, max: number): number {

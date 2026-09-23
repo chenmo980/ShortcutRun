@@ -167,3 +167,8 @@ G1 门禁：用户试玩“还想再来一把”= 立项。门禁不过，谁都
   - **C3**：bridging 时 head 上抬 0.22rad（双端 animateChar/CharacterRig）。
   - **回归**：tsc 0 / smoke / sim 38 / verify-web **22/22**（新增 bonus-pads-14 / rank-base-lock）；bonus-balance 曲线重跑。
   - replica-gap 剩余：M9 分支路径（P2 大工程）/ C1 低机位（待 G1 手感）。
+- 2026-09-23 | step-5-preview | **人物系统审计 + 3 个角色表现缺口修复（双端）**：
+  - 审计结论（已逐条验证）：**模型/状态机/捡起/抱起都已做**——6 套皮肤（大圣 AI Studio 规范：紧箍 specialGold/虎皮赭石裙/雉翎/飘带/腮红/微笑/步云履/锁子甲）、状态 idle/running/bridging/climb/drowned/finished、pickupPulse 右手探前下捞（外展避遮挡）、左手环抱+plankMount 双手捧握+堆叠可见性+甩尾惯性+负重后仰、铺板推掷/转向侧倾/脚踝滚动全部双端在岗。
+  - **修的 3 个缺口**：①奖励区结算无庆祝跳——我此前重构 bonus 路径把老 win() 的跳跃弄丢了（回归，双端补）；②被撞飞无专属姿态——knockOut 原为直挺挺下沉，加失衡翻滚（Cocos 新增 util.tweenEulerZ）；③加速鞋零视觉——shoeT 只进速度公式，补金色尘土粒子（web 粒子池/Cocos spawnDust，每 0.1s 两颗）。
+  - 教训：一次“删注释行尾换行”的空操作编辑把注释下一行函数头吞掉，sim 的 whole-page compile lock 立刻抓到（Unexpected identifier 'let'）——该锁价值再次兑现。
+  - 回归：tsc 0 / smoke / sim 38 / verify-web 22/22。
