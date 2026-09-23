@@ -36,5 +36,9 @@
     "tsx": "^4.21.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.0"
-  }
+  },
+  "creator": {
+    "version": "3.8.8"
+  },
+  "uuid": "c3eba30c-c316-422b-a154-7cfe323999d6"
 }
