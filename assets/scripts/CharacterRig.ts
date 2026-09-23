@@ -47,6 +47,7 @@ const GEO = {
   circlet: () => mesh('circlet', () => utils.createMesh(primitives.torus(0.335, 0.025, { radialSegments: 8, tubularSegments: 20 }))),
   bun: () => mesh('bun', () => utils.createMesh(primitives.sphere(0.12, { segments: 8 }))),
   qiankun: () => mesh('qiankun', () => utils.createMesh(primitives.torus(0.24, 0.028, { radialSegments: 8, tubularSegments: 20 }))),
+  tigerSkirt: () => mesh('tigerSkirt', () => utils.createMesh(primitives.cylinder(0.17, 0.33, 0.3, { radialSegments: 8 }))),
   pony: () => mesh('pony', () => utils.createMesh(primitives.cone(0.14, 0.55, { radialSegments: 6 }))),
   sash: () => mesh('sash', () => utils.createMesh(primitives.cylinder(0.35, 0.33, 0.12, { radialSegments: 8 }))),
 };
@@ -57,6 +58,7 @@ const mats: Record<string, Material> = {
   hair: new Material(), shoes: new Material(), eyes: new Material(), white: new Material(),
   blush: new Material(), smile: new Material(),
   gold: new Material(), red: new Material(), dark: new Material(),
+  specialGold: new Material(), tigerStripe: new Material(),
 };
 function initMat(m: Material, hex: number, alpha = 255): void {
   m.initialize({ effectName: 'builtin-unlit', defines: { USE_COLOR: true }, technique: 0 });
@@ -76,6 +78,8 @@ initMat(mats.smile, 0x991b1b);
 initMat(mats.gold, 0xf59e0b);
 initMat(mats.red, 0xdc2626);
 initMat(mats.dark, 0x0f172a);
+initMat(mats.specialGold, 0xfde047); // 高亮金（wukong 对齐 AI Studio 规范）
+initMat(mats.tigerStripe, 0x451a03); // 虎斑纹（wukong 虎皮裙）
 
 // ---------- 国风与经典角色预设（AI Studio 优势移植） ----------
 export type CharSkinType = 'runner' | 'wukong' | 'nezha' | 'guofeng' | 'panda' | 'ninja';
@@ -87,6 +91,7 @@ export interface SkinDef {
   clothBottom: number;
   skin: number;
   accent: number;
+  specialGold?: number; // 高亮金（wukong 对齐 AI Studio 规范）
   hair: number;
 }
 
@@ -94,10 +99,11 @@ export const CHAR_SKINS: Record<CharSkinType, SkinDef> = {
   wukong: {
     id: 'wukong',
     name: '齐天大圣·孙悟空',
-    clothTop: 0xdc2626,
-    clothBottom: 0xf59e0b,
-    skin: 0xfbd0a2,
-    accent: 0xf59e0b,
+    clothTop: 0xdc2626,      // 大红战袍
+    clothBottom: 0xb45309,   // 虎皮战裙/赭石（对齐 AI Studio chinesePresets 规范）
+    skin: 0xfcd34d,          // 金毛靛皮肤（对齐 AI Studio 规范）
+    accent: 0xf59e0b,        // 紧箍/金甲金
+    specialGold: 0xfde047,   // 高亮金（对齐 AI Studio 规范）
     hair: 0x78350f,
   },
   nezha: {
@@ -178,33 +184,39 @@ export function applyRigSkin(r: CharRig, skin: CharSkinType = activeSkin): void 
     if (band) band.active = false;
     if (ribbon) ribbon.active = false;
     if (hairGroup) hairGroup.active = true;
-    if (skinAccHead && skinAccTorso) {
-      // 纯金紧箍环
-      const circlet = prime(skinAccHead, GEO.circlet, mats.gold, 0, 0.12, 0.02, 'Circlet');
+      // 凤翅紫金冠·紧箍（specialGold 高亮金）
+      const circlet = prime(skinAccHead, GEO.circlet, mats.specialGold, 0, 0.12, 0.02, 'Circlet');
       circlet.eulerAngles = new Vec3(90 + 5.7, 0, 0);
-      // 凤翅紫金冠双雉翎飘带
+      // 凤翅紫金冠双雉翎
       for (const sx of [-1, 1]) {
         const plume = spawnBox(skinAccHead, 'limb', 0.035, 0.018, 0.75, sx * 0.12, 0.35, -0.15, sx < 0 ? 'PlumeL' : 'PlumeR');
         plume.getComponent(MeshRenderer)!.material = mats.red;
         plume.eulerAngles = new Vec3(-37, sx * 10, sx * 7);
       }
-      // 锁子黄金甲护心镜
+      // 锁子黄金甲护心镜（specialGold 高光）
       const plate = spawnBox(skinAccTorso, 'limb', 0.24, 0.24, 0.06, 0, 0.55, 0.34, 'Breastplate');
-      plate.getComponent(MeshRenderer)!.material = mats.gold;
-      // 凤翅金甲双护肩 (Pauldrons)
+      plate.getComponent(MeshRenderer)!.material = mats.specialGold;
+      // 黄金双兽吞 (Pauldrons)
       for (const sx of [-1, 1]) {
         const pauldron = spawnBox(skinAccTorso, 'limb', 0.2, 0.12, 0.18, sx * 0.38, 0.72, 0, sx < 0 ? 'PauldronL' : 'PauldronR');
         pauldron.getComponent(MeshRenderer)!.material = mats.gold;
         pauldron.eulerAngles = new Vec3(0, 0, sx * -15);
       }
-      // 战袍下摆战裙 (WarSkirt)
-      const skirt = spawnBox(skinAccTorso, 'limb', 0.28, 0.26, 0.05, 0, 0.2, 0.18, 'WarSkirt');
-      skirt.getComponent(MeshRenderer)!.material = mats.red;
-      skirt.eulerAngles = new Vec3(12, 0, 0);
-      // 金色祥云腰扣
+      // 虎皮战裙：外扩裙甲 + 深色虎斑纹（对齐 AI Studio 规范）
+      prime(skinAccTorso, GEO.tigerSkirt, mats.tigerStripe, 0, 0.1, 0, 'TigerSkirt');
+      for (let i = 0; i < 3; i++) {
+        const ang = (i / 3) * Math.PI * 2 + 0.4;
+        const stripe = spawnBox(skinAccTorso, 'limb', 0.05, 0.26, 0.05, Math.sin(ang) * 0.25, 0.1, Math.cos(ang) * 0.25, `Stripe${i}`);
+        stripe.getComponent(MeshRenderer)!.material = mats.dark;
+      }
+      // 兽首腰带扣（specialGold）
       const beltBuckle = spawnBox(skinAccTorso, 'limb', 0.12, 0.08, 0.04, 0, 0.32, 0.32, 'BeltBuckle');
-      beltBuckle.getComponent(MeshRenderer)!.material = mats.gold;
-    }
+      beltBuckle.getComponent(MeshRenderer)!.material = mats.specialGold;
+      // 步云履：双踝金环（鞋身白 + 金环点出「步云履」）
+      for (const leg of [r.leftLeg, r.rightLeg]) {
+        const anklet = spawnBox(leg.foot, 'limb', 0.21, 0.045, 0.21, 0, 0.0, 0.02, 'Anklet');
+        anklet.getComponent(MeshRenderer)!.material = mats.specialGold;
+      }
   } else if (skin === 'nezha') {
     if (band) band.active = false;
     if (ribbon) ribbon.active = false;
@@ -391,7 +403,8 @@ export function buildCharacter(root: Node, skin: CharSkinType = activeSkin): Cha
   const rightArm = createArm(false);
 
   // 砖垛挂点：胸前手抱位（AI Studio 母本方案；相机已调高成俯视追尾使其可见）
-  const plankMount = joint(torso, 0, 0.58, 0.62, 'PlankMount');
+  // 砖垛挂点：双手捧握位（torso 局部 0.33/0.5 → 世界约 y1.05，正对捧起的双手，对齐「捧在手上」）
+  const plankMount = joint(torso, 0, 0.33, 0.5, 'PlankMount');
 
   return { root, torso, head, ribbon, leftArm, rightArm, leftLeg, rightLeg, plankMount };
 }

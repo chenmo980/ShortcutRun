@@ -90,6 +90,8 @@ export class TrackBuilder extends Component {
     this.node.removeAllChildren();
     this.gateWalls = [];
     this.stackNodes = [];
+    this.plankPool = []; // 重建时清掉板子池（避免上一局轨迹残留）
+    this.plankCursor = 0;
     // 地面（跑道下面的绿地，给纵深参照；世界空间居中，不随弯道）
     this.box('ground', new Vec3(60, 0.4, cfg.levelLength + 80), new Vec3(0, -0.6, level.length / 2 - 10), this.node);
     this.buildRoad();

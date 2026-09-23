@@ -642,10 +642,10 @@ function buildChar() {
   const leftArm = createArm(true);
   const rightArm = createArm(false);
 
-  // 砖垛挂点：胸前手抱位（AI Studio 母本方案；相机已调高成俯视追尾使其可见）
+  // 砖垛挂点：双手捧握位（torso 局部 0.33/0.5 → 世界约 y1.05，正对捧起的双手，对齐「捧在手上」）
   const plankMount = new THREE.Group();
   plankMount.name = 'PlankMount'; // 克隆体靠名字找回关节
-  plankMount.position.set(0, 0.58, 0.62);
+  plankMount.position.set(0, 0.33, 0.5);
   torsoGroup.add(plankMount);
 
   root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; } }); // art-pack：仅主角投影
@@ -665,11 +665,12 @@ const SKINS = {
   wukong: {
     id: 'wukong',
     name: '齐天大圣·孙悟空',
-    badge: '🐵 孙悟空',
-    clothTop: 0xdc2626,
-    clothBottom: 0xf59e0b,
-    skin: 0xfbd0a2,
-    accent: 0xf59e0b,
+    badge: '👑 传说',
+    clothTop: 0xdc2626,      // 大红战袍
+    clothBottom: 0xb45309,   // 虎皮战裙/赭石（对齐 AI Studio chinesePresets 规范）
+    skin: 0xfcd34d,          // 金毛靛皮肤（对齐 AI Studio 规范）
+    accent: 0xf59e0b,        // 紧箍/金甲金
+    specialGold: 0xfde047,   // 高亮金（对齐 AI Studio 规范）
     hair: 0x78350f,
   },
   nezha: {
@@ -762,8 +763,10 @@ function applySkin(c, skinKey) {
   CHAR_MATS.hair.color.setHex(s.hair);
 
   if (s.id === 'wukong' && accH && accT) {
-    const circletMat = new THREE.MeshLambertMaterial({ color: 0xf59e0b });
-    const circlet = new THREE.Mesh(new THREE.TorusGeometry(0.335, 0.022, 6, 16), circletMat);
+    // specialGold 高亮金 + base 金（对齐 AI Studio 规范的双金层次）
+    const goldMat = new THREE.MeshLambertMaterial({ color: 0xf59e0b });
+    const specialGoldMat = new THREE.MeshLambertMaterial({ color: 0xfde047 });
+    const circlet = new THREE.Mesh(new THREE.TorusGeometry(0.335, 0.022, 6, 16), specialGoldMat);
     circlet.rotation.x = Math.PI / 2 + 0.1;
     circlet.position.set(0, 0.12, 0.02);
     accH.add(circlet);
@@ -775,22 +778,37 @@ function applySkin(c, skinKey) {
       plume.rotation.set(-0.65, sx * 0.18, sx * 0.12);
       accH.add(plume);
     }
-    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.24, 0.06), circletMat);
+    // 锁子黄金甲护心镜（specialGold 高光）
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.24, 0.06), specialGoldMat);
     plate.position.set(0, 0.55, 0.34);
     accT.add(plate);
     for (const sx of [-1, 1]) {
-      const pauldron = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.12, 0.18), circletMat);
+      const pauldron = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.12, 0.18), goldMat);
       pauldron.position.set(sx * 0.38, 0.72, 0);
       pauldron.rotation.z = sx * -0.25;
       accT.add(pauldron);
     }
-    const skirt = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.26, 0.05), plumeMat);
-    skirt.position.set(0, 0.2, 0.18);
-    skirt.rotation.x = 0.2;
+    // 虎皮战裙：外扩裙甲 + 深色虎斑纹（对齐 AI Studio 规范的虎皮裙）
+    const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.33, 0.3, 8), new THREE.MeshLambertMaterial({ color: 0xb45309 }));
+    skirt.position.set(0, 0.1, 0);
     accT.add(skirt);
-    const beltBuckle = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.04), circletMat);
+    for (let i = 0; i < 3; i++) {
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.26, 0.05), new THREE.MeshLambertMaterial({ color: 0x451a03 }));
+      const ang = (i / 3) * Math.PI * 2 + 0.4;
+      stripe.position.set(Math.sin(ang) * 0.25, 0.1, Math.cos(ang) * 0.25);
+      stripe.rotation.y = -ang;
+      accT.add(stripe);
+    }
+    const beltBuckle = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.04), specialGoldMat);
     beltBuckle.position.set(0, 0.32, 0.32);
     accT.add(beltBuckle);
+    // 步云履：金箍踝环（鞋身为白，金环点出「步云履」）
+    for (const leg of [c.leftLeg, c.rightLeg]) {
+      if (!leg || !leg.foot) continue;
+      const anklet = new THREE.Mesh(new THREE.BoxGeometry(0.21, 0.045, 0.21), specialGoldMat);
+      anklet.position.set(0, 0.0, 0.02);
+      leg.foot.add(anklet);
+    }
   } else if (s.id === 'nezha' && accH && accT) {
     const bunMat = new THREE.MeshLambertMaterial({ color: 0x0f172a });
     const bunRibbonMat = new THREE.MeshLambertMaterial({ color: 0xdc2626 });
@@ -1684,6 +1702,38 @@ window.__game = {
   resetProgress: () => { qaSession = true; prog.reset(); },
   renderOnce: () => renderer.render(scene, camera),
   canvas: () => renderer.domElement,
+  // QA 调试：列出玩家身边贴地/可疑物体（定位“躺在地上跟随的”是什么）
+  debugGround: () => {
+    const out = [];
+    const p = player.position;
+    scene.traverse((n) => {
+      if (!n.isMesh && !n.isGroup) return;
+      const wp = n.getWorldPosition(new (Object.getPrototypeOf(p).constructor)());
+      const dx = wp.x - p.x, dz = wp.z - p.z;
+      if (dx * dx + dz * dz > 144) return; // 12m 内
+      const kind = n.name || n.type;
+      out.push({ kind, name: n.name || '(anon)', y: Math.round(wp.y * 100) / 100, dx: Math.round(dx * 10) / 10, dz: Math.round(dz * 10) / 10, parent: n.parent ? (n.parent.name || n.parent.type) : '-' });
+    });
+    return out.filter((o) => o.y < 0.6).slice(0, 30);
+  },
+  // QA 调试：对手运行时姿态（关节是否找到、位置、动画相位）
+  debugOpponents: () => opponents.map((o) => {
+    const r = rigOf(o.rig);
+    const missing = [];
+    if (!r.torso) missing.push('torso');
+    if (!r.head) missing.push('head');
+    if (!r.leftLeg || !r.leftLeg.hip) missing.push('leftLeg.hip');
+    if (!r.rightLeg || !r.rightLeg.hip) missing.push('rightLeg.hip');
+    if (!r.leftArm || !r.leftArm.shoulder) missing.push('leftArm.shoulder');
+    if (!r.rightArm || !r.rightArm.shoulder) missing.push('rightArm.shoulder');
+    return {
+      pos: [Math.round(o.rig.position.x * 100) / 100, Math.round(o.rig.position.y * 100) / 100, Math.round(o.rig.position.z * 100) / 100],
+      alive: o.alive, finished: o.finished, bricks: Math.round(o.bricks),
+      hipAngleX: r.leftLeg && r.leftLeg.hip ? Math.round(r.leftLeg.hip.rotation.x * 100) / 100 : null,
+      torsoY: r.torso ? Math.round(r.torso.position.y * 100) / 100 : null,
+      missing,
+    };
+  }),
   // G1 数据回流：导出遥测 events.json（Qoder telemetry-report.mjs 的输入）
   dumpTelemetry: () => {
     const arr = JSON.parse(localStorage.getItem(TELEMETRY_KEY) || '[]');
