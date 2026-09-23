@@ -1,0 +1,6 @@
+{
+  "name": "Shortcut Run 3D 美术与手感验证工作台",
+  "description": "针对 Shortcut Run 微信小游戏的 3D 低模美工方案、水面 Shader 调优、VOODOO 配色调色板与手感验证平台",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
