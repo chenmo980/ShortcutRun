@@ -24,10 +24,30 @@ import { dirname, join } from 'node:path';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const wg = join(root, 'build', 'wechatgame');
 const target = join(wg, 'web-adapter.js');
+const cfgFile = join(wg, 'project.config.json');
 
 if (!existsSync(target)) {
   console.error('找不到 build/wechatgame/web-adapter.js，请先构建微信包');
   process.exit(1);
+}
+
+// —— 补丁⑤：project.config.json 排毒（2026-09-23 深夜）——
+// Cocos builder 每次重建都会往产物写 "miniprogramRoot":"./"——游戏项目带这个字段，
+// 开发者工具就会去编小程序部分（找 app.json），没有 → SummerCompiler.getAllPageAndComponent
+// Object.keys(null) 编译崩。builder 自己生成的，删一次不够，必须每次构建后自动删。
+function fixProjectConfig() {
+  if (!existsSync(cfgFile)) { console.log('⑤ project.config.json: 不存在，跳过'); return; }
+  const j = JSON.parse(readFileSync(cfgFile, 'utf8'));
+  let changed = false;
+  if ('miniprogramRoot' in j) { delete j.miniprogramRoot; changed = true; }
+  if (j.condition && Object.keys(j.condition).length) { j.condition = {}; changed = true; }
+  if (j.setting && j.setting.es6 !== true) { j.setting.es6 = true; changed = true; }
+  if (changed) {
+    writeFileSync(cfgFile, JSON.stringify(j, null, 2) + '\n');
+    console.log('⑤ project.config.json: 已删除 miniprogramRoot + condition 清空 + es6:true');
+  } else {
+    console.log('⑤ project.config.json: 无需改动');
+  }
 }
 
 // —— 补丁①：window 只读 ——
@@ -112,3 +132,4 @@ for (const rel of SAFE_TARGETS) {
   }
 }
 console.log(`提示：共处理 ${total} 个 defineProperty 调用点；重新构建微信包后需要再跑一次本脚本`);
+fixProjectConfig();
