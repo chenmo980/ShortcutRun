@@ -82,7 +82,7 @@ const CFG = {
   plankCostPerMeter: 1,  // 离开主路后每米消耗板子
   plankStride: 0.6,      // 每多少米留一块板（视觉）
   offRoadBoost: 1.15,    // 铺捷径加速倍率（赌板子换速度）
-  plankPoolMax: 300,     // 板子视觉池上限
+  plankPoolMax: 500,     // 板子视觉池上限（覆盖全程不回收，杜绝跳变）
   camOffsetY: 6.8, camOffsetZ: -8.8, camLerp: 6, camXFactor: 0.6,
 };
 
@@ -1380,7 +1380,10 @@ window.addEventListener('error', (e) => {
 // 每前进 1 米消耗 plankCostPerMeter 块板，脚下持续生成板子（视觉轨迹），
 // 并获得 offRoadBoost 加速（赌板子换速度，原版铺捷径加速）；板子耗尽时
 // 有 leapGrace 米的最后一跃，落到主路上则生还，否则坠落。
-const plankMat = new THREE.MeshLambertMaterial({ color: 0xb08968 });
+// 木板路双色交替（出真实木桥的节奏感），无抖动、加宽加厚、贴在路面上
+const plankMatA = new THREE.MeshLambertMaterial({ color: 0xa06a35 });
+const plankMatB = new THREE.MeshLambertMaterial({ color: 0x8f5e2e });
+let plankSeq = 0;
 const planks = [];               // 已铺板子（含池）
 let plankCursor = 0;               // 池 round-robin
 let plankAcc = 0;                  // 累计铺板距离（米）
@@ -1451,18 +1454,20 @@ function updateShortcut(x, z, adv) {
 // 在 (x,z) 留一块板（玩家与 AI 对手共用）
 function layPlank(z, x) {
   const h = headingAt(z);
-  const px = bendX(z) + x * Math.cos(h) + (Math.random() - 0.5) * 0.15;
+  const px = bendX(z) + x * Math.cos(h); // 去抖动：严格贴路径，出连贯木板路
   let plank;
   if (planks.length < cfg.plankPoolMax) {
-    plank = new THREE.Mesh(BOX, plankMat);
-    plank.scale.set(1.5, 0.1, cfg.plankStride * 0.95);
+    plank = new THREE.Mesh(BOX, plankSeq++ % 2 ? plankMatB : plankMatA);
+    plank.scale.set(1.8, 0.12, cfg.plankStride); // 加宽1.8m/加厚0.12m，边长=步长→严丝合缝
     scene.add(plank);
     planks.push(plank);
   } else {
     plank = planks[plankCursor];
+    plank.material = plankSeq++ % 2 ? plankMatB : plankMatA;
+    plank.scale.set(1.8, 0.12, cfg.plankStride);
     plankCursor = (plankCursor + 1) % cfg.plankPoolMax;
   }
-  plank.position.set(px, 0.02, z - 0.2);
+  plank.position.set(px, 0.06, z - 0.2); // 略高于路面，明确是"铺上去的板"
   plank.rotation.y = h;
 }
 
