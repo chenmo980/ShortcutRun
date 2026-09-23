@@ -32,6 +32,7 @@ export class TrackBuilder extends Component {
   private rig: CharRig | null = null;
   private plankPool: Node[] = [];  // 铺板轨迹池（自由铺板机制）
   private plankCursor = 0;
+  private plankTrail: Array<{ x: number; z: number }> = []; // 持久地面：铺了就是路
 
   // 铺一块板（Pool：未满新增，满后循环复用最老的）；pos 为 level-space
   spawnPlank(z: number, x: number): void {
@@ -50,6 +51,15 @@ export class TrackBuilder extends Component {
       node.setPosition(new Vec3(px, 0.02, z - 0.2));
       node.eulerAngles = new Vec3(0, h, 0);
     }
+    this.plankTrail.push({ x, z }); // 记入持久地面
+  }
+
+  // 是否站在自己铺过的板子上（容差覆盖整块板）
+  onPlankTrail(x: number, z: number): boolean {
+    for (const p of this.plankTrail) {
+      if (Math.abs(x - p.x) < 1.1 && Math.abs(z - p.z) < 0.8) return true;
+    }
+    return false;
   }
 
   isOnMainRoad(x: number, z: number): boolean {
@@ -92,6 +102,7 @@ export class TrackBuilder extends Component {
     this.stackNodes = [];
     this.plankPool = []; // 重建时清掉板子池（避免上一局轨迹残留）
     this.plankCursor = 0;
+    this.plankTrail = []; // 持久地面也清空
     // 地面（跑道下面的绿地，给纵深参照；世界空间居中，不随弯道）
     this.box('ground', new Vec3(60, 0.4, cfg.levelLength + 80), new Vec3(0, -0.6, level.length / 2 - 10), this.node);
     this.buildRoad();

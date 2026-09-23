@@ -389,14 +389,16 @@ export class GameApp extends Component {
   // 飞跃中落回主路则生还，否则坠落。
   private updateShortcut(x: number, z: number, adv: number): void {
     const realOnRoad = this.track.isOnMainRoad(x, z);
-    // 最后一跃优先于“回主路”复位（否则 leapGrace 被立即清掉永坠不了）
+    // 支撑 = 主路 OR 自己铺过的板子（持久地面，原版规则：铺了就是路）
+    const supported = realOnRoad || this.track.onPlankTrail(x, z);
+    // 最后一跃优先于支撑清零（否则 leapGrace 被立即清掉永坠不了）
     if (this.leapGrace > 0) {
-      if (realOnRoad) { this.leapGrace = 0; this.offRoad = false; return; } // 落到主路=生还
+      if (supported) { this.leapGrace = 0; this.offRoad = false; return; } // 落到主路/自己的板子上=生还
       this.leapGrace -= adv;
       if (this.leapGrace <= 0) { this.enterFall(); return; }
       return;
     }
-    if (realOnRoad) { this.offRoad = false; return; }
+    if (supported) { this.offRoad = false; return; } // 站在主路或自己铺的板上都安全
 
     if (!this.offRoad) {
       this.offRoad = true;
@@ -407,7 +409,7 @@ export class GameApp extends Component {
     this.bridgeT = 0.25; // 铺板推掷动作窗（v2 增强）
     this.camFollow.addShake(0.05, 0.1);
 
-    if (this.bricks <= 0) { this.leapGrace = 1.2; return; } // 触发最后一跃
+    if (this.bricks <= 0) { this.leapGrace = 1.8; return; } // 触发最后一跃（延长到 1.8m）
 
     this.plankAcc += adv;
     this.bricks = Math.max(0, this.bricks - (this.cfg.plankCostPerMeter ?? 1) * adv);

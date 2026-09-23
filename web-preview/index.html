@@ -1074,6 +1074,7 @@ function buildLevel(cur) {
   heldLeft = false; heldRight = false; dragging = false;
   fell = false; bridgeT = 0;
   offRoad = false; plankAcc = 0; leapGrace = 0;
+  plankTrail.length = 0; // 清空持久地面（新关卡）
   buildOpponents(); // AI 对手竞速（原版机制）
   player.position.set(bendX(0), 0, 0);
   player.rotation.set(0, 0, 0);
@@ -1386,6 +1387,15 @@ let plankAcc = 0;                  // 累计铺板距离（米）
 let offRoad = false;               // 当前是否在主路外
 let leapGrace = 0;                 // 剩余最后一跃距离（米），>0 表示飞跃中不耗板
 let inGapZone = false;             // 主路缺口提示（供 UI/音效）
+const plankTrail = [];             // 板子轨迹（持久地面：铺了就是路，站着不耗砖）
+
+// 是否站在自己铺过的板子上（容差覆盖整块板：板宽1.5m/板长0.6m + 角色半宽）
+function onPlankTrail(x, z) {
+  for (const p of plankTrail) {
+    if (Math.abs(x - p.x) < 1.1 && Math.abs(z - p.z) < 0.8) return true;
+  }
+  return false;
+}
 
 function isOnMainRoad(x, z) {
   if (z >= level.gateZ - 0.5) return true;
@@ -1397,21 +1407,23 @@ function isOnMainRoad(x, z) {
 
 function updateShortcut(x, z, adv) {
   const onRoad = isOnMainRoad(x, z);
+  // 支撑 = 主路 OR 自己铺过的板子（持久地面，原版规则：铺了就是路）
+  const supported = onRoad || onPlankTrail(x, z);
   // 主路缺口提示（音效/UI 用）
   const inGap = !onRoad && level.gaps.some((g) => z >= g.zStart - 0.15 && z <= g.zEnd + 0.15);
   if (inGap !== inGapZone) inGapZone = inGap;
 
-  // 最后一跃：优先于 onRoad 清零（否则 leapGrace 被立即清掉永坠不了）
+  // 最后一跃优先于支撑清零（否则 leapGrace 被立即清掉永坠不了）
   if (leapGrace > 0) {
-    if (onRoad) { leapGrace = 0; offRoad = false; return; } // 落到主路=生还
+    if (supported) { leapGrace = 0; offRoad = false; return; } // 落到主路/自己的板子上=生还
     leapGrace -= adv;
     if (leapGrace <= 0) { enterFall(); return; }
     return;
   }
 
-  if (onRoad) { offRoad = false; return; }
+  if (supported) { offRoad = false; return; } // 站在主路或自己铺的板上都安全
 
-  // --- 铺板模式 ---
+  // --- 需要新铺板（拓展路径才耗砖） ---
   if (!offRoad) {
     offRoad = true;
     plankAcc = 0;
@@ -1421,7 +1433,7 @@ function updateShortcut(x, z, adv) {
   bridgeT = 0.25; // 铺板推掷动作窗（v2 增强）
   shake(0.05, 0.1);
 
-  if (bricks <= 0) { leapGrace = 1.2; return; } // 触发最后一跃
+  if (bricks <= 0) { leapGrace = 1.8; return; } // 触发最后一跃（延长到 1.8m：差一点能够到主路/板头）
 
   plankAcc += adv;
   const cost = cfg.plankCostPerMeter * adv;
@@ -1432,6 +1444,7 @@ function updateShortcut(x, z, adv) {
   if (plankAcc >= cfg.plankStride) {
     plankAcc = 0;
     layPlank(z, x);
+    plankTrail.push({ x, z }); // 记入持久地面：之后站上来不耗砖
   }
 }
 
