@@ -87,16 +87,20 @@ node docs/qoder/sim.mjs      # 规则母本验收套件（Qoder 维护）
 
 **真机预览**：打开微信开发者工具 → 导入 `build/wechatgame` → 项目类型选**小游戏** → 点预览扫码真机试玩。
 
-### 已知坑：基础库灰度导致启动崩溃
+### 已知坑：启动崩溃 `Cannot set property window`
 
-若真机/模拟器报 `Cannot set property window of #<Window> which has only a getter`（`__initApp` 崩）：
-**是微信开发者工具开了“灰度基础库”**，与 Cocos 适配层冲突。修复（30 秒，永久）：
-1. 开发者工具右上角 **详情** → **本地设置**
-2. 取消勾选 **“使用灰度基础库”**（或把基础库版本选回正式版）
-3. 点**编译**重新运行
+**根因**：新版微信基础库把 `GameGlobal.window` 变成只读 getter，Cocos 3.8.8 的 `web-adapter.js` 在真机分支直接硬赋值导致崩溃（与游戏代码无关）。
 
-控制台里 `[jsbridge] invoke getSystemInfo fail: jsbridge not ready` 是启动早期正常噪音，不用管。
-多机器统一可用 `node tools/patch-wechat-lib.mjs <正式版版本号>` 钉死构建产物的 libVersion。
+**修复（构建侧，一劳永逸）**：每次构建后跑一次补丁脚本——
+
+```bash
+node tools/patch-wechat-adapter.mjs     # 把硬赋值改成防御式（try + defineProperty 回退）
+node tools/test-window-polyfill.mjs     # 回归测试：模拟只读 window 环境，证明补丁有效
+```
+
+补丁原理：`web-adapter.js` 的 devtools 分支本来就使用 `Object.defineProperty` 防御式写法，补丁把真机分支统一成同样模式。
+
+辅助手段（可选）：开发者工具 → 详情 → 本地设置 → 取消“使用灰度基础库”。控制台里 `[jsbridge] invoke getSystemInfo fail: jsbridge not ready` 是启动早期正常噪音，不用管。
 
 工程要点：
 - `settings/v2/packages/project.json` 已配竖屏 720×1280 + 起始场景
