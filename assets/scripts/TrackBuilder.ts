@@ -9,6 +9,7 @@ import type { LevelDef, GapDef, PickupDef, ItemGateDef } from './LevelGen';
 import { tweenPos, tweenScale, clamp } from './util';
 import { spawnBox, BoxKind } from './BoxFactory';
 import { buildCharacter, animateCharacter, CharRig, CharState } from './CharacterRig';
+import { genIslands, IslandDef } from './IslandGen';
 import { curveFromCfg, bendX, headingAt, secant, CurveState } from './CurvePath';
 
 export interface RuntimePickup {
@@ -26,6 +27,7 @@ export class TrackBuilder extends Component {
   cfg!: Cfg;
   pickups: RuntimePickup[] = [];
   curve: CurveState = { amp: 0, freq: 0.12, phase: 0 };
+  buildSeed = 1; // 本局种子（孤岛等派生内容用）
 
   private gateWalls: Node[] = [];
   private stackNodes: Node[] = [];
@@ -34,6 +36,7 @@ export class TrackBuilder extends Component {
   private plankCursor = 0;
   private plankSeq = 0;            // 木板双色交替序号
   private plankTrail: Array<{ x: number; z: number }> = []; // 持久地面：铺了就是路
+  private islandNodes: Array<{ def: IslandDef; plat: Node; pile: Node[]; taken: boolean }> = []; // 孤岛（原版机制）
 
   // 铺一块板（Pool：未满新增，满后循环复用最老的）；pos 为 level-space
   // 视觉（2026-09-23 用户反馈“板子像散架木片”后重做）：去抖动贴路径、加宽 1.8m、
@@ -101,6 +104,7 @@ export class TrackBuilder extends Component {
   build(level: LevelDef, cfg: Cfg, seed = 1): void {
     this.level = level;
     this.cfg = cfg;
+    this.buildSeed = seed;
     this.curve = curveFromCfg(cfg);
     this.node.removeAllChildren();
     this.gateWalls = [];
@@ -116,6 +120,46 @@ export class TrackBuilder extends Component {
     this.buildItems();
     this.buildWarnings();
     this.buildProps(seed);
+    this.buildIslands();
+  }
+
+  // 孤岛（原版经典机制）：主路外的悬浮板台，踩着板堆冒险捡板
+  private buildIslands(): void {
+    for (const isl of this.islandNodes) {
+      isl.plat.removeFromParent();
+      for (const m of isl.pile) m.removeFromParent();
+    }
+    this.islandNodes = [];
+    for (const def of genIslands(this.buildSeed, this.cfg, this.level)) {
+      const h = headingAt(def.z, this.curve);
+      const px = bendX(def.z, this.curve) + def.x * Math.cos(h);
+      const plat = this.box('plankB',
+        new Vec3(def.radius * 2, 0.4, def.radius * 2),
+        new Vec3(px, -0.15, def.z), this.node);
+      plat.eulerAngles = new Vec3(0, h, 0);
+      const pile: Node[] = [];
+      for (let i = 0; i < 3; i++) {
+        const m = this.box('brick', new Vec3(0.5, 0.22, 0.5),
+          new Vec3(px + (i - 1) * 0.16, 0.25 + i * 0.24, def.z + (i % 2 === 0 ? 0.12 : -0.12)), this.node);
+        pile.push(m);
+      }
+      this.islandNodes.push({ def, plat, pile, taken: false });
+    }
+  }
+
+  // 踩上孤岛 → 板堆下沉消失，返回获得板数（0 = 没踩到）
+  collectIsland(x: number, z: number): number {
+    for (const isl of this.islandNodes) {
+      if (isl.taken) continue;
+      if (Math.abs(x - isl.def.x) < isl.def.radius + 0.3 && Math.abs(z - isl.def.z) < isl.def.radius + 0.5) {
+        isl.taken = true;
+        const gain = isl.def.planks;
+        for (const m of isl.pile) tweenPos(m, 0.4, new Vec3(m.position.x, m.position.y - 3, m.position.z), () => m.destroy());
+        tweenPos(isl.plat, 0.4, new Vec3(isl.plat.position.x, isl.plat.position.y - 3, isl.plat.position.z), () => isl.plat.destroy());
+        return gain;
+      }
+    }
+    return 0;
   }
 
   private buildRoad(): void {

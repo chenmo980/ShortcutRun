@@ -330,6 +330,7 @@ export class GameApp extends Component {
       this.checkPickups(x, prevZ, z);
       this.checkGates(prevZ, z);
       this.checkGate(z);
+      this.checkIslands(x, z); // 孤岛拾取（原版机制）
     }
     this.track.syncStack(this.bricks);
     const charState = this.state === 'fall' ? 'drowned'
@@ -431,6 +432,17 @@ export class GameApp extends Component {
     // 失败慢动作（对齐浏览器版 slowT=0.55 / dt×0.35）：Scheduler 缩放，setTimeout 按真实时间恢复
     director.getScheduler()?.setTimeScale(0.35);
     setTimeout(() => { director.getScheduler()?.setTimeScale(1); }, 550);
+  }
+
+  // 孤岛：踩上就收板（原版经典的风险回报机制）
+  private checkIslands(x: number, z: number): void {
+    const gain = this.track.collectIsland(x, z);
+    if (gain > 0) {
+      this.bricks += gain;
+      this.ui?.setBricks(Math.floor(this.bricks));
+      this.audio?.play('pickup');
+      console.log(`[ShortcutRun] 孤岛 +${gain} 板，现有 ${Math.floor(this.bricks)}`);
+    }
   }
 
   private checkGate(z: number): void {
