@@ -95,8 +95,62 @@ const dpBad = runSafeDp(true);
 console.log(`[safeDP·灰度shim] 新代码: ${dpBad.ok ? '存活 ✓' : '抛异常 -> ' + dpBad.err}，原型调用未崩=${dpBad.proto}，普通对象生效=${dpBad.plain}`);
 if (!dpBad.ok || !dpBad.plain) failed++;
 
+// ④ __esModule 互操作：坏 shim 下（defineProperty 全拒）TS 的
+//    (e.__esModule?e:{default:e}) + class extends e.default 必须仍能拿到真父类。
+//    三种形态对照：
+//    A 补丁④形态（调 wrapper + 普通赋值兜底）→ 必须成立
+//    B 补丁③形态（只调 wrapper 吞异常、无赋值）→ 必须失败（用户实际踩的坑）
+//    C 自递归 wrapper（补丁③污染自身定义的形态）→ 必须失败
+function runInteropTest(mode) {
+  const sandbox = {};
+  vm.createContext(sandbox);
+  const wrappers = {
+    A: 'var __wxSafeDP=function(t,k,d){try{return Object.defineProperty(t,k,d)}catch(e){try{if(!("get"in d)&&!("set"in d)&&d.writable!==!1&&"value"in d)t[k]=d.value}catch(_e){}return t}};',
+    B: 'var __wxSafeDP=function(t,k,d){try{return Object.defineProperty(t,k,d)}catch(e){return t}};',
+    C: 'var __wxSafeDP=function(t,k,d){try{return __wxSafeDP(t,k,d)}catch(e){return t}};',
+  };
+  const marks = {
+    A: '(__wxSafeDP(exports11,"__esModule",{value:!0}),exports11.__esModule=!0);',
+    B: '__wxSafeDP(exports11,"__esModule",{value:!0});',
+    // C = 真实事故形态：wrapper 被自己的正则污染成自递归 + 当年还没有补丁④兜底
+    C: '__wxSafeDP(exports11,"__esModule",{value:!0});',
+  };
+  try {
+    vm.runInContext(`
+      "use strict";
+      Object.defineProperty = function(){ throw new TypeError("Object.defineProperty called on non-object"); };
+      ${wrappers[mode]}
+      var exports11 = {};
+      var ET = function ET(){};
+      ET.prototype.addEventListener = function(){};
+      ${marks[mode]}
+      exports11.default = ET;
+      var e = exports11.__esModule ? exports11 : { default: exports11 };
+      // 注意：须模拟真实编译产物——__extends 在模块级 IIFE 里跑（实例化之前），
+      // 放构造函数体内是错的（new 时原型还没换）
+      var __extends = function(sub, sup){ function F(){ this.constructor = sub; } F.prototype = sup.prototype; sub.prototype = new F(); };
+      var Audio = (function(){ __extends(Audio, e.default); function Audio(){} return Audio; })();
+      globalThis.__r = (new Audio()) instanceof ET;
+    `, sandbox);
+    return { ok: true, inherited: sandbox.__r === true };
+  } catch (err) {
+    return { ok: false, err: err.message };
+  }
+}
+const interopA = runInteropTest('A');
+console.log(`[interop·补丁④形态] ${interopA.ok && interopA.inherited ? '继承链成立 ✓' : '失败 -> ' + (interopA.err || '父类不是函数')}`);
+if (!interopA.ok || !interopA.inherited) failed++;
+const interopB = runInteropTest('B');
+const bBroken = !interopB.ok || !interopB.inherited;
+console.log(`[interop·补丁③形态(对照)] ${bBroken ? '按预期失败（证明补丁④必要）' : '意外成立(?)'}`);
+if (!bBroken) failed++;
+const interopC = runInteropTest('C');
+const cBroken = !interopC.ok || !interopC.inherited;
+console.log(`[interop·自递归wrapper(对照)] ${cBroken ? '按预期失败（证明不能污染 wrapper 自身）' : '意外成立(?)'}`);
+if (!cBroken) failed++;
+
 if (failed) {
   console.error(`FAIL: ${failed} 个补丁回归未过`);
   process.exit(1);
 }
-console.log('PASS: 三个补丁在模拟的新基础库环境下均有效');
+console.log('PASS: 补丁④必要且有效，对照组按预期失败');

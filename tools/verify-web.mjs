@@ -70,8 +70,11 @@ const b1 = (await page.evaluate(() => window.__game.getState())).bricks;
 await sleep(1200);
 const s2 = await page.evaluate(() => window.__game.getState());
 await page.keyboard.up('d');
-check('shortcut-pass', s2.offRoad && b1 - s2.bricks > 2 && s2.planksLaid > 3,
-  `offRoad=${s2.offRoad} 耗板 ${(b1 - s2.bricks).toFixed(1)} 板子=${s2.planksLaid}`);
+// 注意：不能把 s2.offRoad 写进断言——M5 生效后玩家站在自己刚铺的板上时
+// offRoad 会翻回 false（相位随帧率变，曾偶发误杀）。进入 off-road 的事实
+// 已由上方 waitForFunction(offRoad===true) 证明，这里只验耗板与铺板轨迹。
+check('shortcut-pass', b1 - s2.bricks > 2 && s2.planksLaid > 3,
+  `耗板 ${(b1 - s2.bricks).toFixed(1)} 板子=${s2.planksLaid}（offRoad=${s2.offRoad}，采样相位仅供参考）`);
 // 板子池整局重置锁：上一局铺过 20+ 板，重开后池必须从 0 起算（不清池→复用 detached 节点，铺了板却看不见）
 check('plank-pool-reset', s2.planksLaid < 28, `池从0起算=${s2.planksLaid}（不清会是上一局残留20+）`);
 await page.screenshot({ path: `${SHOTS}/03-shortcut.png` });
