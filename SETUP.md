@@ -94,13 +94,24 @@ node docs/qoder/sim.mjs      # 规则母本验收套件（Qoder 维护）
 **修复（构建侧，一劳永逸）**：每次构建后跑一次补丁脚本——
 
 ```bash
-node tools/patch-wechat-adapter.mjs     # 把硬赋值改成防御式（try + defineProperty 回退）
-node tools/test-window-polyfill.mjs     # 回归测试：模拟只读 window 环境，证明补丁有效
+node tools/patch-wechat-adapter.mjs     # 补丁①window只读 + 补丁②xmldom探测（幂等，重复跑安全）
+node tools/test-window-polyfill.mjs     # 回归测试：vm 沙箱模拟两种新基础库特征，证明补丁有效
 ```
 
 补丁原理：`web-adapter.js` 的 devtools 分支本来就使用 `Object.defineProperty` 防御式写法，补丁把真机分支统一成同样模式。
+补丁②：灰度基础库 3.17.3 的 `Object.defineProperty` 平台 shim 对原型对象抛 `called on non-object`，Cocos 内联 xmldom 初始化时正好踩中；调用前加一次性能力探测，探测失败整段降级跳过（不崩、不刷控制台）。
 
 辅助手段（可选）：开发者工具 → 详情 → 本地设置 → 取消“使用灰度基础库”。控制台里 `[jsbridge] invoke getSystemInfo fail: jsbridge not ready` 是启动早期正常噪音，不用管。
+
+### 已知坑：项目被建成小程序架构（app.json 报错/找不到 game.json）
+
+**根因**：在 `build/` 目录缺失期间导入过空目录，开发者工具把项目记录默认建成 `miniProgram` 架构（compileType 却是 game），编译时报 `app.json 中未定义自定义编译中指定的启动页面`。
+
+**修复**（IDE 设置级，2026-09-23 已验证 arch/es6/condition 三处可锁死）：
+1. 关闭 IDE，编辑 `%LOCALAPPDATA%\微信开发者工具\User Data\<hash>\WeappLocalData\localstorage_<project2_记录>.json`：
+   `projectArchitecture` → `"miniGame"`、`setting.es6` → `true`、`condition` → `{}`（查找方法：`hash_key_map_2.json` 里 `project2_<你的项目路径>` 映射）
+2. 在 `build/wechatgame/project.private.config.json` 写明 `libVersion:"widelyUsed"` + `es6:true`（工具开服时必读）
+3. **基础库版本工具会自行覆写回灰度版**（文件侧钉不死，已实测）——唯一可靠路径是 UI：工具栏 → **详情 → 本地设置 → 基础库版本选不带"(灰度)"的正式版**。有补丁②兜底，即使留在灰度版也不再崩。
 
 工程要点：
 - `settings/v2/packages/project.json` 已配竖屏 720×1280 + 起始场景
