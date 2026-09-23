@@ -76,6 +76,24 @@ function patch6(src) {
 // Cocos builder 每次重建都会往产物写 "miniprogramRoot":"./"——游戏项目带这个字段，
 // 开发者工具就会去编小程序部分（找 app.json），没有 → SummerCompiler.getAllPageAndComponent
 // Object.keys(null) 编译崩。builder 自己生成的，删一次不够，必须每次构建后自动删。
+// —— 补丁⑦：game.js 启动诊断日志（外部建议采纳，2026-09-24）——
+// 在 require('./web-adapter') 之前打印环境状态，排查启动失败时一眼看出
+// window/GameGlobal/__globalAdapter 哪个缺失（用户社区标准排查手法）。
+function patch7() {
+  const gj = join(wg, 'game.js');
+  if (!existsSync(gj)) { console.log('⑦ game.js: 不存在，跳过'); return; }
+  let s = readFileSync(gj, 'utf8');
+  const MARK = '[adapter before load]';
+  if (s.includes(MARK)) { console.log('⑦ game.js: 诊断日志已存在'); return; }
+  const diag = `console.log('${MARK}',{window:typeof window,GameGlobal:typeof GameGlobal,globalWindow:typeof GameGlobal==='undefined'?'无 GameGlobal':typeof GameGlobal.window,windowAdapter:typeof window!=='undefined'&&!!window.__globalAdapter});`;
+  if (!s.includes("require('./web-adapter');")) {
+    console.log('⑦ game.js: 未找到 require 调用点，跳过');
+    return;
+  }
+  s = s.replace("require('./web-adapter');", diag + "require('./web-adapter');");
+  writeFileSync(gj, s);
+  console.log('⑦ game.js: 已注入启动诊断日志');
+}
 // —— 补丁⑤：project.config.json 排毒（2026-09-23 深夜）——
 // Cocos builder 每次重建都会往产物写 "miniprogramRoot":"./"——游戏项目带这个字段，
 // 开发者工具就会去编小程序部分（找 app.json），没有 → SummerCompiler.getAllPageAndComponent
@@ -193,3 +211,4 @@ for (const rel of SAFE_TARGETS) {
 }
 console.log(`提示：共处理 ${total} 个 defineProperty 调用点；重新构建微信包后需要再跑一次本脚本`);
 fixProjectConfig();
+patch7();
