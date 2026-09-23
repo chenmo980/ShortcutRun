@@ -160,3 +160,10 @@ G1 门禁：用户试玩“还想再来一把”= 立项。门禁不过，谁都
   - **juice 批**：J2 撞人音效（SfxSynth+web 内联同步加 `hit` 双音，smoke 漂移锁已扩——**仅 web**，Cocos 无 AI 对手）；J3 落水水花（双端，白/青粒子上炸）；J4 冲线彩带（双端，24~40 片飘落）；C2 冲线慢动作+推近（双端：setTimeScale 0.35 约 0.45s + CameraFollow.punch 机位压低拉近 0.8s）；U2 结算飘分（web floatText +score）。
   - **诚实标注**：**M4 AI 对手整套仅 web 端**（Cocos 侧从未实现对手，replica-gap M4 行已从 ✅ 改为 ⚠️双端缺口）；Cocos 补对手是大工程（克隆 rig+经济+碰撞），留待排期。
   - **回归**：tsc 0 / smoke / sim 38 / verify-web 20/20 全绿。
+- 2026-09-23 | step-5-preview | **Cocos AI 对手补齐（M4 双端闭环）+ M11 倍率加密 + M12 名次计分 + C3 机头微扬**：
+  - **Cocos 对手（此前仅 web）**：`TrackBuilder.buildOpponents`（buildCharacter 每对手独立 rig）+ `GameApp.updateOpponents/knockOutOpponent` 与浏览器版逐行同构（80% 主路/20% 抄近、铺板经济走 `spawnPlank` 天然持久地面 M5、撞飞抢板 loot≤6、板尽退场、过终点记 finishT）；J2 撞人音效同步生效。
+  - **M11**：倍率档 7→14（×2~×15 全区间），间距公式 5+m×0.7 → 2.5+m×0.15；balance 真曲线 3气→×2 / 8→×3 / 20→×6 / 50气+两垛→×15（原 7 档时 20 气只能 ×5）。
+  - **M12**：名次=1+先过终点的对手数，基础分 100/60/30/10（BonusRun.ts rankBase），结算=基础×倍率+余板；verify 加 `rank-base-lock` 关系断言。
+  - **C3**：bridging 时 head 上抬 0.22rad（双端 animateChar/CharacterRig）。
+  - **回归**：tsc 0 / smoke / sim 38 / verify-web **22/22**（新增 bonus-pads-14 / rank-base-lock）；bonus-balance 曲线重跑。
+  - replica-gap 剩余：M9 分支路径（P2 大工程）/ C1 低机位（待 G1 手感）。

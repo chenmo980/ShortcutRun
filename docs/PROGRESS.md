@@ -43,6 +43,8 @@
 | 完全复刻差距清单（机制/镜头/UI/juice 五维） | ✅ | `docs/replica-gap.md`，**G1 前 P0 全部清零** |
 | P1 批：M6 板刷新 / M8 扒边攀爬 / M13 堆到天高 | ✅ | 双端；verify pickup-respawn/edge-grab 断言 |
 | juice 批：J2 撞人音效(web) / J3 水花 / J4 彩带 / C2 冲线慢动作推近 / U2 飘分 | ✅ | 双端（J2 限 web，M4 对手整套仅 web 已标注） |
+| Cocos AI 对手补齐（M4 双端闭环：3 对手/铺板经济/撞飞抢板） | ✅ | TrackBuilder.buildOpponents + GameApp.updateOpponents，与 web 逐行同构 |
+| M11 倍率 14 档 ×2~×15 + M12 名次计分(100/60/30/10) + C3 铺路机头微扬 | ✅ | verify 22/22；balance 曲线 3→×2/8→×3/20→×6/50→×15 |
 
 ## 质量数据（QA 口径）
 

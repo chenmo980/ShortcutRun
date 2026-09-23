@@ -454,6 +454,8 @@ export function animateCharacter(r: CharRig, runCycle: number, steerVel: number,
   );
   r.torso.setPosition(new Vec3(r.torso.position.x, 0.72 + Math.abs(stride) * 0.12, r.torso.position.z));
   rot(r.head, -r.torso.eulerAngles.x * 0.8, -r.torso.eulerAngles.y * 0.5);
+  // C3：铺路时机头微扬（看向前方要铺的路）
+  if (state === 'bridging') rot(r.head, -r.torso.eulerAngles.x * 0.8 - 0.22, -r.torso.eulerAngles.y * 0.5);
   rot(r.ribbon, -0.35 + Math.sin(runCycle * 2.5) * 0.22, Math.cos(runCycle * 2) * 0.15);
   // 国风飘带/雉翎动力学模拟
   const accH = r.head.getChildByName('SkinAccHead');

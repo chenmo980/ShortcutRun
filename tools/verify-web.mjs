@@ -143,11 +143,17 @@ await page.mouse.up();
 await page.waitForFunction(() => window.__game.getState().bonus !== null, null, { timeout: 40000 });
 s = await page.evaluate(() => window.__game.getState());
 check('bonus-entered', s.bonus !== null, `gas=${s.bonus.remaining}`);
+// M11：倍率档 14 档覆盖 ×2~×15（原版 15 岛全区间）
+check('bonus-pads-14', s.bonus.pads === 14, `pads=${s.bonus.pads}`);
 await page.screenshot({ path: `${SHOTS}/05-bonus.png` });
 // 6b. 油尽 → 结算出倍率与分数
 await page.waitForFunction(() => { const b = window.__game.getState().bonus; return b && b.finished; }, null, { timeout: 40000 });
 s = await page.evaluate(() => window.__game.getState());
 check('bonus-settled', s.bonus.finished && s.bonus.mult >= 2, `mult=x${s.bonus.mult} traveled=${s.bonus.traveled}m`);
+// M12：名次基础分关系锁（第N名 ↔ RANK_BASE[N-1]，值域 100/60/30/10）
+const rankBaseOk = [100, 60, 30, 10][s.bonus.rank - 1] === s.bonus.base;
+check('rank-base-lock', s.bonus.rank >= 1 && s.bonus.rank <= 4 && rankBaseOk,
+  `rank=${s.bonus.rank} base=${s.bonus.base}`);
 
 // 6c. M10 奖励区回头机制：低气进门 → 按住 S 回头吃气垛(+15) → 松手冲刺 → 倍率高于不捡
 // 注意：必须在冲线前才把气降到 20，否则沿途吃砖会把气补回 80+（实测踩过的坑）

@@ -14,6 +14,19 @@ import { curveFromCfg, bendX, headingAt, secant, CurveState } from './CurvePath'
 import type { BonusPad, BonusPile } from './BonusRun';
 
 const SMOKE_MAX = 60; // 铺路烟雾粒子池上限（与浏览器版一致）
+export const OPPONENT_COUNT = 3; // AI 对手数（原版标志性机制，与浏览器版一致）
+
+export interface Opponent {
+  root: Node;
+  rig: CharRig;
+  x: number; z: number;
+  speed: number;
+  bricks: number;
+  alive: boolean; finished: boolean;
+  finishT: number | null; // 过终点时刻（M12 名次计分用）
+  targetX: number; changeT: number;
+  runCycle: number;
+}
 
 interface SmokeState {
   life: number; dur: number;
@@ -192,6 +205,29 @@ export class TrackBuilder extends Component {
         n.position.z + (Math.random() - 0.5) * 1.2,
       ), () => n.destroy());
     }
+  }
+
+  // ===== AI 对手竞速（原版标志性机制，2026-09-23 Cocos 端补齐，与浏览器版同构） =====
+  // 3 个对手同时起跑、各自铺板经济；铺的板也是持久地面（spawnPlank 统一记 trail，M5）
+  buildOpponents(cfg: Cfg): Opponent[] {
+    const list: Opponent[] = [];
+    for (let i = 0; i < OPPONENT_COUNT; i++) {
+      const root = new Node(`Opponent${i}`);
+      root.parent = this.node;
+      const rig = buildCharacter(root);
+      const x = (i - (OPPONENT_COUNT - 1) / 2) * 1.1;
+      const z = -1.2 - i * 1.0;
+      root.setPosition(new Vec3(bendX(z, this.curve) + x, 0, z));
+      root.eulerAngles = new Vec3(0, headingAt(z, this.curve), 0);
+      list.push({
+        root, rig, x, z,
+        speed: cfg.runSpeed * (0.9 + i * 0.05),
+        bricks: 24,
+        alive: true, finished: false, finishT: null,
+        targetX: x, changeT: Math.random() * 2, runCycle: i * 2.1,
+      });
+    }
+    return list;
   }
 
   isOnMainRoad(x: number, z: number): boolean {

@@ -935,6 +935,8 @@ function animateChar(char, runCycle, steerVelocity, carriedPlanks, state, delta,
   char.torso.position.y = 0.72 + Math.abs(stride) * 0.12;
   char.head.rotation.x = -char.torso.rotation.x * 0.8;
   char.head.rotation.y = -char.torso.rotation.y * 0.5;
+  // C3：铺路时机头微扬（看向前方要铺的路）
+  if (state === 'bridging') char.head.rotation.x -= 0.22;
   char.headbandRibbon.rotation.x = -0.35 + Math.sin(runCycle * 2.5) * 0.22;
   char.headbandRibbon.rotation.y = Math.cos(runCycle * 2) * 0.15;
   // 额外国风饰品动力学（翎毛/发带/混天绫随风摆动）
@@ -1051,6 +1053,7 @@ function buildLevel(cur) {
   // 奖励区状态整局重置（倍率台/气垛网格已随上面的 BOX 清扫回收；
   // bonusActive 不重置会导致下一局到终点不再进奖励区——修复潜在 bug）
   bonusActive = false; bonusState = null; bonusPads = []; bonusPiles = []; heldBack = false;
+  bonusRank = 1; bonusRankBase = 100; camPunchT = 0; // M12/C2 整局复位
   const w = cfg.trackHalfWidth * 2 + 0.6;
   // 跑道（按断崖分段）
   let z = 0;
@@ -1714,8 +1717,11 @@ function checkGate(z) {
 // 冲过终点不重开，进入奖励区：一排倍率悬浮台，剩余板子是汽油，每米烧 1.4 块，
 // 烧完即停，停在哪个台乘哪个倍率。分数 = 100×倍率 + 剩余板数。
 // M10（原版高分核心策略）：奖励区可回头——入口后埋着气垛，按 S 后退捡气再冲刺；
-// 倍率台站过即锁定不降。倍率台布局：×2@3 ×3@9 ×5@15.5 ×8@24 ×10@34 ×12@46.5 ×15@62
-const BONUS_MULTS = [2, 3, 5, 8, 10, 12, 15];
+// 倍率台站过即锁定不降。M11：14 档覆盖 ×2~×15（原版 15 岛全区间）。
+// 档位布局（间距 2.5+m*0.15）：×2@3 ×3@5.8 ×4@8.75 ×5@11.85 … ×15@51.1（需 ~72 板汽油）
+const BONUS_MULTS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+// M12 名次计分：按过终点名次给基础分（第 1 名 100，与 BonusRun.ts RANK_BASE 一致）
+const RANK_BASE = [100, 60, 30, 10];
 const BONUS_BURN = 1.4;        // 每米烧板（回头也烧）
 const BONUS_BACK_LIMIT = -13;  // 回头最远（入口后 13m）
 const BONUS_BACK_SPEED = 0.65; // 回头速度系数
@@ -1726,11 +1732,13 @@ let bonusActive = false;
 let bonusBaseZ = 0;      // 进入奖励区时的 z（入口）
 let heldBack = false;    // S/↓ 按住=回头捡气
 let camPunchT = 0;       // C2：冲线推近剩余时间（秒，真实时间）
+let bonusRank = 1;       // M12：过终点名次（1=第一）
+let bonusRankBase = 100; // M12：名次基础分（第 1 名 100）
 
 function genBonusPads() {
   const pads = [];
   let z = 3;
-  for (const m of BONUS_MULTS) { pads.push({ z, mult: m }); z += 5 + m * 0.7; }
+  for (const m of BONUS_MULTS) { pads.push({ z, mult: m }); z += 2.5 + m * 0.15; }
   return pads;
 }
 
@@ -1747,6 +1755,9 @@ function genGasPiles() {
 function enterBonusRun() {
   if (bonusActive) return;
   bonusActive = true;
+  // M12：名次 = 1 + 已过终点的对手数（对手先到=名次靠后，基础分衰减）
+  bonusRank = 1 + opponents.filter((o) => o.finishT != null && o.finishT <= elapsed).length;
+  bonusRankBase = RANK_BASE[Math.min(bonusRank, RANK_BASE.length) - 1];
   bonusState = { traveled: 0, remainingPlanks: bricks, multiplier: 1, finished: false };
   bonusPads = genBonusPads();
   bonusPiles = genGasPiles();
@@ -1824,13 +1835,14 @@ function stepBonus(dt) {
 }
 
 function finishBonus() {
-  const score = 100 * bonusState.multiplier + Math.floor(bonusState.remainingPlanks);
+  // M12：名次基础分 × 倍率 + 余板（第 1 名 100 基础，名次越后基础越低）
+  const score = bonusRankBase * bonusState.multiplier + Math.floor(bonusState.remainingPlanks);
   floatText(`+${score}`, '#ffd54f'); // U2：结算飘分
   const stars = bonusState.multiplier >= 8 ? 3 : bonusState.multiplier >= 5 ? 2 : 1;
   showResult(true, `×${bonusState.multiplier} 倍率！`, stars,
-    `得分 ${score}（基础 100 × ${bonusState.multiplier} + 余板 ${Math.floor(bonusState.remainingPlanks)}）`,
+    `第 ${bonusRank} 名 · 得分 ${score}（基础 ${bonusRankBase} × ${bonusState.multiplier} + 余板 ${Math.floor(bonusState.remainingPlanks)}）`,
     '再来一局', () => { resultScreen.style.display = 'none'; syncLevel(); });
-  console.log(`[ShortcutRun] 结算: ×${bonusState.multiplier} 得分 ${score} ${stars}星`);
+  console.log(`[ShortcutRun] 结算: 第${bonusRank}名 ×${bonusState.multiplier} 得分 ${score} ${stars}星`);
   sfx.win();
 }
 
@@ -1860,7 +1872,7 @@ function buildOpponents() {
       rig, x, z,
       speed: cfg.runSpeed * (0.9 + i * 0.05),
       bricks: 24,
-      alive: true, finished: false,
+      alive: true, finished: false, finishT: null,
       targetX: x, changeT: Math.random() * 2, runCycle: i * 2.1,
     });
   }
@@ -1915,7 +1927,7 @@ function updateOpponents(dt) {
       }
     }
 
-    if (o.z >= level.gateZ - 0.5) { o.finished = true; continue; }
+    if (o.z >= level.gateZ - 0.5) { o.finished = true; o.finishT = elapsed; continue; } // M12：记过终点时刻
 
     o.rig.position.set(bendX(o.z) + o.x * Math.cos(headingAt(o.z)), 0, o.z);
     o.rig.rotation.y = headingAt(o.z);
@@ -2084,6 +2096,8 @@ window.__game = {
       remaining: Math.round(bonusState.remainingPlanks),
       mult: bonusState.multiplier, finished: bonusState.finished,
       pilesTaken: bonusPiles.filter((p) => p.taken).length,
+      rank: bonusRank, base: bonusRankBase, // M12
+      pads: bonusPads.length,              // M11
     } : null,
     islandTaken: islands.filter((i) => i.taken).length,
     opponents: opponents.filter((o) => o.alive).length,

@@ -29,14 +29,15 @@ export const BONUS_BURN = 1.4;        // 每米烧板（汽油费率，双端一
 export const BONUS_BACK_LIMIT = -13;  // 回头最远距离（入口后 13m）
 export const BONUS_BACK_SPEED = 0.65; // 回头速度系数（冲刺 1.0）
 
-// 倍率台布局：从近到远 ×2 ×3 ×5 ×8 ×10 ×12 ×15（原版为 15 个岛，取 7 档够表达）
+// M11（原版 15 个倍率岛）：加密到 14 档覆盖 ×2~×15 全区间（原版攻略实锤极值 ×2~×15）。
+// 间距 = 2.5 + m*0.15：档差清晰且 ×15@51m 仅需 ~72 板汽油（99 气/50 气+两垛都够得到）
 export function genBonusPads(cfg: Cfg): BonusPad[] {
-  const mults = [2, 3, 5, 8, 10, 12, 15];
+  const mults = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
   const pads: BonusPad[] = [];
   let z = 3;
   for (const m of mults) {
     pads.push({ z, multiplier: m });
-    z += 5 + m * 0.7; // 高倍率台更远，冲刺有渐进感
+    z += 2.5 + m * 0.15; // 高倍率台更远，冲刺有渐进感
   }
   return pads;
 }
@@ -77,9 +78,15 @@ export function stepBonusRun(s: BonusRunState, pads: BonusPad[], piles: BonusPil
   return true;
 }
 
-// 结算：100 × 倍率 + 剩余板数（原版基础分 100）
-export function bonusScore(s: BonusRunState): number {
-  return 100 * s.multiplier + Math.floor(s.remainingPlanks);
+// M12 名次计分（原版规则）：按过终点名次给基础分，第 1 名 100（倍率分的乘数基座）
+export const RANK_BASE = [100, 60, 30, 10];
+export function rankBase(rank: number): number {
+  return RANK_BASE[Math.min(Math.max(1, Math.round(rank)), RANK_BASE.length) - 1];
+}
+
+// 结算：名次基础分 × 倍率 + 剩余板数（原版基础分 100 仅第 1 名）
+export function bonusScore(s: BonusRunState, base = 100): number {
+  return base * s.multiplier + Math.floor(s.remainingPlanks);
 }
 
 // 星级：≥×8 三星，≥×5 二星，其余一星（与 progression 的 PAR 线互补，按倍率评）

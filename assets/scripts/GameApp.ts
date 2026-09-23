@@ -13,14 +13,14 @@ import { cfgForLevel, itemsFor } from './LevelCurve';
 import { createProgress, ProgressStore } from './Progression';
 import { cycleTheme, currentTheme } from './Theme';
 import { applyTheme } from './BoxFactory';
-import { applyCharTheme, setCharacterSkin, getCharacterSkin, CharSkinType, CHAR_SKINS } from './CharacterRig';
+import { applyCharTheme, setCharacterSkin, getCharacterSkin, CharSkinType, CHAR_SKINS, animateCharacter } from './CharacterRig';
 import { curveFromCfg, bendX, headingAt, CurveState } from './CurvePath';
 import {
-  BONUS_BACK_SPEED, genBonusPads, genGasPiles, createBonusRun, stepBonusRun, bonusScore, bonusStars,
+  BONUS_BACK_SPEED, genBonusPads, genGasPiles, createBonusRun, stepBonusRun, bonusScore, bonusStars, rankBase,
   BonusPad, BonusPile, BonusRunState,
 } from './BonusRun';
 import { AudioMgr } from './AudioMgr';
-import { TrackBuilder, RuntimePickup } from './TrackBuilder';
+import { TrackBuilder, RuntimePickup, Opponent } from './TrackBuilder';
 import { CameraFollow } from './CameraFollow';
 import { GameUI } from './GameUI';
 import { tweenPos, clamp } from './util';
@@ -86,6 +86,10 @@ export class GameApp extends Component {
   private bonusPiles: BonusPile[] = [];
   private bonusEntryZ = 0;
   private bonusPileDone: boolean[] = []; // 气垛下沉动画是否已播（防重复 tween 已销毁节点）
+  private bonusRank = 1;   // M12：过终点名次（1=第一）
+  private bonusBase = 100; // M12：名次基础分（第1名 100）
+  // AI 对手竞速（原版标志性机制，与浏览器版同构）
+  private opponents: Opponent[] = [];
   private heldBack = false; // S/↓ 按住=奖励区回头
   // M8：板尽差一步扒住边缘爬上去
   private climbT = 0;
@@ -184,6 +188,9 @@ export class GameApp extends Component {
     this.bonusPiles = [];
     this.bonusEntryZ = 0;
     this.bonusPileDone = [];
+    this.bonusRank = 1;
+    this.bonusBase = 100;
+    this.opponents = this.track.buildOpponents(this.cfg); // AI 对手（原版标志性机制）
     this.dragging = false;
     this.fell = false;
     this.bridgeT = 0;
@@ -389,6 +396,7 @@ export class GameApp extends Component {
       this.checkGate(z);
       this.checkIslands(x, z); // 孤岛拾取（原版机制）
     }
+    this.updateOpponents(dt); // AI 对手竞速（原版标志性机制）
     this.track.syncStack(this.bricks);
     const charState = this.state === 'fall' ? 'drowned'
       : this.state === 'run' ? (this.bridgeT > 0 ? 'bridging' : 'running')
@@ -540,6 +548,74 @@ export class GameApp extends Component {
     setTimeout(() => { director.getScheduler()?.setTimeScale(1); }, 550);
   }
 
+  // ===== AI 对手竞速（原版标志性机制，与浏览器版 updateOpponents 同构） =====
+  // 规则：3 个对手同时起跑，各自带板铺捷径；速度比玩家快的撞飞玩家（抢板），
+  // 玩家比对手快的撞飞对手并没收其携带板子；断崖/板尽同样会坠落。
+  private updateOpponents(dt: number): void {
+    for (const o of this.opponents) {
+      if (!o.alive || o.finished) continue;
+      o.changeT -= dt;
+      if (o.changeT <= 0) {
+        o.changeT = 1.2 + Math.random() * 2;
+        // 80% 沿主路跑，20% 尝试切弯抄近路
+        o.targetX = Math.random() < 0.8
+          ? (Math.random() * 2 - 1) * this.cfg.trackHalfWidth * 0.7
+          : (Math.random() * 2 - 1) * (this.cfg.trackHalfWidth + 2.2);
+      }
+      o.x += (o.targetX - o.x) * Math.min(1, dt * 2.2);
+      const adv = o.speed * dt;
+      o.z += adv;
+
+      // 铺板经济：离开主路持续耗板，板尽坠落
+      if (!this.track.isOnMainRoad(o.x, o.z)) {
+        if (o.bricks > 0) {
+          o.bricks -= (this.cfg.plankCostPerMeter ?? 1) * adv;
+          if (Math.random() < adv / (this.cfg.plankStride ?? 0.6)) this.track.spawnPlank(o.z, o.x); // M5：也是持久地面
+        } else { this.knockOutOpponent(o, '板尽坠落'); continue; }
+      }
+
+      // 与玩家碰撞：快者撞飞慢者并抢板
+      if (this.state === 'run' && Math.abs(o.z - this.player.position.z) < 0.85 && Math.abs(o.x - this.laneX) < 0.85) {
+        if (this.speed > o.speed * 1.02) {
+          this.knockOutOpponent(o, '被你撞飞');
+          const loot = Math.min(Math.floor(o.bricks), 6);
+          if (loot > 0) {
+            this.bricks += loot;
+            this.pickupPulse = 1.0;
+            this.ui?.setBricks(Math.floor(this.bricks));
+            console.log(`[ShortcutRun] 抢板 +${loot}`);
+          }
+        } else if (o.speed > this.speed * 1.02) {
+          this.knockOutOpponent(o, '对手撞飞了你'); // 与浏览器版一致：对手退场，玩家坠落
+          this.enterFall();
+          return;
+        }
+      }
+
+      if (o.z >= this.levelDef.gateZ - 0.5) {
+        o.finished = true;
+        o.finishT = this.elapsed; // M12 名次计分：记过终点时刻
+        continue;
+      }
+
+      o.root.setPosition(new Vec3(
+        bendX(o.z, this.curve) + o.x * Math.cos(headingAt(o.z, this.curve)), 0, o.z));
+      o.root.eulerAngles = new Vec3(0, headingAt(o.z, this.curve), 0);
+      o.runCycle += dt * (8 + o.speed * 0.7);
+      animateCharacter(o.rig, o.runCycle, o.targetX - o.x, Math.ceil(o.bricks), 'running', dt);
+    }
+  }
+
+  private knockOutOpponent(o: Opponent, why: string): void {
+    o.alive = false;
+    console.log(`[ShortcutRun] 对手退场:${why}`);
+    this.audio?.play('hit'); // J2：撞人顿挫
+    this.audio?.play('lose');
+    this.camFollow.addShake(0.12, 0.2);
+    const p = o.root.position;
+    tweenPos(o.root, 0.8, new Vec3(p.x, p.y - 6, p.z));
+  }
+
   // 孤岛：踩上就收板（原版经典的风险回报机制）
   private checkIslands(x: number, z: number): void {
     const gain = this.track.collectIsland(x, z);
@@ -561,6 +637,9 @@ export class GameApp extends Component {
   private enterBonus(): void {
     if (this.bonusActive) return;
     this.bonusActive = true;
+    // M12：名次 = 1 + 已过终点的对手数（对手先到=名次靠后，基础分衰减）
+    this.bonusRank = 1 + this.opponents.filter((o) => o.finishT != null && o.finishT <= this.elapsed).length;
+    this.bonusBase = rankBase(this.bonusRank);
     this.bonus = createBonusRun(this.bricks);
     this.bonusPads = genBonusPads(this.cfg);
     this.bonusPiles = genGasPiles(this.cfg);
@@ -595,7 +674,7 @@ export class GameApp extends Component {
     this.track.openGate();
     this.audio?.play('win');
     const timeSec = this.elapsed - this.runT0;
-    const score = bonusScore(b);
+    const score = bonusScore(b, this.bonusBase);
     this.pushTelemetry({
       level: this.levelNum, seed: this.curSeed, outcome: 'win',
       t: +timeSec.toFixed(2), bricksLeft: Math.floor(b.remainingPlanks),
@@ -604,8 +683,8 @@ export class GameApp extends Component {
     const r = this.prog.win(timeSec, Math.floor(b.remainingPlanks));
     const best = this.prog.state().best[this.levelNum];
     this.ui?.setResult(true, r.stars, timeSec, score, `${best.stars}★ ${best.time}s`);
-    this.ui?.showHint(`×${b.multiplier} 倍率！得分 ${score}`);
-    console.log(`[ShortcutRun] 奖励区结算：×${b.multiplier} 得分 ${score}（${bonusStars(b)}星线）`);
+    this.ui?.showHint(`第 ${this.bonusRank} 名 · ×${b.multiplier} 倍率！得分 ${score}`);
+    console.log(`[ShortcutRun] 奖励区结算：第${this.bonusRank}名 ×${b.multiplier} 得分 ${score}（${bonusStars(b)}星线）`);
     // 插屏节流：前 3 关不弹；通关 L3/L6/…（进 L4/L7 前）各 1 次（k1 §4）
     if (shouldInterstitialAfterWin(this.levelNum)) {
       void adSys.showInterstitial();
