@@ -124,6 +124,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     trackBounds: { minZ: number; maxZ: number; minX: number; maxX: number }[];
     score: number;
     finalMultiplier: number;
+    manualOverride: boolean;
     updatePlankStackVisual?: (count: number) => void;
   }>({
     renderer: null,
@@ -155,6 +156,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     trackBounds: [],
     score: 0,
     finalMultiplier: 1,
+    manualOverride: false,
   });
 
   // Reset or jump to specific section
@@ -167,6 +169,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     g.playerZ = targetZ;
     g.targetPlayerX = startX;
     g.steerOffset = 0;
+    g.manualOverride = false;
     g.carriedPlanks = settingsRef.current.infinitePlanks ? 30 : 16;
     g.state = 'running';
     g.lastBridgeDropZ = targetZ;
@@ -508,6 +511,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       trackBounds,
       score: 0,
       finalMultiplier: 1,
+      manualOverride: false,
     };
 
     setGameState('running');
@@ -535,21 +539,36 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       left: false,
       right: false,
     };
-    let lastManualControlTime = 0;
+
+    const isLeftKey = (e: KeyboardEvent) =>
+      e.code === 'KeyA' ||
+      e.key === 'a' ||
+      e.key === 'A' ||
+      e.key === 'ArrowLeft' ||
+      e.keyCode === 65 ||
+      e.keyCode === 37;
+
+    const isRightKey = (e: KeyboardEvent) =>
+      e.code === 'KeyD' ||
+      e.key === 'd' ||
+      e.key === 'D' ||
+      e.key === 'ArrowRight' ||
+      e.keyCode === 68 ||
+      e.keyCode === 39;
 
     const onPointerDown = (e: MouseEvent | TouchEvent) => {
       isDragging = true;
-      lastManualControlTime = performance.now();
+      gameRef.current.manualOverride = true;
       const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
       lastClientX = clientX;
     };
 
     const onPointerMove = (e: MouseEvent | TouchEvent) => {
       if (!isDragging) return;
+      gameRef.current.manualOverride = true;
       const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
       const deltaX = clientX - lastClientX;
       lastClientX = clientX;
-      lastManualControlTime = performance.now();
 
       // Adjust steer offset relative to track centerline (subtracted to align screen drag right -> character moves right)
       gameRef.current.steerOffset -= deltaX * 0.042;
@@ -558,33 +577,32 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     const onPointerUp = () => {
       isDragging = false;
-      lastManualControlTime = performance.now();
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') {
-        // Move Left on screen (+X): snappy instant tap impulse
+      if (isLeftKey(e)) {
+        gameRef.current.manualOverride = true;
         if (!keysPressed.left) {
-          gameRef.current.steerOffset += 0.9;
+          // Snappy instant tap response
+          gameRef.current.steerOffset += 1.2;
           gameRef.current.steerOffset = Math.max(-14, Math.min(14, gameRef.current.steerOffset));
         }
         keysPressed.left = true;
-        lastManualControlTime = performance.now();
-      } else if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') {
-        // Move Right on screen (-X): snappy instant tap impulse
+      } else if (isRightKey(e)) {
+        gameRef.current.manualOverride = true;
         if (!keysPressed.right) {
-          gameRef.current.steerOffset -= 0.9;
+          // Snappy instant tap response
+          gameRef.current.steerOffset -= 1.2;
           gameRef.current.steerOffset = Math.max(-14, Math.min(14, gameRef.current.steerOffset));
         }
         keysPressed.right = true;
-        lastManualControlTime = performance.now();
       } else if (e.key === ' ' || e.code === 'Space') {
         e.preventDefault();
         setIsPaused((p) => {
           gameRef.current.isPaused = !p;
           return !p;
         });
-      } else if (e.key === 'r' || e.key === 'R') {
+      } else if (e.key === 'r' || e.key === 'R' || e.code === 'KeyR') {
         resetGame(0);
       } else if (e.key >= '1' && e.key <= '6') {
         const idx = parseInt(e.key, 10) - 1;
@@ -595,13 +613,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     };
 
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') {
+      if (isLeftKey(e)) {
         keysPressed.left = false;
-        lastManualControlTime = performance.now();
-      } else if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') {
+      } else if (isRightKey(e)) {
         keysPressed.right = false;
-        lastManualControlTime = performance.now();
       }
+    };
+
+    const onWindowBlur = () => {
+      keysPressed.left = false;
+      keysPressed.right = false;
+      isDragging = false;
     };
 
     const canvasDom = renderer.domElement;
@@ -613,6 +635,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     window.addEventListener('touchend', onPointerUp);
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onWindowBlur);
 
     // Resize observer
     const resizeObserver = new ResizeObserver((entries) => {
@@ -712,29 +735,23 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       // Game state machine
       if (g.state === 'running' || g.state === 'bridging') {
         // Continuous smooth keyboard steering with agile acceleration
-        const isKeyboardSteering = keysPressed.left || keysPressed.right;
-        if (isKeyboardSteering) {
-          lastManualControlTime = performance.now();
-          const keyboardSteerRate = 22.0; // Units per second lateral drift (quick and agile)
-          if (keysPressed.left) {
-            g.steerOffset += keyboardSteerRate * delta;
-          }
-          if (keysPressed.right) {
-            g.steerOffset -= keyboardSteerRate * delta;
-          }
-          g.steerOffset = Math.max(-14, Math.min(14, g.steerOffset));
+        if (keysPressed.left) {
+          g.steerOffset += 16.0 * delta;
+          g.steerOffset = Math.min(14, g.steerOffset);
+        }
+        if (keysPressed.right) {
+          g.steerOffset -= 16.0 * delta;
+          g.steerOffset = Math.max(-14, g.steerOffset);
         }
 
         // Track centerline & intelligent lateral positioning
         const trackX = getTrackCenterX(g.playerZ);
         let desiredX = trackX + g.steerOffset;
 
-        // Auto-Pilot continuous inspection mode
-        // Only take over steering when user is NOT actively controlling (via touch, drag, or keyboard)
-        // and after an 800ms grace period so user manual input has absolute responsiveness and priority
-        const isActivelyControlling =
-          isDragging || isKeyboardSteering || performance.now() - lastManualControlTime < 800;
-        if (curSettings.autoPilot && !isActivelyControlling) {
+        // Auto-Pilot continuous inspection mode:
+        // ONLY active when enabled AND user has not actively taken over manual steering.
+        // Once the user presses A/D or drags mouse, manualOverride is true and Auto-Pilot will not fight the player!
+        if (curSettings.autoPilot && !g.manualOverride) {
           // Gently glide toward track center
           g.steerOffset = THREE.MathUtils.lerp(g.steerOffset, 0, delta * 3.2);
 
@@ -1152,6 +1169,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       window.removeEventListener('touchend', onPointerUp);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onWindowBlur);
       renderer.dispose();
     };
   }, [
@@ -1161,6 +1179,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     settings.showOpponent,
     settings.planarShadows,
   ]);
+
+  // When autoPilot toggle changes in settings, reset manualOverride
+  useEffect(() => {
+    gameRef.current.manualOverride = false;
+  }, [settings.autoPilot]);
 
   return (
     <div className="relative w-full h-full overflow-hidden select-none bg-slate-900">
