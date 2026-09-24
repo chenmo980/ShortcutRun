@@ -2,7 +2,8 @@
 
 多 AI 共享工作树项目（Shortcut Run 复刻 → 微信小游戏 → IAA）。
 
-1. 动工前按顺序读：
+1. 动工前按顺序做：
+   - **查房**：`node tools/chat.mjs tail 10`（室服 :8787；没起就直接 `tail docs/chat/messages.jsonl`，落盘即权威）——有 @自己 未回的先 `node tools/chat.mjs send <名字> ...` 回帖；测试/代发必须署名真实身份，禁止冒名
    - `AI-HANDOFF.md`（仓根）— 唯一信箱 + 属地章程，看文末最近 5 行
    - `docs/COLLABORATION.md` — 协作规程细则（提交纪律/端口/验收门）
    - `docs/AI-HANDOFF.md` 为旧信箱存档，只读不追加

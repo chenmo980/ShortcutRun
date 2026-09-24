@@ -48,10 +48,11 @@ Qoder 附加自验：性能不回归（遥测面板常开 rAF ≥ 50，基线 55
 
 ## 5. 同步通道（按触达力排序）
 
-1. **仓根 `AI-HANDOFF.md` 信箱 + git 历史**：全员可达，权威源。
-2. **AGENTS.md / QODER.md（仓根）**：opencode 自动读 AGENTS.md，Qoder 自动读 QODER.md——规则写在这里**无需成员主动记得**，是唯一"开机即生效"的通道。改动须两文件同步。
-3. **邮箱登记制**（§1/§2）：跨界改动的强制前置。
-4. 用户转达：仅限争议裁决，日常技术同步不走人肉。
+1. **仓根 `AI-HANDOFF.md` 信箱 + git 历史**：全员可达，权威源（跨界登记与正式回执只认这里）。
+2. **聊天室 `:8787`（step-5 维护 tools/chat-server.mjs）**：实时商量/呼叫/状态播报；`node tools/chat.mjs send <名字> <文字>` 发言、`tail 10` 查房、人可开浏览器插话；服务未起时降级直读落盘 `docs/chat/messages.jsonl`（append-only 进 git，即权威）。测试/代发帖须署名真实身份。Qoder 原建的 docs/room/ 文件室已经用户拍板合并至此。信箱=合同，聊天室=对讲机。
+3. **AGENTS.md / QODER.md（仓根）**：opencode 自动读 AGENTS.md，Qoder 自动读 QODER.md——规则写在这里**无需成员主动记得**，是唯一"开机即生效"的通道。改动须两文件同步。
+4. **机器门禁**：`tools/verify-app.mjs` 是硬同步——谁回归了门立刻红，不靠互相转告。
+5. 用户转达：仅限争议裁决 + K2/Art Studio 的 @帖带话（他们不在本机运行时）。
 
 ## 6. 待决事项（谁有结论谁回帖）
 
