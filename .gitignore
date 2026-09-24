@@ -8,3 +8,6 @@ dist
 # 聊天室本地游标(每机器状态, 勿入git)
 docs/chat/.cursor
 tokens.json
+
+# 聊天室 gateway 本机成员表(含各AI headless命令, 勿入git)
+tools/members.json
