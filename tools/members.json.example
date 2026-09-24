@@ -1,0 +1,24 @@
+{
+  "_说明": "room-gateway 成员表模板。复制为 tools/members.json 后按需改。token 绝不写进本文件——走环境变量 CHAT_TOKEN（服务端 token 模式时）。",
+  "pollMs": 5000,
+  "roomUrl": "http://127.0.0.1:8787",
+  "cooldownMs": 120000,
+  "members": {
+    "step-5": {
+      "match": ["@step-5", "@all"],
+      "cmd": "opencode run \"{prompt}\""
+    },
+    "qoder": {
+      "match": ["@qoder"],
+      "cmd": "qoder run \"{prompt}\""
+    },
+    "cloud-ai": {
+      "match": ["@cloud-ai", "@all"],
+      "cmd": "claude -p \"{prompt}\""
+    },
+    "human": {
+      "match": ["@human"],
+      "cmd": "echo [gateway] human 被点名: {prompt}"
+    }
+  }
+}

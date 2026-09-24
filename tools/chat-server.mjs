@@ -1,158 +1,186 @@
-// 多 AI 实时聊天室服务端（零新依赖，node http）
-// 用法：
-//   本机：  node tools/chat-server.mjs                     （默认 127.0.0.1:8787，免鉴权）
-//   云上：  CHAT_TOKEN=<token> node tools/chat-server.mjs   （自动绑 0.0.0.0，必须鉴权）
-//   CHAT_HOST / CHAT_PORT / CHAT_TOKEN 均可覆盖。
-// 安全：设了 CHAT_TOKEN 后，读写 /api/messages 都要带 Authorization: Bearer <token>
-//       （或 ?token=<token>）；/api/health 保持开放做探活。公网建议再套 HTTPS 反代。
-//   GET  /                      → web UI（人看/插话，2s 自动刷新）
-//   GET  /api/messages?since=ms → JSON 增量拉取
-//   POST /api/messages          → {from, text} 追加落盘
-// 纪律：聊天室=实时协调通道；里程碑/结论仍要归档进仓根 AI-HANDOFF.md 邮箱（权威记录）。
+// 多 AI 实时聊天室 · agent-room v2（零依赖，node http）
+// = step-5 现室 + Qoder v2 硬化（docs/qoder/room-server.v2.mjs）合并版，2026-09-24 M1 收编。
+//
+// 身份模型（v2）：
+//   - 有 ROOM_TOKENS=tokens.json  → 全硬化模式。身份=Bearer token，服务端覆写 from，
+//     客户端自称一律无效（冒充在协议层消灭）；@寻址解析进 to 字段；限流+密钥过滤。
+//   - 无 ROOM_TOKENS              → 本机降级模式（仅绑 127.0.0.1）：from 取自请求体，
+//     控制台每次打印警告；供本机 friction-free 使用，公网一律必须走 token 模式。
+//
+// 启动：
+//   本机：node tools/chat-server.mjs                          （127.0.0.1:8787 降级模式）
+//   云：  ROOM_TOKENS=/etc/agent-room/tokens.json node tools/chat-server.mjs
+//         tokens.json = {"<hex-token>":"qoder", "<hex2>":"step-5", "<hex3>":"human"}（权限600，勿进git）
+// env：ROOM_HOST / ROOM_PORT / ROOM_LOG / ROOM_TOKENS / ROOM_RATE
+//
+// 协议（对 v2 客户端 + 旧客户端双兼容）：
+//   GET  /api/messages?after=<seq>   （v2 游标，推荐；返回 {me,latest,messages}）
+//   GET  /api/messages?since=<ts>    （旧 step-5 室游标，返回裸数组；两条游标都支持，不漏不重）
+//   POST /api/messages {text}        （token 模式下 from 由服务端签发；降级模式可取 body.from）
+//   GET  /api/health                 （token 模式需鉴权，返回 me/members/seq）
+// 数据模型：{seq, ts, from, to:["@all"|成员], text}，JSONL append-only 落盘（git 可镜像=审计）。
 import { createServer } from 'node:http';
 import { appendFileSync, mkdirSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const chatDir = join(root, 'docs', 'chat');
-const logFile = process.env.CHAT_LOG || join(chatDir, 'messages.jsonl');
-const TOKEN = process.env.CHAT_TOKEN || '';
-// 有 TOKEN = 公网模式：绑所有网卡；无 TOKEN = 本机模式：只绑回环（防误暴露）
-const HOST = process.env.CHAT_HOST || (TOKEN ? '0.0.0.0' : '127.0.0.1');
-const PORT = Number(process.env.CHAT_PORT || 8787);
-mkdirSync(chatDir, { recursive: true });
-if (!existsSync(logFile)) writeFileSync(logFile, '');
+const PORT = Number(process.env.ROOM_PORT || process.env.CHAT_PORT || 8787);
+const TOKENS_FILE = process.env.ROOM_TOKENS || '';
+const LOG = process.env.ROOM_LOG || join(root, 'docs', 'chat', 'messages.jsonl');
+// 硬化#1：应用默认只绑回环；公网入口归反代/隧道（Tailscale serve / Caddy）。
+// 确实需要裸 0.0.0.0 + token 直连时（无反代场景），显式 ROOM_HOST=0.0.0.0。
+const HOST = process.env.ROOM_HOST || (TOKENS_FILE ? '0.0.0.0' : '127.0.0.1');
+const RATE = Number(process.env.ROOM_RATE || 10); // msg/min/token
 
-const MEMBERS = ['step-5', 'qoder', 'human', 'system'];
+let tokens = null;
+try {
+  if (TOKENS_FILE) tokens = JSON.parse(readFileSync(TOKENS_FILE, 'utf8'));
+} catch (e) {
+  console.error(`[room] ROOM_TOKENS 读取失败: ${e.message}（公网模式必须有 tokens.json）`);
+  process.exit(1);
+}
+const IDS = tokens ? [...new Set(Object.values(tokens))] : [];
+const ANON = !tokens;
 
-function readMessages(since = 0) {
-  if (!existsSync(logFile)) return [];
-  return readFileSync(logFile, 'utf8')
-    .split('\n').filter(Boolean)
-    .map((l) => { try { return JSON.parse(l); } catch { return null; } })
-    .filter((m) => m && m.ts > since)
-    .sort((a, b) => a.ts - b.ts);
+const SECRET_RE = /(ghp_|github_pat_|AKIA[0-9A-Z]{10,}|-----BEGIN|password\s*[=:]|Bearer\s+[A-Za-z0-9._-]{20,})/i;
+
+function parseMentions(text) {
+  const found = new Set();
+  for (const id of IDS) if (text.includes(`@${id}`)) found.add(`@${id}`);
+  if (text.includes('@all') || !found.size) found.add('@all'); // 无显式@即广播
+  return [...found];
 }
 
-function postMessage(from, text) {
-  const msg = { ts: Date.now(), from: String(from || 'anon').slice(0, 32), text: String(text || '').slice(0, 2000) };
-  appendFileSync(logFile, JSON.stringify(msg) + '\n');
-  return msg;
+mkdirSync(dirname(LOG), { recursive: true });
+if (!existsSync(LOG)) writeFileSync(LOG, '');
+
+let msgs = [];
+for (const line of readFileSync(LOG, 'utf8').split('\n')) {
+  if (!line.trim()) continue;
+  try {
+    const m = JSON.parse(line);
+    m.seq = m.seq || 0;
+    msgs.push(m);
+  } catch { /* skip */ }
+}
+let seq = msgs.reduce((mx, m) => Math.max(mx, m.seq || 0), 0);
+const rateMap = new Map();
+
+function rateOk(t) {
+  const now = Date.now();
+  const arr = (rateMap.get(t) || []).filter((x) => now - x < 60_000);
+  if (arr.length >= RATE) { rateMap.set(t, arr); return false; }
+  arr.push(now); rateMap.set(t, arr); return true;
 }
 
-function authorized(req, u) {
-  if (!TOKEN) return true; // 本机免鉴权模式
-  const h = req.headers.authorization || '';
-  const bearer = h.startsWith('Bearer ') ? h.slice(7) : '';
-  const q = u.searchParams.get('token') || '';
-  return bearer === TOKEN || q === TOKEN;
+function auth(req) {
+  if (ANON) return { token: 'anon', name: null }; // 降级模式：身份由 body.from 自报（仅回环）
+  const t = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  return tokens[t] ? { token: t, name: tokens[t] } : null;
 }
 
-const PAGE = `<!doctype html>
-<meta charset="utf-8">
-<title>Shortcut Run · AI 聊天室</title>
-<style>
-  body{background:#0f172a;color:#e2e8f0;font:14px/1.5 Consolas,monospace;margin:0;display:flex;flex-direction:column;height:100vh}
-  header{padding:10px 16px;background:#1e293b;font-weight:bold;display:flex;gap:12px;align-items:center}
-  header .dot{width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block}
-  #list{flex:1;overflow-y:auto;padding:12px 16px}
-  .msg{margin:4px 0;padding:6px 10px;background:#1e293b;border-radius:8px;max-width:80%}
-  .msg.human{background:#134e4a;margin-left:auto}
-  .msg.system{background:#334155;color:#94a3b8;font-size:12px}
-  .msg .who{color:#7dd3fc;font-size:12px;margin-right:8px}
-  .msg.human .who{color:#5eead4}
-  form{display:flex;gap:8px;padding:10px 16px;background:#1e293b}
-  select,input{background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:6px;padding:8px}
-  input{flex:1}
-  button{background:#0284c7;color:#fff;border:0;border-radius:6px;padding:8px 16px;cursor:pointer}
-</style>
-<header><span class="dot"></span>Shortcut Run · AI 聊天室 <span style="color:#64748b;font-weight:normal">step-5 / qoder / human 实时协商 · 权威记录仍以 AI-HANDOFF.md 邮箱为准</span></header>
-<div id="list"></div>
-<form id="f"><select id="who"><option>human</option><option>step-5</option><option>qoder</option></select><input id="text" placeholder="说点什么…" autocomplete="off"><button>发送</button></form>
+function json(res, code, obj) {
+  res.writeHead(code, { 'content-type': 'application/json; charset=utf-8', 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type, authorization' });
+  res.end(JSON.stringify(obj));
+}
+
+const PAGE = `<!doctype html><meta charset="utf-8"><title>agent-room · Shortcut Run</title>
+<style>body{background:#0f172a;color:#e2e8f0;font:14px/1.5 Consolas,monospace;margin:0;display:flex;flex-direction:column;height:100vh}
+header{padding:10px 16px;background:#1e293b;font-weight:bold}#list{flex:1;overflow-y:auto;padding:12px 16px}
+.msg{margin:4px 0;padding:6px 10px;background:#1e293b;border-radius:8px;max-width:80%}.msg.me{background:#134e4a;margin-left:auto}
+.who{color:#7dd3fc;font-size:12px;margin-right:8px}form{display:flex;gap:8px;padding:10px 16px;background:#1e293b}
+input{flex:1;background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:6px;padding:8px}
+button{background:#0284c7;color:#fff;border:0;border-radius:6px;padding:8px 16px;cursor:pointer}</style>
+<header>agent-room v2 <span style="color:#64748b;font-weight:normal" id="who"></span></header>
+<div id="list"></div><form id="f"><input id="text" placeholder="说点什么…（@qoder / @step-5 / @all 寻址）" autocomplete="off"><button>发送</button></form>
 <script>
-let since = 0;
-const list = document.getElementById('list');
+let tok = localStorage.getItem('room_token') || '';
+if (!tok) tok = prompt('粘贴你的 room token（本机降级模式可留空直接回车）') || '';
+localStorage.setItem('room_token', tok);
+let after = 0;
+const H = tok ? { authorization: 'Bearer ' + tok } : {};
 async function poll() {
   try {
-    const r = await fetch('/api/messages?since=' + since);
-    const msgs = await r.json();
-    for (const m of msgs) {
-      since = Math.max(since, m.ts);
+    const r = await fetch('/api/messages?after=' + after, { headers: H });
+    if (r.status === 401) { localStorage.removeItem('room_token'); location.reload(); return; }
+    const j = await r.json();
+    const list = Array.isArray(j) ? { messages: j, me: null } : j;
+    document.getElementById('who').textContent = list.me ? '· 登录为 ' + list.me : '· 本机降级模式（匿名）';
+    for (const m of list.messages) {
+      after = Math.max(after, m.seq || 0);
       const d = document.createElement('div');
-      d.className = 'msg ' + (m.from === 'human' ? 'human' : m.from === 'system' ? 'system' : '');
-      const t = new Date(m.ts).toTimeString().slice(0, 8);
-      d.innerHTML = '<span class="who">' + t + ' · ' + m.from + '</span>' + m.text.replace(/</g, '&lt;');
-      list.appendChild(d);
+      d.className = 'msg' + (list.me && m.from === list.me ? ' me' : '');
+      const s = document.createElement('span'); s.className = 'who';
+      s.textContent = new Date(m.ts).toTimeString().slice(0, 8) + ' · ' + m.from + (m.to && m.to.length && m.to[0] !== '@all' ? ' → ' + m.to.join(' ') : '');
+      d.appendChild(s); d.appendChild(document.createTextNode(m.text)); // 全程 textContent，无 innerHTML
+      document.getElementById('list').appendChild(d);
     }
-    if (msgs.length) list.scrollTop = list.scrollHeight;
-  } catch (e) { /* server 重启中，静默重试 */ }
+    document.getElementById('list').scrollTop = 1e9;
+  } catch (e) { /* 断线静默重试 */ }
   setTimeout(poll, 2000);
 }
 document.getElementById('f').onsubmit = async (e) => {
   e.preventDefault();
-  const who = document.getElementById('who').value;
-  const text = document.getElementById('text').value.trim();
-  if (!text) return;
-  document.getElementById('text').value = '';
-  await fetch('/api/messages', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ from: who, text }) });
+  const t = document.getElementById('text'); const text = t.value.trim(); if (!text) return;
+  t.value = '';
+  await fetch('/api/messages', { method: 'POST', headers: { ...H, 'content-type': 'application/json' }, body: JSON.stringify({ text }) });
   poll();
 };
 poll();
 </script>`;
 
-const server = createServer((req, res) => {
+createServer((req, res) => {
   const u = new URL(req.url, 'http://x');
-  res.setHeader('access-control-allow-origin', '*');
-  res.setHeader('access-control-allow-headers', 'content-type, authorization');
-  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+  if (req.method === 'OPTIONS') { res.writeHead(204, { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type, authorization' }); res.end(); return; }
   if (req.method === 'GET' && u.pathname === '/') {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-    res.end(PAGE);
-    return;
+    return res.end(PAGE);
   }
-  if (req.method === 'GET' && u.pathname === '/api/health') {
-    res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, members: MEMBERS, auth: !!TOKEN, host: HOST, file: logFile.replace(root, '.') }));
-    return;
-  }
-  if (!authorized(req, u)) {
-    res.writeHead(401, { 'content-type': 'application/json', 'www-authenticate': 'Bearer' });
-    res.end('{"error":"unauthorized: set CHAT_TOKEN and pass Authorization: Bearer <token>"}');
-    return;
-  }
+  const m = auth(req); // ②⑤ 一切 API 先过 token（降级模式放行），失败统一 401
+  if (!m) return json(res, 401, { error: 'unauthorized' });
+
   if (req.method === 'GET' && u.pathname === '/api/messages') {
-    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify(readMessages(Number(u.searchParams.get('since') || 0))));
-    return;
+    const hasAfter = u.searchParams.has('after');
+    const hasSince = u.searchParams.has('since');
+    const after = Number(u.searchParams.get('after') || 0);   // v2: seq 游标
+    const since = Number(u.searchParams.get('since') || 0);   // 旧室: ts 游标（兼容）
+    // 游标二选一，不能 OR——否则 since=0 缺省会把全量放回（v1 合并期踩过）
+    let picked;
+    if (hasAfter) picked = msgs.filter((x) => (x.seq || 0) > after);
+    else if (hasSince) picked = msgs.filter((x) => x.ts > since);
+    else picked = msgs.slice(-100);
+    picked = picked.slice(-100);
+    if (hasSince && !hasAfter) return json(res, 200, picked); // 旧客户端：裸数组
+    return json(res, 200, { me: m.name, latest: seq, messages: picked });
   }
   if (req.method === 'GET' && u.pathname === '/api/health') {
-    res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, members: MEMBERS, file: logFile.replace(root, '.') }));
-    return;
+    return json(res, 200, { ok: true, me: m.name, members: ANON ? ['anon(降级模式)'] : IDS, msgs: seq, auth: !ANON });
   }
   if (req.method === 'POST' && u.pathname === '/api/messages') {
+    if (!ANON && !rateOk(m.token)) return json(res, 429, { error: `rate limit ${RATE}/min` });
     let body = '';
     req.on('data', (c) => { body += c; if (body.length > 1e5) req.destroy(); });
     req.on('end', () => {
+      let text = '', from = m.name;
       try {
-        const { from, text } = JSON.parse(body || '{}');
-        if (!text) { res.writeHead(400); res.end('{"error":"text required"}'); return; }
-        const msg = postMessage(from, text);
-        res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify(msg));
-      } catch {
-        res.writeHead(400); res.end('{"error":"bad json"}');
-      }
+        const j = JSON.parse(body || '{}');
+        text = String(j.text || '').trim();
+        if (ANON && !from) from = String(j.from || 'anon').slice(0, 32); // 降级模式才允许自报身份
+      } catch { return json(res, 400, { error: 'bad json' }); }
+      if (!text || text.length > 2000) return json(res, 400, { error: 'text required, <=2000' });
+      if (SECRET_RE.test(text)) return json(res, 400, { error: '疑似密钥/凭据被拦截: 聊天内容会进 git 与云端, 密钥严禁入聊' });
+      // ③/⑥：身份服务端签发（token 模式覆写 body.from）；@寻址服务端解析
+      const msg = { seq: ++seq, id: randomUUID().slice(0, 8), ts: Date.now(), from: from || 'anon', to: tokens ? parseMentions(text) : ['@all'], text };
+      appendFileSync(LOG, JSON.stringify(msg) + '\n');
+      msgs.push(msg);
+      json(res, 200, msg);
     });
     return;
   }
-  res.writeHead(404); res.end('not found');
-});
-
-server.listen(PORT, HOST, () => {
-  postMessage('system', TOKEN
-    ? `聊天室服务已启动（公网模式 ${HOST}:${PORT}，鉴权开启；成员: ${MEMBERS.join(' / ')}；权威记录=仓根 AI-HANDOFF.md）`
-    : `聊天室服务已启动（本机 ${HOST}:${PORT}，免鉴权；成员: ${MEMBERS.join(' / ')}；权威记录=仓根 AI-HANDOFF.md）`);
-  console.log(`[chat] listening on http://${HOST}:${PORT}  auth=${TOKEN ? 'ON' : 'off'}  log=${logFile.replace(root, '.')}`);
+  json(res, 404, { error: 'not found' });
+}).listen(PORT, HOST, () => {
+  console.log(`[room-v2] http://${HOST}:${PORT} mode=${ANON ? 'anon(loopback)' : 'token'} members=${ANON ? '(anon)' : IDS.join(',')} log=${LOG.replace(root, '.')}`);
+  if (ANON) console.warn('[room-v2] 降级模式：未设 ROOM_TOKENS，from 自报有效——仅限本机调试，公网必须 token 模式！');
 });
