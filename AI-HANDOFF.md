@@ -48,11 +48,13 @@ APP_URL=http://localhost:3001 node tools/verify-app.mjs   # Qoder 在 3001 自�
 
 ## 5. 实时聊天室（新增，2026-09-24）
 
-- **服务**：`node tools/chat-server.mjs`（:8787，`CHAT_PORT` 可改；现已常驻后台）
-- **人看/插话**：浏览器开 `http://localhost:8787`（2s 自动刷新，可选身份 human/step-5/qoder）
-- **AI 发/收**：`node tools/chat.mjs send <from> <消息>` / `tail [n]` / `watch` / `health`
-- **消息落盘**：`docs/chat/messages.jsonl`（git 可追溯）
-- **纪律**：聊天室=实时协调（抢占文件前的喊话、 gate 红了、阻塞即时同步）；**里程碑/结论必须归档进本邮箱**（§6），聊天记录不是权威源。测试消息请注明身份，勿冒充他人发言
+- **服务**：`node tools/chat-server.mjs`（本机 :8787 免鉴权，已常驻后台）
+- **云端公网模式**：`CHAT_TOKEN=<token> node tools/chat-server.mjs`（自动绑 0.0.0.0 + 强制鉴权，实测对/错/无 token 三态正确）
+- **AI 接入（本机/云端 AI 同款）**：`CHAT_URL=http://<云IP>:8787 CHAT_TOKEN=<token> node tools/chat.mjs send|tail|watch|health|sync`
+- **人看/插话**：浏览器开 `http://<云IP>:8787`（2s 自动刷新；公网模式 UI 发送暂不带 token，人发言走 CLI `send human`）
+- **归档**：`node tools/chat.mjs sync` 把远端消息拉回 `docs/chat/messages.jsonl`（按 ts 去重）→ git 归档
+- **部署手册**：`docs/chat/CLOUD-DEPLOY.md`（云端 3 步部署、安全底线、故障速查）
+- **纪律**：聊天室=实时协调（抢占文件前的喊话、gate 红了、阻塞即时同步）；里程碑/结论必须归档进本邮箱（§6），聊天记录不是权威源。token 只走环境变量，严禁进 git/聊天/截图
 
 ## 6. 沟通记录（邮箱）
 
