@@ -7,6 +7,8 @@ import { sound } from '../utils/audio';
 import { buildArticulatedCharacter, animateCharacter, ArticulatedCharacter } from './characterBuilder';
 import { PerformanceMonitor, PerfMetricPoint } from './PerformanceMonitor';
 
+const PICKUP_BASE_Y = 1.0;
+
 // Precise track centerline at distance Z (meters)
 export function getTrackCenterX(z: number): number {
   if (z <= 59) return 0;
@@ -119,7 +121,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     aiChar: ArticulatedCharacter | null;
     waterMesh: THREE.Mesh | null;
     trackMeshes: THREE.Mesh[];
-    pickupItems: { mesh: THREE.Mesh; collected: boolean; z: number; x: number }[];
+    pickupItems: { mesh: THREE.Mesh; collected: boolean; z: number; x: number; phase: number }[];
     bridgePlanks: {
       mesh: THREE.Mesh;
       velY: number;
@@ -448,6 +450,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     const trackMeshes: THREE.Mesh[] = [];
 
+    // 桥柱水线: 吃水线处的湿润深色带（比桥体底色更暗）
+    const waterlineMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(palette.trackColor).multiplyScalar(0.35),
+      roughness: 0.85,
+    });
+    const waterlineGeo = new THREE.CylinderGeometry(0.46, 0.46, 0.6, 6);
+
     // Helper to build a track segment with raised edges/curbs
     const createTrackSegment = (x: number, z: number, w: number, l: number) => {
       const segGeo = new THREE.BoxGeometry(w, 0.8, l);
@@ -474,6 +483,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       const pillar2 = new THREE.Mesh(pillarGeo, materials.trackBorder);
       pillar2.position.set(x + w / 2 - 0.3, -1, z + l / 3);
       scene.add(pillar2);
+      const ring1 = new THREE.Mesh(waterlineGeo, waterlineMat);
+      ring1.position.y = 0.95;
+      pillar1.add(ring1);
+      const ring2 = new THREE.Mesh(waterlineGeo, waterlineMat);
+      ring2.position.y = 0.95;
+      pillar2.add(ring2);
     };
 
     createTrackSegment(0, 25, 7, 70); // Seg 1
@@ -528,7 +543,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     }
 
     // 3. Scatter collectible wooden planks along the track
-    const pickupItems: { mesh: THREE.Mesh; collected: boolean; z: number; x: number }[] = [];
+    const pickupItems: { mesh: THREE.Mesh; collected: boolean; z: number; x: number; phase: number }[] = [];
     const plankGeo = new THREE.BoxGeometry(2.4, 0.28, 0.85);
 
     const spawnPlankCluster = (centerZ: number, centerX: number, count: number = 3) => {
@@ -538,10 +553,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         const pMesh = new THREE.Mesh(plankGeo, materials.plank);
         const pz = centerZ + offsetZ;
         const px = centerX + offsetX;
-        pMesh.position.set(px, 1.0, pz);
+        pMesh.position.set(px, PICKUP_BASE_Y, pz);
         pMesh.castShadow = true;
         scene.add(pMesh);
-        pickupItems.push({ mesh: pMesh, collected: false, z: pz, x: px });
+        pickupItems.push({
+          mesh: pMesh,
+          collected: false,
+          z: pz,
+          x: px,
+          phase: (pz * 0.9 + px * 2.3) % (Math.PI * 2),
+        });
       }
     };
 
@@ -851,6 +872,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         }
         posAttr.needsUpdate = true;
         colAttr.needsUpdate = true;
+      }
+
+      // Animate collectible planks: hover bob + slow spin (only near the runner)
+      for (const item of g.pickupItems) {
+        if (item.collected || Math.abs(item.z - g.playerZ) > 80) continue;
+        item.mesh.position.y =
+          PICKUP_BASE_Y + Math.sin(time * 2.4 + item.phase) * 0.16;
+        item.mesh.rotation.y = time * 1.1 + item.phase;
       }
 
       // Game state machine
