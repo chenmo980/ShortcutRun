@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import confetti from 'canvas-confetti';
-import { ColorPalette, VisualSettings, GameMetrics } from '../types';
+import { ColorPalette, VisualSettings } from '../types';
+import { metricsStore } from '../utils/metricsStore';
 import { sound } from '../utils/audio';
 import { buildArticulatedCharacter, animateCharacter, ArticulatedCharacter } from './characterBuilder';
 import { PerformanceMonitor, PerfMetricPoint } from './PerformanceMonitor';
@@ -68,21 +69,17 @@ export const SECTION_SHORTCUTS = [
 interface GameCanvasProps {
   palette: ColorPalette;
   settings: VisualSettings;
-  onMetricsUpdate?: (metrics: GameMetrics) => void;
   onUpdateSettings?: (settings: Partial<VisualSettings>) => void;
 }
 
 export const GameCanvas: React.FC<GameCanvasProps> = ({
   palette,
   settings,
-  onMetricsUpdate,
   onUpdateSettings,
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const settingsRef = useRef<VisualSettings>(settings);
   settingsRef.current = settings;
-  const onMetricsUpdateRef = useRef(onMetricsUpdate);
-  onMetricsUpdateRef.current = onMetricsUpdate;
 
   const [gameState, setGameState] = useState<'idle' | 'running' | 'bridging' | 'drowned' | 'finished'>('idle');
   const [plankCount, setPlankCount] = useState<number>(10);
@@ -109,6 +106,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const [liveRenderMs, setLiveRenderMs] = useState<number>(1.2);
   const [cameraViewMode, setCameraViewMode] = useState<'chase' | 'front' | 'side'>('chase');
   const lastPerfSampleRef = useRef<{ time: number }>({ time: 0 });
+  const lastProgressPushRef = useRef<number>(0);
+  const lastMetricsPushRef = useRef<number>(0);
   const lastTestPickupTriggerRef = useRef<number>(0);
 
   // References for game loop access
@@ -880,8 +879,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         g.speed += (targetSpeed - g.speed) * Math.min(1.0, delta * 6 * friction);
         g.playerZ += g.speed * delta;
 
-        // Update progress meter
-        if (fpsCounter % 4 === 0) {
+        // Update progress meter — 5Hz 时间节流：15Hz 的 setProgressZ 会拖着整棵
+        // GameCanvas 树（含 Recharts 面板）每帧重渲染，是稳态掉帧主因
+        const nowProgress = performance.now();
+        if (nowProgress - lastProgressPushRef.current >= 200) {
+          lastProgressPushRef.current = nowProgress;
           setProgressZ(Math.min(350, Math.max(0, Math.round(g.playerZ))));
         }
 
@@ -1242,7 +1244,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       // Telemetry sampling for Recharts waveform (~4-5 Hz)
       const nowTime = performance.now();
-      if (nowTime - lastPerfSampleRef.current.time >= 220) {
+      if (nowTime - lastPerfSampleRef.current.time >= 1000) {
         lastPerfSampleRef.current.time = nowTime;
         const now = new Date();
         const timeLabel = `${now.getMinutes()}:${String(now.getSeconds()).padStart(2, '0')}.${Math.floor(now.getMilliseconds() / 100)}`;
@@ -1254,9 +1256,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           return next.length > 25 ? next.slice(next.length - 25) : next;
         });
 
-        // Report metrics throttled to prevent UI thrashing
-        if (onMetricsUpdateRef.current) {
-          onMetricsUpdateRef.current({
+        // 体检数字 1Hz 推入外部 store：不走 React state，整树零重渲染
+        if (nowTime - lastMetricsPushRef.current >= 1000) {
+          lastMetricsPushRef.current = nowTime;
+          metricsStore.set({
             score: g.state === 'finished' ? Math.round(g.score * g.finalMultiplier) : g.score,
             planksCarried: g.carriedPlanks,
             planksPlaced: g.bridgePlanks.length,

@@ -4,7 +4,7 @@ import { GameCanvas } from './components/GameCanvas';
 import { ArtStudioPanel } from './components/ArtStudioPanel';
 import { CocosToolkitModal } from './components/CocosToolkitModal';
 import { THEME_PALETTES } from './data/themes';
-import { ColorPalette, VisualSettings, GameMetrics } from './types';
+import { ColorPalette, VisualSettings } from './types';
 import { DEFAULT_PHYSICS_SETTINGS, DEFAULT_IK_SETTINGS } from './data/physicsPresets';
 
 export default function App() {
@@ -29,16 +29,6 @@ export default function App() {
     ...DEFAULT_IK_SETTINGS,
   });
 
-  const [metrics, setMetrics] = useState<GameMetrics>({
-    score: 0,
-    planksCarried: 12,
-    planksPlaced: 0,
-    multiplier: 1,
-    state: 'running',
-    drawCalls: 18,
-    fps: 60,
-  });
-
   const handleSelectPalette = useCallback((p: ColorPalette) => {
     setCurrentPalette(p);
     setSettings((s) => ({ ...s, paletteId: p.id }));
@@ -48,9 +38,7 @@ export default function App() {
     setSettings((s) => ({ ...s, ...newSettings }));
   }, []);
 
-  const handleMetricsUpdate = useCallback((m: GameMetrics) => {
-    setMetrics(m);
-  }, []);
+  const handleOpenCocosModal = useCallback(() => setIsCocosModalOpen(true), []);
 
   return (
     <div className="flex flex-col w-screen h-screen overflow-hidden bg-slate-950 font-sans">
@@ -67,7 +55,6 @@ export default function App() {
           <GameCanvas
             palette={currentPalette}
             settings={settings}
-            onMetricsUpdate={handleMetricsUpdate}
             onUpdateSettings={handleUpdateSettings}
           />
         </main>
@@ -77,10 +64,9 @@ export default function App() {
           <ArtStudioPanel
             currentPalette={currentPalette}
             settings={settings}
-            metrics={metrics}
             onSelectPalette={handleSelectPalette}
             onUpdateSettings={handleUpdateSettings}
-            onOpenCocosModal={() => setIsCocosModalOpen(true)}
+            onOpenCocosModal={handleOpenCocosModal}
           />
         </aside>
       </div>

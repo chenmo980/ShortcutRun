@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useSyncExternalStore } from 'react';
 import {
   Palette,
   Sparkles,
@@ -30,7 +30,8 @@ import {
   Move,
 } from 'lucide-react';
 import { THEME_PALETTES } from '../data/themes';
-import { ColorPalette, VisualSettings, GameMetrics, CharacterModelType, PhysicsFeelPreset } from '../types';
+import { ColorPalette, VisualSettings, CharacterModelType, PhysicsFeelPreset } from '../types';
+import { metricsStore } from '../utils/metricsStore';
 import {
   CHINESE_AESTHETIC_PRESETS,
   generateMixamoFbxConfigJson,
@@ -48,7 +49,6 @@ import {
 interface ArtStudioPanelProps {
   currentPalette: ColorPalette;
   settings: VisualSettings;
-  metrics: GameMetrics;
   onSelectPalette: (palette: ColorPalette) => void;
   onUpdateSettings: (newSettings: Partial<VisualSettings>) => void;
   onOpenCocosModal: () => void;
@@ -175,10 +175,28 @@ const PLANK_STYLES: {
   },
 ];
 
-export const ArtStudioPanel: React.FC<ArtStudioPanelProps> = ({
+// 体检数字订阅叶子：metricsStore 1Hz 更新只重渲染这两张卡，不再拖 1600 行面板整段重渲染
+const PerfMetricCards: React.FC = () => {
+  const metrics = useSyncExternalStore(metricsStore.subscribe, metricsStore.get, metricsStore.get);
+  return (
+    <div className="grid grid-cols-2 gap-2 text-center mb-3">
+      <div className="bg-slate-900/80 p-2 rounded-lg border border-slate-800">
+        <span className="text-[10px] text-slate-400 block">实时绘制批次</span>
+        <span className="text-base font-bold font-mono text-cyan-400">{metrics.drawCalls} DC</span>
+        <span className="text-[9px] text-slate-500 block">建议 ≤ 50 DC</span>
+      </div>
+      <div className="bg-slate-900/80 p-2 rounded-lg border border-slate-800">
+        <span className="text-[10px] text-slate-400 block">已铺木板数</span>
+        <span className="text-base font-bold font-mono text-amber-400">{metrics.planksPlaced} 块</span>
+        <span className="text-[9px] text-emerald-400 block">GPU Instancing</span>
+      </div>
+    </div>
+  );
+};
+
+const ArtStudioPanelInner: React.FC<ArtStudioPanelProps> = ({
   currentPalette,
   settings,
-  metrics,
   onSelectPalette,
   onUpdateSettings,
   onOpenCocosModal,
@@ -1570,18 +1588,7 @@ export const ArtStudioPanel: React.FC<ArtStudioPanelProps> = ({
             </span>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 text-center mb-3">
-            <div className="bg-slate-900/80 p-2 rounded-lg border border-slate-800">
-              <span className="text-[10px] text-slate-400 block">实时绘制批次</span>
-              <span className="text-base font-bold font-mono text-cyan-400">{metrics.drawCalls} DC</span>
-              <span className="text-[9px] text-slate-500 block">建议 ≤ 50 DC</span>
-            </div>
-            <div className="bg-slate-900/80 p-2 rounded-lg border border-slate-800">
-              <span className="text-[10px] text-slate-400 block">已铺木板数</span>
-              <span className="text-base font-bold font-mono text-amber-400">{metrics.planksPlaced} 块</span>
-              <span className="text-[9px] text-emerald-400 block">GPU Instancing</span>
-            </div>
-          </div>
+          <PerfMetricCards />
 
           <div className="text-[11px] text-slate-400 space-y-1.5 bg-slate-900/50 p-2.5 rounded-lg border border-slate-800/60 leading-relaxed">
             <p className="flex items-start gap-1.5">
@@ -1608,3 +1615,5 @@ export const ArtStudioPanel: React.FC<ArtStudioPanelProps> = ({
     </div>
   );
 };
+
+export const ArtStudioPanel = React.memo(ArtStudioPanelInner);

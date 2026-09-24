@@ -29,7 +29,7 @@ interface PerformanceMonitorProps {
 
 type MetricView = 'all' | 'fps' | 'drawCalls' | 'renderMs';
 
-export const PerformanceMonitor: React.FC<PerformanceMonitorProps> = ({
+const PerformanceMonitorInner: React.FC<PerformanceMonitorProps> = ({
   data,
   currentFps,
   currentDrawCalls,
@@ -399,3 +399,5 @@ export const PerformanceMonitor: React.FC<PerformanceMonitorProps> = ({
     </div>
   );
 };
+
+export const PerformanceMonitor = React.memo(PerformanceMonitorInner);
