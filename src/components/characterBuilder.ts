@@ -1280,18 +1280,22 @@ export function animateCharacter(
   // Torso twists with running strides
   char.torso.rotation.y = Math.sin(runCycle) * 0.08;
 
-  // Banking / leaning into steer turns (VOODOO dynamic responsiveness) + 拾取时身体向右侧下探幅度放大
-  const pickupSideRoll = pickupPulse * -0.22 * amp; // 顺应右手捞砖，躯干向右倾斜幅度可调
-  const targetRoll = -steerVelocity * 0.35 + pickupSideRoll;
-  char.torso.rotation.z = THREE.MathUtils.lerp(char.torso.rotation.z, targetRoll, delta * 14);
+  // Banking / leaning into steer turns:
+  // 保持躯干微倾且稳健，避免左右大摆大晃（最大倾角控制在约 ±6.5 度 / 0.11 弧度以内）
+  const clampedSteer = THREE.MathUtils.clamp(steerVelocity, -1.2, 1.2);
+  const steerRoll = -clampedSteer * 0.075;
+  const pickupSideRoll = pickupPulse * -0.05 * amp; // 拾取时轻柔下探微倾，不破坏主体平衡
+  const targetRoll = THREE.MathUtils.clamp(steerRoll + pickupSideRoll, -0.11, 0.11);
+  char.torso.rotation.z = THREE.MathUtils.lerp(char.torso.rotation.z, targetRoll, delta * 12);
 
   // Vertical step bounce (Bobbing) with impact compression
   char.torso.position.y = 0.72 + Math.abs(stride) * 0.12 - pulseSquash * 1.5;
 
   // 3. Head Dynamics & Eye Tracking
-  // Keep head level looking forward towards destination
+  // Keep head level looking forward towards destination with counter-banking
   char.head.rotation.x = -char.torso.rotation.x * 0.75;
   char.head.rotation.y = -char.torso.rotation.y * 0.6;
+  char.head.rotation.z = -char.torso.rotation.z * 0.8;
 
   // Subtle hair micro-bounce
   if (char.hairGroup) {
@@ -1389,7 +1393,7 @@ export function animateCharacter(
     char.rightArm.hand.rotation.x = 0;
   }
 
-  // 6. Planks Stack Mount Point IK 同步与惯性模拟
+  // 6. Planks Stack Mount Point IK 同步与稳态平衡
   // 同步调整手托砖垛挂载点的前后高低，使木板垛与手掌托底完美贴合！
   char.plankMount.position.set(
     0,
@@ -1397,10 +1401,15 @@ export function animateCharacter(
     0.62 + reachOffset * 0.45
   );
 
-  const inertiaFactor = 0.4 + loadFactor * 0.4;
-  const stackRoll = -steerVelocity * inertiaFactor;
-  char.plankMount.rotation.z = THREE.MathUtils.lerp(char.plankMount.rotation.z, stackRoll, delta * 12);
-  char.plankMount.rotation.x = 0.05 + Math.sin(runCycle * 2) * 0.04 - pulseSquash * 0.8;
-  char.plankMount.rotation.y = Math.sin(runCycle) * 0.03;
+  // 消除木板倾斜严重问题：
+  // 由于 plankMount 挂载在 torsoGroup 下，会自动继承躯干的所有倾角；
+  // 双手托砖时手部会自动调整水平以防木板滑落，因此 plankMount 施加反向平衡（Counter-balance），使木板在世界空间保持基本水平端正；
+  // 仅保留极微量的动态缓冲（不超过 ±0.03 弧度），杜绝木板垛翻倾歪斜！
+  const counterBalanceRoll = -char.torso.rotation.z * 0.88;
+  const microInertia = -clampedSteer * 0.01;
+  const targetStackRoll = THREE.MathUtils.clamp(counterBalanceRoll + microInertia, -0.03, 0.03);
+  char.plankMount.rotation.z = THREE.MathUtils.lerp(char.plankMount.rotation.z, targetStackRoll, delta * 14);
+  char.plankMount.rotation.x = 0.05 + Math.sin(runCycle * 2) * 0.025 - pulseSquash * 0.4;
+  char.plankMount.rotation.y = Math.sin(runCycle) * 0.02;
 }
 

@@ -33,6 +33,29 @@ export function getTrackHeading(z: number): number {
   return Math.atan2(x2 - x1, 2 * d);
 }
 
+/**
+ * 计算三维世界中任意 (x, z) 坐标处的地面与斜坡标高 (Ground Elevation)
+ * - 基础栈道与直道表面高度: Y = 0.8
+ * - 水面浮桥木板表面高度: Y = 0.56
+ * - 冲刺终点倍率坡道/阶梯 (Z: 287 ~ 355):
+ *   阶梯共 10 级，每级沿 Z 跨度 6 单位，台阶高度以 0.4 逐级抬升 (H: 0.8 -> 4.4)
+ *   顶层领奖台高度: Y = 4.4
+ */
+export function getGroundHeight(x: number, z: number, isOverWater: boolean = false): number {
+  if (isOverWater) {
+    return 0.56; // 浮在水面上的木板表面标高
+  }
+  if (z < 287) {
+    return 0.8; // 常规栈道路面高度
+  }
+  if (z >= 341) {
+    return 4.4; // 终点最高倍率领奖台表面高度
+  }
+  // 终点冲刺阶梯与坡度段 (Z: 287 ~ 341)
+  const stepIdx = Math.min(9, Math.max(0, Math.floor((z - 287) / 6)));
+  return 0.8 + stepIdx * 0.4;
+}
+
 export const SECTION_SHORTCUTS = [
   { name: '起点直道', z: 0, tag: '0m' },
   { name: '龙骨右弯', z: 65, tag: '65m' },
@@ -107,7 +130,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     particles: { mesh: THREE.Mesh; vel: THREE.Vector3; life: number }[];
     speed: number;
     playerX: number;
+    playerY: number;
     playerZ: number;
+    aiY: number;
     playerVelX: number;
     targetPlayerX: number;
     steerOffset: number;
@@ -140,7 +165,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     particles: [],
     speed: 18,
     playerX: 0,
+    playerY: 0.85,
     playerZ: 0,
+    aiY: 0.85,
     playerVelX: 0,
     targetPlayerX: 0,
     steerOffset: 0,
@@ -167,7 +194,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     if (!g.scene || !g.playerChar) return;
 
     const startX = getTrackCenterX(targetZ);
+    const startY = getGroundHeight(startX, targetZ, false) + 0.05;
     g.playerX = startX;
+    g.playerY = startY;
     g.playerZ = targetZ;
     g.targetPlayerX = startX;
     g.steerOffset = 0;
@@ -184,14 +213,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     }
 
     // Reset player position & limbs
-    g.playerChar.root.position.set(startX, 0.85, targetZ);
+    g.playerChar.root.position.set(startX, startY, targetZ);
     g.playerChar.root.rotation.set(0, getTrackHeading(targetZ), 0);
     g.playerChar.torso.rotation.set(0, 0, 0);
     g.playerChar.torso.position.set(0, 0.72, 0);
 
     // Reset AI position
     if (g.aiChar) {
-      g.aiChar.root.position.set(startX + 2.2, 0.85, targetZ);
+      const aiStartY = getGroundHeight(startX + 2.2, targetZ, false) + 0.05;
+      g.aiY = aiStartY;
+      g.aiChar.root.position.set(startX + 2.2, aiStartY, targetZ);
       g.aiChar.root.rotation.set(0, getTrackHeading(targetZ), 0);
     }
 
@@ -381,7 +412,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       { minZ: 160, maxZ: 220, minX: -8.5, maxX: -1.5 },
       { minZ: 215, maxZ: 240, minX: -8.5, maxX: 3.5 },
       { minZ: 240, maxZ: 290, minX: -3.5, maxX: 3.5 },
-      { minZ: 290, maxZ: 360, minX: -2.5, maxX: 2.5 },
+      { minZ: 287, maxZ: 360, minX: -2.8, maxX: 2.8 },
     ];
 
     const trackMeshes: THREE.Mesh[] = [];
@@ -414,15 +445,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     createTrackSegment(-2.5, 227.5, 12, 7); // Seg 6
     createTrackSegment(0, 265, 7, 50); // Seg 7
 
-    // Multiplier finish stairway
+    // Multiplier finish stairway: 无缝阶梯坡道与胜利领奖台
     const stepCount = 10;
     for (let i = 0; i < stepCount; i++) {
       const stepZ = 290 + i * 6;
       const stepH = 0.8 + i * 0.4;
-      const stepGeo = new THREE.BoxGeometry(5, stepH, 5.5);
-      const stepMat = i === stepCount - 1 ? materials.finish : materials.goldStep;
+      const isTop = i === stepCount - 1;
+      const stepLength = isTop ? 14 : 6.05;
+      const stepGeo = new THREE.BoxGeometry(5.2, stepH, stepLength);
+      const stepMat = isTop ? materials.finish : materials.goldStep;
       const step = new THREE.Mesh(stepGeo, stepMat);
-      step.position.set(0, stepH / 2, stepZ);
+      step.position.set(0, stepH / 2, isTop ? stepZ + 3.5 : stepZ);
       step.receiveShadow = true;
       step.castShadow = true;
       scene.add(step);
@@ -497,7 +530,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       particles: [],
       speed: 16,
       playerX: 0,
+      playerY: 0.85,
       playerZ: 0,
+      aiY: 0.85,
       playerVelX: 0,
       targetPlayerX: 0,
       steerOffset: 0,
@@ -1003,13 +1038,25 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           }
         }
 
-        // Steer velocity for dynamic character banking
-        const steerVelocity = g.targetPlayerX - g.playerX;
+        // Steer velocity for dynamic character banking (smoothly bounded)
+        const rawSteerVel = g.targetPlayerX - g.playerX;
+        const steerVelocity = THREE.MathUtils.clamp(rawSteerVel, -1.2, 1.2);
         g.runCycle += delta * 15;
         const pickupDurationSec = Math.max(0.15, curSettings.pickupDuration ?? 0.45);
         g.pickupPulse = Math.max(0, g.pickupPulse - delta * (1.0 / pickupDurationSec));
 
-        // Footstep ground contact particles
+        // Dynamic terrain elevation & slope climbing (防陷地与上下坡物理自适应)
+        const currentGroundY = getGroundHeight(g.playerX, g.playerZ, g.isOverWater);
+        const forwardGroundY = getGroundHeight(g.playerX, g.playerZ + 0.5, g.isOverWater);
+        const effectiveGroundY = Math.max(currentGroundY, forwardGroundY);
+        const targetPlayerY = effectiveGroundY + 0.05;
+        const minSurfaceY = currentGroundY + 0.05;
+
+        // Smooth elevation tracking with hard lower floor constraint (绝不下陷进入地面与台阶内部)
+        g.playerY = THREE.MathUtils.lerp(g.playerY, targetPlayerY, Math.min(1.0, delta * 24));
+        g.playerY = Math.max(minSurfaceY, g.playerY);
+
+        // Footstep ground contact particles: 紧贴脚底与路面标高
         g.stepTimer += delta * 15;
         if (g.stepTimer >= Math.PI) {
           g.stepTimer -= Math.PI;
@@ -1017,14 +1064,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             const isLeftFoot = Math.sin(g.runCycle) > 0;
             const footX = g.playerX + (isLeftFoot ? -0.22 : 0.22);
             const footZ = g.playerZ - 0.05;
-            const footY = g.isOverWater ? 0.48 : 0.82;
+            const footY = g.playerY - 0.03;
             const stepColor = g.isOverWater ? palette.waterShallow : '#E2E8F0';
             spawnPuff(new THREE.Vector3(footX, footY, footZ), stepColor);
           }
         }
 
-        // Dynamic character heading & position
+        // Dynamic character heading, slope pitch & position
         const trackHeading = getTrackHeading(g.playerZ);
+        const isClimbingSlope = g.playerZ >= 287 && g.playerZ < 342;
+        const targetSlopePitch = isClimbingSlope ? -0.065 : 0;
+
         if (g.playerChar) {
           animateCharacter(
             g.playerChar,
@@ -1042,15 +1092,26 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               armReach: curSettings.holdingArmReach ?? 0.0,
             }
           );
-          g.playerChar.root.position.set(g.playerX, 0.85, g.playerZ);
+          g.playerChar.root.position.set(g.playerX, g.playerY, g.playerZ);
           g.playerChar.root.rotation.y = trackHeading;
+          g.playerChar.root.rotation.x = THREE.MathUtils.lerp(
+            g.playerChar.root.rotation.x,
+            targetSlopePitch,
+            Math.min(1.0, delta * 12)
+          );
         }
 
         // AI competitor runner behavior & animation
         if (g.aiChar) {
           const aiZ = g.playerZ * 0.94 + 5;
           const aiTrackX = getTrackCenterX(aiZ);
-          g.aiChar.root.position.set(aiTrackX + 1.2, 0.85, aiZ);
+          const aiGroundY = getGroundHeight(aiTrackX + 1.2, aiZ, false);
+          const aiForwardGroundY = getGroundHeight(aiTrackX + 1.2, aiZ + 0.5, false);
+          const aiTargetY = Math.max(aiGroundY, aiForwardGroundY) + 0.05;
+          g.aiY = THREE.MathUtils.lerp(g.aiY, aiTargetY, Math.min(1.0, delta * 24));
+          g.aiY = Math.max(aiGroundY + 0.05, g.aiY);
+
+          g.aiChar.root.position.set(aiTrackX + 1.2, g.aiY, aiZ);
           g.aiChar.root.rotation.y = getTrackHeading(aiZ);
 
           animateCharacter(
@@ -1135,35 +1196,35 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         const trackHeading = getTrackHeading(g.playerZ);
 
         let targetCamX = 0;
-        let targetCamY = camHeight;
+        let targetCamY = g.playerY + (camHeight - 0.85);
         let targetCamZ = 0;
         let lookAtX = g.playerX;
-        let lookAtY = 1.6;
+        let lookAtY = g.playerY + 0.8;
         let lookAtZ = g.playerZ;
 
         if (g.cameraViewMode === 'front') {
           // 正前方特写走查：近距离观察齐天小圣的面部、浓眉大眼双高光、如意卷云紧箍儿、黄色战袍交领与金靴
           targetCamX = g.playerX;
-          targetCamY = 2.0;
+          targetCamY = g.playerY + 1.15;
           targetCamZ = g.playerZ + 4.6;
           lookAtX = g.playerX;
-          lookAtY = 1.65;
+          lookAtY = g.playerY + 0.8;
           lookAtZ = g.playerZ;
         } else if (g.cameraViewMode === 'side') {
           // 45° 黄金侧视走查：观察护腕双金箍、腰间虎皮战裙斑纹、背后斜插如意金箍棒与飞扬大红披巾飘带
           targetCamX = g.playerX + 3.8;
-          targetCamY = 2.6;
+          targetCamY = g.playerY + 1.75;
           targetCamZ = g.playerZ + 3.4;
           lookAtX = g.playerX;
-          lookAtY = 1.5;
+          lookAtY = g.playerY + 0.65;
           lookAtZ = g.playerZ;
         } else {
-          // 默认跑酷追尾视角 (Chase Camera)
+          // 默认跑酷追尾视角 (Chase Camera): 动态跟随上下坡高度
           targetCamX = g.playerX * 0.65 - Math.sin(trackHeading) * 3.5;
-          targetCamY = camHeight;
+          targetCamY = g.playerY + (camHeight - 0.85);
           targetCamZ = g.playerZ - camDistZ;
           lookAtX = g.playerX * 0.75;
-          lookAtY = 1.8;
+          lookAtY = g.playerY + 0.95;
           lookAtZ = g.playerZ + 6.5;
         }
 
