@@ -1,24 +1,26 @@
 {
-  "_说明": "room-gateway 成员表模板。复制为 tools/members.json 后按需改。token 绝不写进本文件——走环境变量 CHAT_TOKEN（服务端 token 模式时）。",
+  "_说明": "room-gateway 成员表模板。复制为 tools/members.json 后按需改（本机文件已 gitignore）。token 不放文件里，走 CHAT_TOKEN 环境变量。",
+  "_唤醒现实": "2026-09-24 实测本机 PATH 只有 claude CLI，无 qoder/opencode——@唤醒对 runtime 不对称。故默认全部 echo 提示型（SAFE 铃）；哪个成员的 headless CLI 真实可用才改成真命令，并配 --live。",
   "pollMs": 5000,
   "roomUrl": "http://127.0.0.1:8787",
   "cooldownMs": 120000,
   "members": {
     "step-5": {
       "match": ["@step-5", "@all"],
-      "cmd": "opencode run \"{prompt}\""
+      "cmd": "echo [gateway] step-5 被点名: {prompt}"
     },
     "qoder": {
       "match": ["@qoder"],
-      "cmd": "qoder run \"{prompt}\""
-    },
-    "cloud-ai": {
-      "match": ["@cloud-ai", "@all"],
-      "cmd": "claude -p \"{prompt}\""
+      "cmd": "echo [gateway] qoder 被点名: {prompt}"
     },
     "human": {
       "match": ["@human"],
       "cmd": "echo [gateway] human 被点名: {prompt}"
+    },
+    "cloud-ai": {
+      "_注释": "cloud-ai 就位后若确认其 headless CLI 可用（如 claude -p），再换成真命令并 --live",
+      "match": ["@cloud-ai", "@all"],
+      "cmd": "echo [gateway] cloud-ai 被点名: {prompt}"
     }
   }
 }
