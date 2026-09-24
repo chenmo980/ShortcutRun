@@ -278,7 +278,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     // Scene setup
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(palette.skyBottom);
+    // 天空: skyTop→skyBottom 垂直渐变; 地平线色=雾色, 与远处水面无缝衔接
+    const skyCanvas = document.createElement('canvas');
+    skyCanvas.width = 2;
+    skyCanvas.height = 256;
+    const skyCtx = skyCanvas.getContext('2d')!;
+    const skyGrad = skyCtx.createLinearGradient(0, 0, 0, 256);
+    skyGrad.addColorStop(0, palette.skyTop);
+    skyGrad.addColorStop(0.78, palette.skyBottom);
+    skyGrad.addColorStop(1, palette.skyBottom);
+    skyCtx.fillStyle = skyGrad;
+    skyCtx.fillRect(0, 0, 2, 256);
+    scene.background = new THREE.CanvasTexture(skyCanvas);
     scene.fog = new THREE.FogExp2(palette.skyBottom, 0.007);
 
     // Camera setup
@@ -316,13 +327,23 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     // Materials dictionary
     const materials = {
       water: new THREE.MeshStandardMaterial({
-        color: new THREE.Color(palette.waterShallow),
+        color: 0xffffff,
+        vertexColors: true,
+        flatShading: true,
         roughness: 0.1,
         metalness: 0.2,
       }),
       track: new THREE.MeshStandardMaterial({
         color: new THREE.Color(palette.trackColor),
         roughness: 0.4,
+      }),
+      trackSide: new THREE.MeshStandardMaterial({
+        color: new THREE.Color(palette.trackColor).multiplyScalar(0.68),
+        roughness: 0.55,
+      }),
+      trackBottom: new THREE.MeshStandardMaterial({
+        color: new THREE.Color(palette.trackColor).multiplyScalar(0.45),
+        roughness: 0.7,
       }),
       trackBorder: new THREE.MeshStandardMaterial({
         color: new THREE.Color(palette.trackBorder),
@@ -379,7 +400,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     };
 
     // 1. Water Plane (Large low-poly mesh with animated vertices)
-    const waterGeo = new THREE.PlaneGeometry(350, 450, 40, 40);
+    // 扩到 600x800: 远边缘推进 FogExp2 全雾区, 硬地平线消失
+    const waterGeo = new THREE.PlaneGeometry(600, 800, 60, 80);
     waterGeo.rotateX(-Math.PI / 2);
     const waterMesh = new THREE.Mesh(waterGeo, materials.water);
     waterMesh.position.set(0, 0, 150);
@@ -392,6 +414,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     for (let i = 0; i < waterPos.count; i++) {
       initialWaterY[i] = waterPos.getY(i);
     }
+    // 水面双层色: 波峰=waterShallow / 波谷=waterDeep, 逐帧随波浪写入顶点色
+    const waterColAttr = new Float32Array(waterPos.count * 3);
+    const wShal = new THREE.Color(palette.waterShallow);
+    const wDeep = new THREE.Color(palette.waterDeep);
+    for (let i = 0; i < waterPos.count; i++) {
+      waterColAttr[i * 3] = wShal.r;
+      waterColAttr[i * 3 + 1] = wShal.g;
+      waterColAttr[i * 3 + 2] = wShal.b;
+    }
+    waterGeo.setAttribute('color', new THREE.BufferAttribute(waterColAttr, 3));
 
     // 2. Track Generation: An S-shaped floating boardwalk layout
     // Track bounds define walkable solid ground:
@@ -419,7 +451,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     // Helper to build a track segment with raised edges/curbs
     const createTrackSegment = (x: number, z: number, w: number, l: number) => {
       const segGeo = new THREE.BoxGeometry(w, 0.8, l);
-      const segMesh = new THREE.Mesh(segGeo, materials.track);
+      // 六面分材: 顶面原色, 侧面压暗, 底面最暗——桥体立刻有厚度感
+      const segMesh = new THREE.Mesh(segGeo, [
+        materials.trackSide,
+        materials.trackSide,
+        materials.track,
+        materials.trackBottom,
+        materials.trackSide,
+        materials.trackSide,
+      ]);
       segMesh.position.set(x, 0.4, z);
       segMesh.receiveShadow = true;
       segMesh.castShadow = true;
@@ -557,11 +597,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     // Update stack visual helper (Held proudly in front of runner, supported by arms)
     const updatePlankStackVisual = (count: number) => {
       playerChar.plankMount.clear();
-      const displayCount = Math.min(count, 32);
+      // 视觉封顶 8 块：再多只加高绿塔遮脸（真实数量看 HUD 木板计数）；交错叠放模拟手托柴捆
+      const displayCount = Math.min(count, 8);
       const stackPlankGeo = new THREE.BoxGeometry(1.45, 0.15, 0.55);
       for (let i = 0; i < displayCount; i++) {
         const p = new THREE.Mesh(stackPlankGeo, materials.plank);
-        p.position.set(0, i * 0.155, 0);
+        p.position.set((i % 2 === 0 ? 0.05 : -0.05), i * 0.155, (i % 3 === 1 ? 0.04 : 0));
         p.rotation.y = (i % 2 === 0 ? 0.04 : -0.04);
         p.castShadow = true;
         playerChar.plankMount.add(p);
@@ -710,7 +751,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const spawnPuff = (pos: THREE.Vector3, color: string) => {
       if (!settings.pickupVFX) return;
       const pGeo = new THREE.BoxGeometry(0.25, 0.25, 0.25);
-      const pMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(color) });
+      const pMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(color), transparent: true });
       for (let i = 0; i < 4; i++) {
         const pMesh = new THREE.Mesh(pGeo, pMat);
         pMesh.position.copy(pos);
@@ -776,6 +817,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       // Animate water waves
       if (curSettings.waterWaves && g.waterMesh) {
         const posAttr = waterGeo.attributes.position;
+        const colAttr = waterGeo.attributes.color;
         for (let i = 0; i < posAttr.count; i++) {
           const vx = posAttr.getX(i);
           const vz = posAttr.getZ(i);
@@ -783,8 +825,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             Math.sin(vx * 0.12 + time * 1.8) * 0.35 +
             Math.cos(vz * 0.15 + time * 1.4) * 0.25;
           posAttr.setY(i, initialWaterY[i] + wave);
+          const t = Math.max(0, Math.min(1, (wave + 0.6) / 1.2));
+          colAttr.setXYZ(
+            i,
+            wDeep.r + (wShal.r - wDeep.r) * t,
+            wDeep.g + (wShal.g - wDeep.g) * t,
+            wDeep.b + (wShal.b - wDeep.b) * t
+          );
         }
         posAttr.needsUpdate = true;
+        colAttr.needsUpdate = true;
       }
 
       // Game state machine
@@ -1158,7 +1208,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         p.vel.y -= 9.8 * delta; // Gravity
         if (p.life <= 0) {
           scene.remove(p.mesh);
+          p.mesh.geometry.dispose();
+          (p.mesh.material as THREE.Material).dispose();
           g.particles.splice(i, 1);
+        } else {
+          // 淡出+收小: 消除"地上残留白点"的垃圾感
+          const t = Math.min(1, p.life / 0.35);
+          p.mesh.scale.setScalar(0.25 + 0.75 * t);
+          (p.mesh.material as THREE.MeshBasicMaterial).opacity = t;
         }
       }
 
