@@ -502,15 +502,30 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     // Finish Arch at Z: 288
     const archMat = materials.finish;
-    const archPost1 = new THREE.Mesh(new THREE.BoxGeometry(0.8, 6, 0.8), archMat);
-    archPost1.position.set(-3.5, 3, 288);
-    scene.add(archPost1);
-    const archPost2 = new THREE.Mesh(new THREE.BoxGeometry(0.8, 6, 0.8), archMat);
-    archPost2.position.set(3.5, 3, 288);
-    scene.add(archPost2);
-    const archTop = new THREE.Mesh(new THREE.BoxGeometry(8, 1.2, 1), archMat);
-    archTop.position.set(0, 6, 288);
-    scene.add(archTop);
+    // 龙门: 糖果条纹柱+顶梁+白横幅(原为三块同色板, 远景识别度差)
+    const archWhite = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
+    {
+      const bands = 4;
+      const bandH = 6 / bands;
+      for (let side = -1; side <= 1; side += 2) {
+        for (let b = 0; b < bands; b++) {
+          const band = new THREE.Mesh(
+            new THREE.BoxGeometry(0.85, bandH, 0.85),
+            b % 2 === 0 ? archMat : archWhite
+          );
+          band.position.set(side * 3.5, bandH / 2 + b * bandH, 288);
+          band.castShadow = true;
+          scene.add(band);
+        }
+      }
+      const archTop = new THREE.Mesh(new THREE.BoxGeometry(8, 1.4, 1), archMat);
+      archTop.position.set(0, 6.7, 288);
+      archTop.castShadow = true;
+      scene.add(archTop);
+      const banner = new THREE.Mesh(new THREE.BoxGeometry(6.4, 0.9, 0.2), archWhite);
+      banner.position.set(0, 6.7, 287.39);
+      scene.add(banner);
+    }
 
     // 3. Scatter collectible wooden planks along the track
     const pickupItems: { mesh: THREE.Mesh; collected: boolean; z: number; x: number }[] = [];
@@ -748,6 +763,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     resizeObserver.observe(container);
 
     // Particle puff helper for bridge & plank pickup
+    const footDustColor = new THREE.Color(palette.trackColor).multiplyScalar(0.78).getStyle();
     const spawnPuff = (pos: THREE.Vector3, color: string) => {
       if (!settings.pickupVFX) return;
       const pGeo = new THREE.BoxGeometry(0.25, 0.25, 0.25);
@@ -1117,7 +1133,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             const footX = g.playerX + (isLeftFoot ? -0.22 : 0.22);
             const footZ = g.playerZ - 0.05;
             const footY = g.playerY - 0.03;
-            const stepColor = g.isOverWater ? palette.waterShallow : '#E2E8F0';
+            const stepColor = g.isOverWater ? palette.waterShallow : footDustColor;
             spawnPuff(new THREE.Vector3(footX, footY, footZ), stepColor);
           }
         }
