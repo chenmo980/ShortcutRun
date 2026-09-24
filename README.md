@@ -1,31 +1,22 @@
-# ShortcutRun
+# Shortcut Run 3D (纯净新版)
 
-Shortcut Run（VOODOO）玩法的微信小游戏复刻 · **灰模原型 v0.1**
+基于 **Three.js + React + Tailwind CSS** 的高性能轻量 3D 跑酷与水上近道冲刺游戏。
 
-- 引擎：Cocos Creator 3.8
-- 状态：玩法闭环已完成，等待手感验证（G1 门禁）
-- 玩法：自动前进 → 吃砖块 → 断崖处砖够自动铺桥、砖不够掉落 → 终点门验砖开门
+## ✨ 特性与架构
+- **自主 3D 角色系统**：齐天小圣（孙悟空）、忍者刺客、阳光少年、学院少女等轻量低模低多边形网格与骨骼层级。
+- **IK 动作动力学**：平稳跑步姿态、左右微倾稳定（防过度侧倾）、双手托板垛反向水平平衡、前倾冲刺爬坡。
+- **地形与阶梯物理**：三维标高动态解算，包含水面浮桥（Y=0.56）、常规跑道（Y=0.8）、10 级倍率阶梯与终点领奖台（Y=4.4），彻底解决穿模与下陷问题。
+- **低开销渲染**：合批优化、视锥剔除、单 Pass 动态水波与扬尘粒子，稳定 60 FPS。
+- **零依赖黑盒**：彻底剔除旧版臃肿的 patch 与 adapter 冲突，秒级启动与构建。
 
-## 快速开始
-
-1. Cocos Dashboard → 导入 → 选择本目录
-2. 层级管理器右键 → 创建 → 3D 对象 → Box，拖到 assets 生成 `box.prefab`
-3. 新建场景，根节点建空节点挂 `GameApp` 组件，拖入 prefab
-4. 按 ▶ 预览：鼠标拖动 / `A` `D` 转向
-
-详细步骤、调参说明见 [SETUP.md](SETUP.md)。
-
-## 目录
-
-```
-assets/scripts/   全部游戏逻辑（config.ts 是唯一数值源）
-tools/smoke.ts    关卡生成器测试（node tools/smoke.ts）
-SETUP.md          装配与调参文档
-AI-TEAM.md        多 AI 协作方案
-```
-
-## 测试
-
+## 🚀 启动与调试
 ```bash
-node tools/smoke.ts
+npm install
+npm run dev
+```
+
+## 📦 打包构建
+```bash
+npm run build
+npm run lint
 ```
