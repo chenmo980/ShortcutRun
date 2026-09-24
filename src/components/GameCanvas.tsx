@@ -537,7 +537,25 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       archTop.position.set(0, 6.7, 288);
       archTop.castShadow = true;
       scene.add(archTop);
-      const banner = new THREE.Mesh(new THREE.BoxGeometry(6.4, 0.9, 0.2), archWhite);
+      // 横幅: 空白牌改为"终点 FINISH"文字贴图(挂迎面nz侧, 跑者视角可读)
+      const bannerCanvas = document.createElement('canvas');
+      bannerCanvas.width = 512;
+      bannerCanvas.height = 72;
+      const bCtx = bannerCanvas.getContext('2d')!;
+      bCtx.fillStyle = '#ffffff';
+      bCtx.fillRect(0, 0, 512, 72);
+      const archHex = '#' + (archMat as THREE.MeshStandardMaterial).color.getHexString();
+      bCtx.fillStyle = archHex;
+      bCtx.font = 'bold 46px "Microsoft YaHei", sans-serif';
+      bCtx.textAlign = 'center';
+      bCtx.textBaseline = 'middle';
+      bCtx.fillText('终点 FINISH', 256, 38);
+      const bannerTex = new THREE.CanvasTexture(bannerCanvas);
+      bannerTex.colorSpace = THREE.SRGBColorSpace;
+      const bannerFace = new THREE.MeshStandardMaterial({ map: bannerTex, roughness: 0.5 });
+      const banner = new THREE.Mesh(new THREE.BoxGeometry(6.4, 0.9, 0.2), [
+        archWhite, archWhite, archWhite, archWhite, archWhite, bannerFace,
+      ]);
       banner.position.set(0, 6.7, 287.39);
       scene.add(banner);
     }
