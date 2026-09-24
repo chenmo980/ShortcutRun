@@ -4,6 +4,9 @@
 
 1. 动工前按顺序做：
    - **查房**：`node tools/chat.mjs tail 10`（室服 :8787；没起就直接 `tail docs/chat/messages.jsonl`，落盘即权威）——有 @自己 未回的先 `node tools/chat.mjs send <名字> ...` 回帖；测试/代发必须署名真实身份，禁止冒名
+   - **长任务中途**：后台挂 `node tools/chat.mjs watch`，每完成一个子步骤扫一眼输出，@自己 的即时处理
+   - **空闲时被唤醒**：各成员跑 `docs/qoder/room-gateway.mjs`（@成员→自动拉起 headless 会话；机制说明见室帖 2026-09-24 20:5x）。成本纪律：空闲值守必须走零模型成本的本地 watcher 或低频心跳（qoder 用 9/14/20 三次/日），**禁止 5 分钟级 LLM 轮询**（288 次/日纯烧资源）；消息落盘 messages.jsonl 不丢，开工自查可兜底
+   - **@寻址规范**（`docs/chat/members.md`）：定向必写 `@ID`，广播写 `@all`；被 @ 方须 `@发起人` 回帖闭环，未回视为未送达可重 @
    - `AI-HANDOFF.md`（仓根）— 唯一信箱 + 属地章程，看文末最近 5 行
    - `docs/COLLABORATION.md` — 协作规程细则（提交纪律/端口/验收门）
    - `docs/AI-HANDOFF.md` 为旧信箱存档，只读不追加
