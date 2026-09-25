@@ -1875,8 +1875,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       {/* Top Floating HUD: Telemetry & Testing Quick Toggles —— 轮81: 徽标改挂右下后撤pr-[17rem]让位带(登记窗口内与PerformanceMonitor同批落地) */}
       <div className="absolute top-3 left-3 right-3 flex flex-wrap items-center justify-between gap-2 pointer-events-none z-10">
-        {/* Left Side: Planks, State, Progress —— min-w-0: flex默认min-width:auto会被nowrap进度chip(209px)撑住不随父pr收缩, 必须显式放开 */}
-        <div className="flex min-w-0 flex-wrap items-center gap-2 pointer-events-auto">
+        {/* Left Side: Planks, State, Progress —— min-w-0: flex默认min-width:auto会被nowrap进度chip(209px)撑住不随父pr收缩, 必须显式放开; 轮89: 轮85默认折叠后徽标常驻md右上(右缘起于~224px宽处), 左组限宽让位→chips自行wrap到第二行, 1280+(lg)不受限零回归 */}
+        <div className="flex min-w-0 md:max-w-[calc(100%-15rem)] xl:max-w-none flex-wrap items-center gap-2 pointer-events-auto">
           {/* Carried Planks Badge */}
           <div className="flex items-center gap-2 bg-slate-900/85 backdrop-blur-md border border-slate-700/80 px-3 py-1.5 rounded-xl shadow-lg">
             <div
@@ -2069,9 +2069,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         currentRenderMs={liveRenderMs}
       />
 
-      {/* Bottom Section Quick Jump Bar (竖屏窄屏换行而非横滚: 秒传按钮须始终可见可点; 轮77: 窄屏默认折叠成徽标防遮挡画面) */}
+      {/* Bottom Section Quick Jump Bar (竖屏窄屏换行而非横滚: 秒传按钮须始终可见可点; 轮77: 窄屏默认折叠成徽标防遮挡画面; 轮89: 中挂底部会压住md带wrap后的顶带第3行(896x414实锤开关/镜头COVERED), 且桌面右上徽标是轮85默认常驻→底部整条让给秒传, 改挂左下) */}
       {jumpBarOpen ? (
-      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex flex-wrap justify-center items-center gap-1.5 bg-slate-950/85 backdrop-blur-md border border-slate-700/80 px-3 py-1.5 rounded-2xl shadow-2xl z-10 max-w-[95vw]">
+      <div className="absolute bottom-3 left-3 flex flex-wrap justify-start items-center gap-1.5 bg-slate-950/85 backdrop-blur-md border border-slate-700/80 px-3 py-1.5 rounded-2xl shadow-2xl z-10 max-w-[95vw]">
         <button
           onClick={() => setJumpBarOpen(false)}
           className="text-[11px] font-bold text-slate-400 hover:text-amber-300 shrink-0 mr-1 flex items-center gap-1 cursor-pointer"
