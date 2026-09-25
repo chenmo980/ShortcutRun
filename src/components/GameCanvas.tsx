@@ -509,6 +509,22 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       { minZ: 287, maxZ: 360, minX: -2.8, maxX: 2.8 },
     ];
 
+    // 轮97b: 预计算可铺板水道=相邻甲板矩形间的Z断口, X实宽取两甲板重叠段。
+    // 落板行按水道真实宽度铺满(原锚playerX±2.4, 拐弯操舵偏中心时整侧露海)
+    const waterChannels: { minZ: number; maxZ: number; minX: number; maxX: number }[] = [];
+    for (let i = 0; i < trackBounds.length - 1; i++) {
+      const a = trackBounds[i];
+      const b = trackBounds[i + 1];
+      if (a.maxZ < b.minZ) {
+        waterChannels.push({
+          minZ: a.maxZ,
+          maxZ: b.minZ,
+          minX: Math.max(a.minX, b.minX),
+          maxX: Math.min(a.maxX, b.maxX),
+        });
+      }
+    }
+
     const trackMeshes: THREE.Mesh[] = [];
 
     // 桥柱水线: 吃水线处的湿润深色带（比桥体底色更暗）+ 水面泡沫环
@@ -1010,8 +1026,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       for (let i = 0; i < bridgePlanks.length; i++) writeBridgeInstance(i);
       bridgeMesh.instanceMatrix.needsUpdate = true;
     };
-    const compactBridgeIfNeeded = () => {
-      if (bridgePlanks.length + 3 <= BRIDGE_MAX) return;
+    const compactBridgeIfNeeded = (incoming = 3) => {
+      if (bridgePlanks.length + incoming <= BRIDGE_MAX) return;
       bridgePlanks.splice(0, Math.min(12, bridgePlanks.length));
       bridgePlanks.forEach((p, i) => {
         p.idx = i;
@@ -1560,13 +1576,25 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             const impactSinkY = 0.45 - 0.12 * (1.2 - dampingVal * 0.5);
             const rowVelY = -0.65 * (1.15 - dampingVal * 0.5);
             const rowPhase = Math.random() * Math.PI * 2;
-            // bPlankGeo X宽2.6; 3列@±2.4间距→总跨7.4m≈直道甲板宽, 邻列0.2m搭接无缝
-            const colOffsets = [-2.4, 0, 2.4];
-            compactBridgeIfNeeded();
-            for (const dx of colOffsets) {
+            // bPlankGeo X宽2.6; 轮97b: 列数/列位按所在水道实宽(+两侧0.3m压边)均布,
+            // 任何操舵位置都整幅盖死缺口; 未知断口回退playerX 3列
+            const ch = waterChannels.find(
+              (c) => g.lastBridgeDropZ > c.minZ - 1.5 && g.lastBridgeDropZ < c.maxZ + 1.5
+            );
+            const colXs: number[] = [];
+            if (ch) {
+              const pad = 0.3;
+              const w = ch.maxX - ch.minX + pad * 2;
+              const n = Math.max(3, Math.ceil(w / 2.3));
+              for (let k = 0; k < n; k++) colXs.push(ch.minX - pad + ((k + 0.5) * w) / n);
+            } else {
+              colXs.push(g.playerX - 2.4, g.playerX, g.playerX + 2.4);
+            }
+            compactBridgeIfNeeded(colXs.length);
+            for (const x of colXs) {
               const bp = {
                 idx: bridgePlanks.length,
-                x: g.playerX + dx,
+                x,
                 z: g.lastBridgeDropZ,
                 y: impactSinkY,
                 velY: rowVelY,
