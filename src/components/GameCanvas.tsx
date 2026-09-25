@@ -366,6 +366,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         roughness: 0.5,
       }),
       plank: new THREE.MeshStandardMaterial({
+        vertexColors: true,
         color:
           settings.plankStyle === 'bamboo_raft'
             ? new THREE.Color('#22C55E')
@@ -414,11 +415,21 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         roughness: 0.2,
       }),
     };
-    // 轮14 桥板厚度感配套: 侧面/底面=板材质克隆压暗(保留金/玉/霓虹的metalness/emissive), 场景级共享
-    const plankSideMat = materials.plank.clone();
-    plankSideMat.color.multiplyScalar(0.68);
-    const plankBottomMat = materials.plank.clone();
-    plankBottomMat.color.multiplyScalar(0.42);
+    // 轮19 厚度感回退修复: 轮14/18 六面分材使每块板 6 draw calls(DC 275→558), 小游戏预算不可接受
+    // → 改 BoxGeometry 顶点色(顶1.0/侧0.68/底0.42 乘材质色), 单材质单 DC, 观感等价
+    const shadeBoxGeo = (geo: THREE.BoxGeometry, side = 0.68, bottom = 0.42) => {
+      const c = new Float32Array(24 * 3);
+      const put = (i0: number, v: number) => {
+        for (let i = i0; i < i0 + 4; i++) {
+          c[i * 3] = v;
+          c[i * 3 + 1] = v;
+          c[i * 3 + 2] = v;
+        }
+      };
+      put(0, side); put(4, side); put(8, 1); put(12, bottom); put(16, side); put(20, side);
+      geo.setAttribute('color', new THREE.BufferAttribute(c, 3));
+      return geo;
+    };
 
     // 1. Water Plane (Large low-poly mesh with animated vertices)
     // 扩到 600x800: 远边缘推进 FogExp2 全雾区, 硬地平线消失
@@ -694,7 +705,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     // 3. Scatter collectible wooden planks along the track
     const pickupItems: { mesh: THREE.Mesh; collected: boolean; z: number; x: number; phase: number }[] = [];
-    const plankGeo = new THREE.BoxGeometry(2.4, 0.28, 0.85);
+    // 轮19: 拾取板/手持堆/桥板三种几何共享+顶点色分面(原轮14/18六面材质数组每板6 DC)
+    const plankGeo = shadeBoxGeo(new THREE.BoxGeometry(2.4, 0.28, 0.85));
+    const stackPlankGeo = shadeBoxGeo(new THREE.BoxGeometry(1.45, 0.15, 0.55));
+    const bPlankGeo = shadeBoxGeo(new THREE.BoxGeometry(2.6, 0.22, 1.4));
 
     const spawnPlankCluster = (centerZ: number, centerX: number, count: number = 3) => {
       for (let i = 0; i < count; i++) {
@@ -786,7 +800,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       playerChar.plankMount.clear();
       // 视觉封顶 8 块：再多只加高绿塔遮脸（真实数量看 HUD 木板计数）；交错叠放模拟手托柴捆
       const displayCount = Math.min(count, 8);
-      const stackPlankGeo = new THREE.BoxGeometry(1.45, 0.15, 0.55);
       for (let i = 0; i < displayCount; i++) {
         const p = new THREE.Mesh(stackPlankGeo, materials.plank);
         p.position.set((i % 2 === 0 ? 0.05 : -0.05), i * 0.155, (i % 3 === 1 ? 0.04 : 0));
@@ -1191,17 +1204,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
               sound.playBridgePlace();
 
-              // Spawn physical bridge plank at current water coordinate with initial impact sink
-              // 轮14 桥板厚度感: 单色平贴绿块改六面分材(顶=板色/侧=压暗70%/底=45%), clone保留金/玉/霓虹材质属性
-              const plankMat = materials.plank;
-              const bPlank = new THREE.Mesh(
-                new THREE.BoxGeometry(2.6, 0.22, 1.4),
-                [
-                  plankSideMat, plankSideMat,
-                  plankMat, plankBottomMat,
-                  plankSideMat, plankSideMat,
-                ]
-              );
+              // 轮19: 桥板共享几何+顶点色分面(原每板 new BoxGeometry + 六材数组 6 DC)
+              const bPlank = new THREE.Mesh(bPlankGeo, materials.plank);
               const dampingVal = curSettings.waterDamping ?? 0.75;
               const impactSinkY = 0.45 - 0.12 * (1.2 - dampingVal * 0.5);
               bPlank.position.set(g.playerX, impactSinkY, g.playerZ);
