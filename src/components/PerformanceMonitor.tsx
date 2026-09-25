@@ -35,8 +35,8 @@ const PerformanceMonitorInner: React.FC<PerformanceMonitorProps> = ({
   currentDrawCalls,
   currentRenderMs,
 }) => {
-  // 轮66登记/72落地: 窄屏(<768px竖屏)下展开面板(~384px宽)会盖满上半屏canvas, 默认折叠成单行FPS徽标(点击即展开); 桌面初始态不变
-  const [isMinimized, setIsMinimized] = useState(() => window.innerWidth < 768);
+  // 轮85: 展开面板top-right w-96与右上开关组必交叠(与宽度无关), 全端默认折叠成右下徽标根治遮挡; 展开降级为用户显式临时dev态
+  const [isMinimized, setIsMinimized] = useState(() => true);
   const [activeMetric, setActiveMetric] = useState<MetricView>('all');
 
   // Compute summary stats
@@ -60,7 +60,8 @@ const PerformanceMonitorInner: React.FC<PerformanceMonitorProps> = ({
           <Activity className="w-4 h-4 text-cyan-400 group-hover:scale-110 transition-transform animate-pulse" />
           <div className="flex items-center gap-2">
             <span className="text-xs font-mono font-bold" style={{ color: fpsColor }}>
-              {currentFps} FPS
+              {currentFps}
+              <span className="text-[10px] font-normal">fps</span>
             </span>
             <span className="text-slate-500 text-xs">|</span>
             <span className="text-xs font-mono text-amber-400">
