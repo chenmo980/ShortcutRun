@@ -1873,10 +1873,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     <div className="relative w-full h-full overflow-hidden select-none bg-slate-900">
       <div ref={mountRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
 
-      {/* Top Floating HUD: Telemetry & Testing Quick Toggles */}
-      <div className="absolute top-3 left-3 right-3 flex flex-wrap items-center justify-between gap-2 pointer-events-none z-10">
-        {/* Left Side: Planks, State, Progress —— 轮78: 竖屏下右缘预留遥测徽标带(~10rem), 否则奔跑中chip被top-4 right-4徽标压住(r77帧实锤) */}
-        <div className="flex flex-wrap items-center gap-2 pointer-events-auto pr-[17rem] md:pr-0">
+      {/* Top Floating HUD: Telemetry & Testing Quick Toggles —— 轮80: 徽标让位带从左侧chip组上移到本容器pr(轮78 pr挂child上, 轮79 nowrap把min-content撑到481致永不换行=回归复发根因) */}
+      <div className="absolute top-3 left-3 right-3 pr-[17rem] md:pr-3 flex flex-wrap items-center justify-between gap-2 pointer-events-none z-10">
+        {/* Left Side: Planks, State, Progress —— min-w-0: flex默认min-width:auto会被nowrap进度chip(209px)撑住不随父pr收缩, 必须显式放开 */}
+        <div className="flex min-w-0 flex-wrap items-center gap-2 pointer-events-auto">
           {/* Carried Planks Badge */}
           <div className="flex items-center gap-2 bg-slate-900/85 backdrop-blur-md border border-slate-700/80 px-3 py-1.5 rounded-xl shadow-lg">
             <div
@@ -1928,8 +1928,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           </div>
         </div>
 
-        {/* Right Side: Quick Action Toggles (Auto-Pilot, Infinite Planks, Auto-Loop, Pause) */}
-        <div className="flex items-center gap-1.5 pointer-events-auto bg-slate-900/90 backdrop-blur-md border border-slate-700/80 p-1 rounded-xl shadow-xl">
+        {/* Right Side: Quick Action Toggles (Auto-Pilot, Infinite Planks, Auto-Loop, Pause) —— 轮80: 原不换行整组~560px在414视口右缘裁掉正前特写/3/4侧颜(r78帧实锤), 加wrap让镜头组落到第二行 */}
+        <div className="flex flex-wrap items-center justify-end gap-1.5 pointer-events-auto bg-slate-900/90 backdrop-blur-md border border-slate-700/80 p-1 rounded-xl shadow-xl">
           {/* Auto-Pilot Toggle */}
           <button
             onClick={() => onUpdateSettings?.({ autoPilot: !settings.autoPilot })}
