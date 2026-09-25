@@ -327,6 +327,24 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     scene.add(dirLight);
 
     // Materials dictionary
+    // 轮10 赛道色带协调: 顶面不再直取 palette 原色——
+    // 浅色系(l>0.85)降饱和+明度压到0.9一档, 根治"惨白跑道 vs 金色阶梯/彩侧沿"断层;
+    // 深色系仅微降饱和不动明度(赛博/灰模不回归); 侧沿=顶面压暗后向 trackBorder 借 16% 色相,
+    // 成为 顶面↔桥柱/边界 的中间过渡带, 全主题色带梯度: 顶面 → 侧沿(暖化) → 桥柱(主题色)
+    const trackTopColor = new THREE.Color(palette.trackColor);
+    {
+      const hsl = { h: 0, s: 0, l: 0 };
+      trackTopColor.getHSL(hsl, THREE.SRGBColorSpace);
+      if (hsl.l > 0.85) {
+        trackTopColor.setHSL(hsl.h, hsl.s * 0.55, 0.9, THREE.SRGBColorSpace);
+      } else {
+        trackTopColor.setHSL(hsl.h, hsl.s * 0.85, hsl.l, THREE.SRGBColorSpace);
+      }
+    }
+    const trackSideColor = trackTopColor
+      .clone()
+      .multiplyScalar(0.72)
+      .lerp(new THREE.Color(palette.trackBorder), 0.16);
     const materials = {
       water: new THREE.MeshStandardMaterial({
         color: 0xffffff,
@@ -336,15 +354,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         metalness: 0.2,
       }),
       track: new THREE.MeshStandardMaterial({
-        color: new THREE.Color(palette.trackColor),
+        color: trackTopColor.clone(),
         roughness: 0.4,
       }),
       trackSide: new THREE.MeshStandardMaterial({
-        color: new THREE.Color(palette.trackColor).multiplyScalar(0.68),
+        color: trackSideColor.clone(),
         roughness: 0.55,
       }),
       trackBottom: new THREE.MeshStandardMaterial({
-        color: new THREE.Color(palette.trackColor).multiplyScalar(0.45),
+        color: trackTopColor.clone().multiplyScalar(0.45),
         roughness: 0.7,
       }),
       trackBorder: new THREE.MeshStandardMaterial({
@@ -457,7 +475,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     // 桥柱水线: 吃水线处的湿润深色带（比桥体底色更暗）+ 水面泡沫环
     const waterlineMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(palette.trackColor).multiplyScalar(0.35),
+      color: trackTopColor.clone().multiplyScalar(0.35),
       roughness: 0.85,
     });
     const waterlineGeo = new THREE.CylinderGeometry(0.46, 0.46, 0.6, 6);
@@ -525,14 +543,25 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     createTrackSegment(0, 265, 7, 50); // Seg 7
 
     // Multiplier finish stairway: 无缝阶梯坡道与胜利领奖台
+    // 轮10: 金阶底色从"跑道顶面同系淡金"逐级渐变到纯金#FFD166——
+    // 最下一级贴近跑道色(过渡带), 逐级加金, 顶面→阶梯色带连续无断层(全主题通用)
     const stepCount = 10;
+    const goldColor = new THREE.Color('#FFD166');
     for (let i = 0; i < stepCount; i++) {
       const stepZ = 290 + i * 6;
       const stepH = 0.8 + i * 0.4;
       const isTop = i === stepCount - 1;
       const stepLength = isTop ? 14 : 6.05;
       const stepGeo = new THREE.BoxGeometry(5.2, stepH, stepLength);
-      const stepMat = isTop ? materials.finish : materials.goldStep;
+      const stepMat = isTop
+        ? materials.finish
+        : new THREE.MeshStandardMaterial({
+            color: trackTopColor
+              .clone()
+              .lerp(goldColor, 0.2 + 0.8 * (i / (stepCount - 2))),
+            metalness: 0.4,
+            roughness: 0.2,
+          });
       const step = new THREE.Mesh(stepGeo, stepMat);
       step.position.set(0, stepH / 2, isTop ? stepZ + 3.5 : stepZ);
       step.receiveShadow = true;
@@ -827,7 +856,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     resizeObserver.observe(container);
 
     // Particle puff helper for bridge & plank pickup
-    const footDustColor = new THREE.Color(palette.trackColor).multiplyScalar(0.78).getStyle();
+    const footDustColor = trackTopColor.clone().multiplyScalar(0.78).getStyle();
     const spawnPuff = (pos: THREE.Vector3, color: string) => {
       if (!settings.pickupVFX) return;
       const pGeo = new THREE.BoxGeometry(0.25, 0.25, 0.25);
