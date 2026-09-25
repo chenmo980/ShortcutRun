@@ -2047,8 +2047,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         currentRenderMs={liveRenderMs}
       />
 
-      {/* Bottom Section Quick Jump Bar */}
-      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-slate-950/85 backdrop-blur-md border border-slate-700/80 px-3 py-1.5 rounded-2xl shadow-2xl z-10 max-w-[95vw] overflow-x-auto">
+      {/* Bottom Section Quick Jump Bar (竖屏窄屏换行而非横滚: 秒传按钮须始终可见可点) */}
+      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex flex-wrap justify-center items-center gap-1.5 bg-slate-950/85 backdrop-blur-md border border-slate-700/80 px-3 py-1.5 rounded-2xl shadow-2xl z-10 max-w-[95vw]">
         <span className="text-[11px] font-bold text-slate-400 shrink-0 mr-1 flex items-center gap-1">
           <span>📍</span>
           <span>路段秒传:</span>
