@@ -1216,14 +1216,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         }
       }
 
-      // Handle pause state
-      if (g.isPaused) {
-        renderer.render(scene, camera);
-        return;
-      }
+      // Handle pause state: 轮44起暂停只冻结仿真块(下方逐块 frozen 门), 相机插值与重绘继续
+      // (原整帧早退在相机lerp之前: 暂停中切机位相机永久冻结半路, 取证实锤210m路点拍到65m视角)
+      const frozen = g.isPaused;
 
       // Animate water waves
-      if (curSettings.waterWaves && g.waterMesh) {
+      if (!frozen && curSettings.waterWaves && g.waterMesh) {
         const posAttr = waterGeo.attributes.position;
         const colAttr = waterGeo.attributes.color;
         for (let i = 0; i < posAttr.count; i++) {
@@ -1250,7 +1248,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       // 轮37: 经 writePickupInstance 写实例矩阵，距离窗外实例静止在 init 位姿
       let bobUpdated = false;
       for (const item of g.pickupItems) {
-        if (item.collected || Math.abs(item.z - g.playerZ) > 80) continue;
+        if (frozen || item.collected || Math.abs(item.z - g.playerZ) > 80) continue;
         item.y = PICKUP_BASE_Y + Math.sin(time * 2.4 + item.phase) * 0.16;
         writePickupInstance(
           item,
@@ -1263,7 +1261,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       if (bobUpdated) pickupMesh.instanceMatrix.needsUpdate = true;
 
       // Game state machine
-      if (g.state === 'running' || g.state === 'bridging') {
+      if (!frozen && (g.state === 'running' || g.state === 'bridging')) {
         // --- 键盘 A/D 速度矢量插值 (Velocity Interpolation) 与 D 键灵敏度曲线微调 ---
         const baseSteerSpeed = 17.0;
         let targetVelocityX = 0;
@@ -1625,7 +1623,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       }
 
       // Animate particles
-      for (let i = g.particles.length - 1; i >= 0; i--) {
+      for (let i = g.particles.length - 1; !frozen && i >= 0; i--) {
         const p = g.particles[i];
         p.life -= delta;
         p.mesh.position.addScaledVector(p.vel, delta);
@@ -1648,7 +1646,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       const springK = (curSettings.buoyancySpring ?? 1.20) * 38;
       const dampingCoeff = waterDamp * 16 + 3.8;
 
-      for (let i = 0; i < g.bridgePlanks.length; i++) {
+      for (let i = 0; !frozen && i < g.bridgePlanks.length; i++) {
         const bp = g.bridgePlanks[i];
         // 轮24核查结论: 0.45静止高度与getGroundHeight水上0.56(板顶=跑者站高)联动,
         // 改贴水会脚悬空+上下桥0.58m台阶, 悬浮踏石为自洽设计, 维持原值
