@@ -483,10 +483,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const foamMat = new THREE.MeshBasicMaterial({
       color: 0xffffff,
       transparent: true,
-      opacity: 0.5,
+      opacity: 0.65,
       depthWrite: false,
     });
-    const foamGeo = new THREE.RingGeometry(0.42, 0.85, 12);
+    const foamGeo = new THREE.RingGeometry(0.45, 1.05, 14);
 
     // Helper to build a track segment with raised edges/curbs
     // 轮13 铺板拼缝: 顶面不再整段纯色——CanvasTexture 每4m一道低对比接缝+交替微色差板,
@@ -573,27 +573,27 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       scene.add(segMesh);
       trackMeshes.push(segMesh);
 
-      // Support pillars in the water
+      // 轮16: 桥柱外移至甲板缘外——原内缩0.3m使泡沫环/水线带整年藏在板底(轮7不可见根因)
       const pillarGeo = new THREE.CylinderGeometry(0.35, 0.35, 3.5, 6);
       const pillar1 = new THREE.Mesh(pillarGeo, materials.trackBorder);
-      pillar1.position.set(x - w / 2 + 0.3, -1, z - l / 3);
+      pillar1.position.set(x - w / 2 - 0.35, -1, z - l / 3);
       scene.add(pillar1);
       const pillar2 = new THREE.Mesh(pillarGeo, materials.trackBorder);
-      pillar2.position.set(x + w / 2 - 0.3, -1, z + l / 3);
+      pillar2.position.set(x + w / 2 + 0.35, -1, z + l / 3);
       scene.add(pillar2);
       const ring1 = new THREE.Mesh(waterlineGeo, waterlineMat);
-      ring1.position.y = 0.95;
+      ring1.position.y = 1.05;
       pillar1.add(ring1);
       const ring2 = new THREE.Mesh(waterlineGeo, waterlineMat);
-      ring2.position.y = 0.95;
+      ring2.position.y = 1.05;
       pillar2.add(ring2);
       const foam1 = new THREE.Mesh(foamGeo, foamMat);
       foam1.rotation.x = -Math.PI / 2;
-      foam1.position.y = 1.04;
+      foam1.position.y = 1.08;
       pillar1.add(foam1);
       const foam2 = new THREE.Mesh(foamGeo, foamMat);
       foam2.rotation.x = -Math.PI / 2;
-      foam2.position.y = 1.04;
+      foam2.position.y = 1.08;
       pillar2.add(foam2);
     };
 
@@ -1665,6 +1665,23 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           >
             <span>🔁</span>
             <span>自动循环</span>
+          </button>
+
+          {/* Sound Toggle（用户令 2026-09-24：默认关闭，工具条可开） */}
+          <button
+            onClick={() => onUpdateSettings?.({ soundEnabled: !settings.soundEnabled })}
+            title="游戏音效开关（默认关闭）"
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+              settings.soundEnabled
+                ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+            }`}
+          >
+            <span>{settings.soundEnabled ? '🔊' : '🔇'}</span>
+            <span>音效</span>
+            <span className={`text-[9px] px-1 rounded ${settings.soundEnabled ? 'bg-rose-500/30 text-rose-200' : 'bg-slate-800 text-slate-500'}`}>
+              {settings.soundEnabled ? '开' : '关'}
+            </span>
           </button>
 
           {/* Pause / Play Toggle */}
