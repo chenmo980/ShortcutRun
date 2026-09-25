@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import confetti from 'canvas-confetti';
 import { ColorPalette, VisualSettings } from '../types';
 import { metricsStore } from '../utils/metricsStore';
@@ -486,18 +487,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const trackMeshes: THREE.Mesh[] = [];
 
     // 桥柱水线: 吃水线处的湿润深色带（比桥体底色更暗）+ 水面泡沫环
+    // 轮30: 几何改为每段实例化后合并(见createTrackSegment内collector), 此处只留材质
     const waterlineMat = new THREE.MeshStandardMaterial({
       color: trackTopColor.clone().multiplyScalar(0.35),
       roughness: 0.85,
     });
-    const waterlineGeo = new THREE.CylinderGeometry(0.46, 0.46, 0.6, 6);
     const foamMat = new THREE.MeshBasicMaterial({
       color: 0xffffff,
       transparent: true,
       opacity: 0.65,
       depthWrite: false,
     });
-    const foamGeo = new THREE.RingGeometry(0.45, 1.05, 14);
+    const borderGeos: THREE.BufferGeometry[] = [];
+    const ringGeos: THREE.BufferGeometry[] = [];
+    const foamGeos: THREE.BufferGeometry[] = [];
 
     // Helper to build a track segment with raised edges/curbs
     // 轮13 铺板拼缝: 顶面不再整段纯色——CanvasTexture 每4m一道低对比接缝+交替微色差板,
@@ -596,47 +599,41 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       scene.add(segMesh);
       trackMeshes.push(segMesh);
 
-      // 轮17 缘石: 甲板顶缘加两条深色收边条, 勾出板道轮廓+纵向速度线
-      // (骑在边缘线上, 玩家夹取在 ±w/2 内只会贴边不会穿模)
-      const curbGeo = new THREE.BoxGeometry(0.16, 0.16, l);
-      const curbL = new THREE.Mesh(curbGeo, materials.trackBorder);
-      curbL.position.set(x - w / 2 + 0.02, 0.88, z);
-      scene.add(curbL);
-      const curbR = new THREE.Mesh(curbGeo, materials.trackBorder);
-      curbR.position.set(x + w / 2 - 0.02, 0.88, z);
-      scene.add(curbR);
-      // 轮20 横缘石: 宽转弯段(w>l)长边此前裸 slab; 全段±Z加横梁后板道成完整围框,
-      // 接缝处读作栈道横梁。抬高2cm骑在顶面上方, 避免与相邻段顶面共面闪烁
-      const crossGeo = new THREE.BoxGeometry(w, 0.16, 0.16);
-      const curbN = new THREE.Mesh(crossGeo, materials.trackBorder);
-      curbN.position.set(x, 0.88, z - l / 2 + 0.02);
-      scene.add(curbN);
-      const curbS = new THREE.Mesh(crossGeo, materials.trackBorder);
-      curbS.position.set(x, 0.88, z + l / 2 - 0.02);
-      scene.add(curbS);
-
-      // 轮16: 桥柱外移至甲板缘外——原内缩0.3m使泡沫环/水线带整年藏在板底(轮7不可见根因)
-      const pillarGeo = new THREE.CylinderGeometry(0.35, 0.35, 3.5, 6);
-      const pillar1 = new THREE.Mesh(pillarGeo, materials.trackBorder);
-      pillar1.position.set(x - w / 2 - 0.35, -1, z - l / 3);
-      scene.add(pillar1);
-      const pillar2 = new THREE.Mesh(pillarGeo, materials.trackBorder);
-      pillar2.position.set(x + w / 2 + 0.35, -1, z + l / 3);
-      scene.add(pillar2);
-      const ring1 = new THREE.Mesh(waterlineGeo, waterlineMat);
-      ring1.position.y = 1.05;
-      pillar1.add(ring1);
-      const ring2 = new THREE.Mesh(waterlineGeo, waterlineMat);
-      ring2.position.y = 1.05;
-      pillar2.add(ring2);
-      const foam1 = new THREE.Mesh(foamGeo, foamMat);
-      foam1.rotation.x = -Math.PI / 2;
-      foam1.position.y = 1.08;
-      pillar1.add(foam1);
-      const foam2 = new THREE.Mesh(foamGeo, foamMat);
-      foam2.rotation.x = -Math.PI / 2;
-      foam2.position.y = 1.08;
-      pillar2.add(foam2);
+      // 轮17/20 缘石围框 + 轮16 桥柱外移(甲板缘外0.35m)
+      // 轮30 静态批处理: 原每段8小mesh×10段=80 draw call, 改收集平移后几何, 全段合并为3个静态mesh
+      // (缘石+桥柱同材trackBorder并1; 吃水环并1; 泡沫环并1) 视觉零差异, 桥段DC约-110
+      {
+        const border = (g: THREE.BufferGeometry, px: number, py: number, pz: number) => {
+          g.translate(px, py, pz);
+          borderGeos.push(g);
+        };
+        border(new THREE.BoxGeometry(0.16, 0.16, l), x - w / 2 + 0.02, 0.88, z);
+        border(new THREE.BoxGeometry(0.16, 0.16, l), x + w / 2 - 0.02, 0.88, z);
+        border(new THREE.BoxGeometry(w, 0.16, 0.16), x, 0.88, z - l / 2 + 0.02);
+        border(new THREE.BoxGeometry(w, 0.16, 0.16), x, 0.88, z + l / 2 - 0.02);
+        const pillarY = -1;
+        const px1 = x - w / 2 - 0.35;
+        const px2 = x + w / 2 + 0.35;
+        const pz1 = z - l / 3;
+        const pz2 = z + l / 3;
+        border(new THREE.CylinderGeometry(0.35, 0.35, 3.5, 6), px1, pillarY, pz1);
+        border(new THREE.CylinderGeometry(0.35, 0.35, 3.5, 6), px2, pillarY, pz2);
+        // 吃水深色环(轮5)与泡沫环(轮7/16): 原为桥柱子mesh局部y1.05/1.08, 世界y=柱心-1+局部
+        const ring1 = new THREE.CylinderGeometry(0.46, 0.46, 0.6, 6);
+        ring1.translate(px1, pillarY + 1.05, pz1);
+        ringGeos.push(ring1);
+        const ring2 = new THREE.CylinderGeometry(0.46, 0.46, 0.6, 6);
+        ring2.translate(px2, pillarY + 1.05, pz2);
+        ringGeos.push(ring2);
+        const foam1 = new THREE.RingGeometry(0.45, 1.05, 14);
+        foam1.rotateX(-Math.PI / 2);
+        foam1.translate(px1, pillarY + 1.08, pz1);
+        foamGeos.push(foam1);
+        const foam2 = new THREE.RingGeometry(0.45, 1.05, 14);
+        foam2.rotateX(-Math.PI / 2);
+        foam2.translate(px2, pillarY + 1.08, pz2);
+        foamGeos.push(foam2);
+      }
     };
 
     createTrackSegment(0, 25, 7, 70); // Seg 1
@@ -652,72 +649,121 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     createTrackSegment(-2.5, 227.5, 12, 7); // Seg 6
     createTrackSegment(0, 265, 7, 50); // Seg 7
 
+    // 轮30 静态批处理落网: 三段收集器合并为3个mesh(60个装饰mesh→3)
+    {
+      const borderMesh = new THREE.Mesh(mergeGeometries(borderGeos), materials.trackBorder);
+      scene.add(borderMesh);
+      const ringMesh = new THREE.Mesh(mergeGeometries(ringGeos), waterlineMat);
+      scene.add(ringMesh);
+      const foamMesh = new THREE.Mesh(mergeGeometries(foamGeos), foamMat);
+      foamMesh.renderOrder = 2;
+      scene.add(foamMesh);
+    }
+
     // Multiplier finish stairway: 无缝阶梯坡道与胜利领奖台
     // 轮10: 金阶底色从"跑道顶面同系淡金"逐级渐变到纯金#FFD166——
     // 最下一级贴近跑道色(过渡带), 逐级加金, 顶面→阶梯色带连续无断层(全主题通用)
     // 轮25: 阶梯顶点色分面(侧0.88/底0.5/立面0.72)——甲板有围框接缝语言后, 整块同色阶梯显平
-    // 注意: materials.finish 与龙门 archMat 共用, 不能直接开 vertexColors(龙门几何无色属性会渲黑), 用克隆
+    // 轮30: 逐级色×分面灰度烘进同一color属性, 9级渐变阶合并1 mesh(白底stairMat);
+    // 领奖台PBR不同(finish无metalness)保持独立, 但不再需要materials.finish克隆——
+    // 注意: materials.finish 仍被龙门 archMat 取色共用, 本体不许动
     const stepCount = 10;
     const goldColor = new THREE.Color('#FFD166');
-    const podiumMat = materials.finish.clone();
-    podiumMat.vertexColors = true;
+    const stairMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      vertexColors: true,
+      metalness: 0.4,
+      roughness: 0.2,
+    });
+    const tintShadedGeo = (
+      geo: THREE.BoxGeometry,
+      col: THREE.Color,
+      side = 0.88,
+      front = 0.72,
+      bottom = 0.5
+    ) => {
+      shadeBoxGeo(geo, side, bottom, front);
+      const cAttr = geo.getAttribute('color') as THREE.BufferAttribute;
+      for (let v = 0; v < cAttr.count; v++) {
+        cAttr.setXYZ(v, col.r * cAttr.getX(v), col.g * cAttr.getY(v), col.b * cAttr.getZ(v));
+      }
+      return geo;
+    };
+    const stepGeos: THREE.BoxGeometry[] = [];
+    let podiumGeo: THREE.BoxGeometry | undefined;
     for (let i = 0; i < stepCount; i++) {
       const stepZ = 290 + i * 6;
       const stepH = 0.8 + i * 0.4;
       const isTop = i === stepCount - 1;
       const stepLength = isTop ? 14 : 6.05;
-      const stepGeo = shadeBoxGeo(
-        new THREE.BoxGeometry(5.2, stepH, stepLength),
-        0.88,
-        0.5,
-        0.72
-      );
-      const stepMat = isTop
-        ? podiumMat
-        : new THREE.MeshStandardMaterial({
-            color: trackTopColor
-              .clone()
-              .lerp(goldColor, 0.2 + 0.8 * (i / (stepCount - 2))),
-            metalness: 0.4,
-            roughness: 0.2,
-            vertexColors: true,
-          });
-      const step = new THREE.Mesh(stepGeo, stepMat);
-      step.position.set(0, stepH / 2, isTop ? stepZ + 3.5 : stepZ);
-      step.receiveShadow = true;
-      step.castShadow = true;
-      scene.add(step);
+      const stepColor = isTop
+        ? new THREE.Color((materials.finish as THREE.MeshStandardMaterial).color)
+        : trackTopColor.clone().lerp(goldColor, 0.2 + 0.8 * (i / (stepCount - 2)));
+      const geo = tintShadedGeo(new THREE.BoxGeometry(5.2, stepH, stepLength), stepColor);
+      geo.translate(0, stepH / 2, isTop ? stepZ + 3.5 : stepZ);
+      if (isTop) podiumGeo = geo;
+      else stepGeos.push(geo);
     }
+    const stairMesh = new THREE.Mesh(mergeGeometries(stepGeos), stairMat);
+    stairMesh.castShadow = true;
+    stairMesh.receiveShadow = true;
+    scene.add(stairMesh);
+    // 领奖台沿用finish的PBR(无metalness), 色已烘顶点
+    const podiumMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      vertexColors: true,
+      roughness: 0.2,
+    });
+    const podiumMesh = new THREE.Mesh(podiumGeo, podiumMat);
+    podiumMesh.castShadow = true;
+    podiumMesh.receiveShadow = true;
+    scene.add(podiumMesh);
 
     // Finish Arch at Z: 288
     const archMat = materials.finish;
     // 龙门: 糖果条纹柱+顶梁+白横幅(原为三块同色板, 远景识别度差)
-    // 轮26: 柱带/顶梁顶点色分面(与轮25阶梯同法), 复用podiumMat=finish克隆, 不动archMat本体
-    const archWhite = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
-    const archWhiteShaded = archWhite.clone();
-    archWhiteShaded.vertexColors = true;
+    // 轮26: 柱带/顶梁顶点色分面(与轮25阶梯同法)
+    // 轮30: 金带×4+顶梁并1网、白带×4并1网(9 mesh→2), 色烘顶点, archMat本体仍只供取色
     {
+      const finishColor = (archMat as THREE.MeshStandardMaterial).color;
+      const goldBandMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        vertexColors: true,
+        roughness: 0.2,
+      });
+      const whiteBandMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        vertexColors: true,
+        roughness: 0.5,
+      });
       const bands = 4;
       const bandH = 6 / bands;
-      const bandGeo = shadeBoxGeo(new THREE.BoxGeometry(0.85, bandH, 0.85), 0.82, 0.5, 0.95);
+      const goldGeos: THREE.BoxGeometry[] = [];
+      const whiteGeos: THREE.BoxGeometry[] = [];
       for (let side = -1; side <= 1; side += 2) {
         for (let b = 0; b < bands; b++) {
-          const band = new THREE.Mesh(
-            bandGeo,
-            b % 2 === 0 ? podiumMat : archWhiteShaded
+          const geos = b % 2 === 0 ? goldGeos : whiteGeos;
+          const col = b % 2 === 0 ? finishColor : new THREE.Color(0xffffff);
+          const g = tintShadedGeo(
+            new THREE.BoxGeometry(0.85, bandH, 0.85),
+            col,
+            0.82,
+            0.95
           );
-          band.position.set(side * 3.5, bandH / 2 + b * bandH, 288);
-          band.castShadow = true;
-          scene.add(band);
+          g.translate(side * 3.5, bandH / 2 + b * bandH, 288);
+          geos.push(g);
         }
       }
-      const archTop = new THREE.Mesh(
-        shadeBoxGeo(new THREE.BoxGeometry(8, 1.4, 1), 0.82, 0.5, 0.95),
-        podiumMat
-      );
-      archTop.position.set(0, 6.7, 288);
-      archTop.castShadow = true;
-      scene.add(archTop);
+      const beam = new THREE.BoxGeometry(8, 1.4, 1);
+      tintShadedGeo(beam, finishColor, 0.82, 0.95);
+      beam.translate(0, 6.7, 288);
+      goldGeos.push(beam);
+      const archGoldMesh = new THREE.Mesh(mergeGeometries(goldGeos), goldBandMat);
+      archGoldMesh.castShadow = true;
+      scene.add(archGoldMesh);
+      const archWhiteMesh = new THREE.Mesh(mergeGeometries(whiteGeos), whiteBandMat);
+      archWhiteMesh.castShadow = true;
+      scene.add(archWhiteMesh);
       // 横幅: 空白牌改为"终点 FINISH"文字贴图(挂迎面nz侧, 跑者视角可读)
       const bannerCanvas = document.createElement('canvas');
       bannerCanvas.width = 512;
@@ -734,8 +780,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       const bannerTex = new THREE.CanvasTexture(bannerCanvas);
       bannerTex.colorSpace = THREE.SRGBColorSpace;
       const bannerFace = new THREE.MeshStandardMaterial({ map: bannerTex, roughness: 0.5 });
+      const bannerPlain = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
       const banner = new THREE.Mesh(new THREE.BoxGeometry(6.4, 0.9, 0.2), [
-        archWhite, archWhite, archWhite, archWhite, archWhite, bannerFace,
+        bannerPlain, bannerPlain, bannerPlain, bannerPlain, bannerPlain, bannerFace,
       ]);
       banner.position.set(0, 6.7, 287.39);
       scene.add(banner);
