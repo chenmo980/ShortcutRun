@@ -357,10 +357,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         roughness: 0.1,
         metalness: 0.2,
       }),
-      track: new THREE.MeshStandardMaterial({
-        color: trackTopColor.clone(),
-        roughness: 0.4,
-      }),
       trackSide: new THREE.MeshStandardMaterial({
         color: trackSideColor.clone(),
         roughness: 0.55,
@@ -492,13 +488,46 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const foamGeo = new THREE.RingGeometry(0.42, 0.85, 12);
 
     // Helper to build a track segment with raised edges/curbs
+    // 轮13 铺板拼缝: 顶面不再整段纯色——CanvasTexture 每4m一道低对比接缝+交替微色差板,
+    // 给出"板道铺装感"和纵向速度参照。BoxGeometry顶面UV为0..1, 故 repeat.y=段长/4 按段缓存材质。
+    const trackTopMatByLen = new Map<number, THREE.MeshStandardMaterial>();
+    const getTrackTopMat = (len: number) => {
+      const key = Math.round(len * 10) / 10;
+      let m = trackTopMatByLen.get(key);
+      if (!m) {
+        const cv = document.createElement('canvas');
+        cv.width = 32;
+        cv.height = 128;
+        const ctx = cv.getContext('2d')!;
+        const base = trackTopColor.clone();
+        ctx.fillStyle = base.getStyle();
+        ctx.fillRect(0, 0, 32, 128);
+        // 交替板面: 半格提亮 3%, 制造同色系微差
+        const hsl = { h: 0, s: 0, l: 0 };
+        base.getHSL(hsl, THREE.SRGBColorSpace);
+        ctx.fillStyle = new THREE.Color().setHSL(hsl.h, hsl.s, Math.min(1, hsl.l + 0.03), THREE.SRGBColorSpace).getStyle();
+        ctx.fillRect(0, 0, 32, 60);
+        // 接缝: 压暗 12% 的细线
+        ctx.fillStyle = base.clone().multiplyScalar(0.88).getStyle();
+        ctx.fillRect(0, 60, 32, 5);
+        const tex = new THREE.CanvasTexture(cv);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
+        tex.repeat.set(1, key / 4);
+        tex.anisotropy = 4;
+        m = new THREE.MeshStandardMaterial({ color: 0xffffff, map: tex, roughness: 0.4 });
+        trackTopMatByLen.set(key, m);
+      }
+      return m;
+    };
     const createTrackSegment = (x: number, z: number, w: number, l: number) => {
       const segGeo = new THREE.BoxGeometry(w, 0.8, l);
       // 六面分材: 顶面原色, 侧面压暗, 底面最暗——桥体立刻有厚度感
       const segMesh = new THREE.Mesh(segGeo, [
         materials.trackSide,
         materials.trackSide,
-        materials.track,
+        getTrackTopMat(l),
         materials.trackBottom,
         materials.trackSide,
         materials.trackSide,
