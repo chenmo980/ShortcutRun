@@ -1551,6 +1551,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       }
     };
 
+    // 轮22 首帧编译风暴治理: 场景建完后一次性预编译全部材质,
+    // 否则前几帧边跑边编译(遥测峰值曾见2537ms), 小游戏首局体验受损
+    renderer.compile(scene, camera);
+
     animate();
 
     return () => {
