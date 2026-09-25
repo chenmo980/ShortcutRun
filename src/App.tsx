@@ -48,10 +48,10 @@ export default function App() {
         onOpenCocosModal={() => setIsCocosModalOpen(true)}
       />
 
-      {/* Main Workspace Body */}
-      <div className="flex flex-1 w-full h-[calc(100vh-3.5rem)] overflow-hidden">
+      {/* Main Workspace Body — 轮66登记/72落地: 窄屏(小游戏竖屏)上下分栏, 桌面md+保持左右分栏零回归 */}
+      <div className="flex flex-col md:flex-row flex-1 w-full h-[calc(100vh-3.5rem)] overflow-hidden">
         {/* Left: 3D Playable Shortcut Run Canvas */}
-        <main className="flex-1 relative h-full bg-slate-900 overflow-hidden">
+        <main className="flex-1 relative h-1/2 md:h-full bg-slate-900 overflow-hidden">
           <GameCanvas
             palette={currentPalette}
             settings={settings}
@@ -60,7 +60,7 @@ export default function App() {
         </main>
 
         {/* Right: Art Studio & Shader Tuning Sidebar */}
-        <aside className="w-80 md:w-96 h-full shrink-0 border-l border-slate-800 bg-slate-900 overflow-y-auto">
+        <aside className="w-full h-1/2 md:h-full shrink-0 border-t md:border-t-0 md:w-96 md:border-l border-slate-800 bg-slate-900 overflow-y-auto">
           <ArtStudioPanel
             currentPalette={currentPalette}
             settings={settings}

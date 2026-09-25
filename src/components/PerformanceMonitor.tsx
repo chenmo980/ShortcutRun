@@ -35,7 +35,8 @@ const PerformanceMonitorInner: React.FC<PerformanceMonitorProps> = ({
   currentDrawCalls,
   currentRenderMs,
 }) => {
-  const [isMinimized, setIsMinimized] = useState(false);
+  // 轮66登记/72落地: 窄屏(<768px竖屏)下展开面板(~384px宽)会盖满上半屏canvas, 默认折叠成单行FPS徽标(点击即展开); 桌面初始态不变
+  const [isMinimized, setIsMinimized] = useState(() => window.innerWidth < 768);
   const [activeMetric, setActiveMetric] = useState<MetricView>('all');
 
   // Compute summary stats
