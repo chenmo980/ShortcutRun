@@ -625,7 +625,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const spawnPlankCluster = (centerZ: number, centerX: number, count: number = 3) => {
       for (let i = 0; i < count; i++) {
         const offsetZ = (i - (count - 1) / 2) * 1.6;
-        const offsetX = (Math.random() - 0.5) * 2.2;
+        // 确定性斜向扇形排布(原随机±1.1常致两板同位叠死, 远景糊成一块绿斑读不出"3块可拾")
+        const offsetX = (i - (count - 1) / 2) * 0.8;
         const pMesh = new THREE.Mesh(plankGeo, materials.plank);
         const pz = centerZ + offsetZ;
         const px = centerX + offsetX;
