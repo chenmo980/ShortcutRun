@@ -418,6 +418,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         roughness: 0.2,
       }),
     };
+    // 轮14 桥板厚度感配套: 侧面/底面=板材质克隆压暗(保留金/玉/霓虹的metalness/emissive), 场景级共享
+    const plankSideMat = materials.plank.clone();
+    plankSideMat.color.multiplyScalar(0.68);
+    const plankBottomMat = materials.plank.clone();
+    plankBottomMat.color.multiplyScalar(0.42);
 
     // 1. Water Plane (Large low-poly mesh with animated vertices)
     // 扩到 600x800: 远边缘推进 FogExp2 全雾区, 硬地平线消失
@@ -1147,14 +1152,21 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               sound.playBridgePlace();
 
               // Spawn physical bridge plank at current water coordinate with initial impact sink
+              // 轮14 桥板厚度感: 单色平贴绿块改六面分材(顶=板色/侧=压暗70%/底=45%), clone保留金/玉/霓虹材质属性
+              const plankMat = materials.plank;
               const bPlank = new THREE.Mesh(
                 new THREE.BoxGeometry(2.6, 0.22, 1.4),
-                materials.plank
+                [
+                  plankSideMat, plankSideMat,
+                  plankMat, plankBottomMat,
+                  plankSideMat, plankSideMat,
+                ]
               );
               const dampingVal = curSettings.waterDamping ?? 0.75;
               const impactSinkY = 0.45 - 0.12 * (1.2 - dampingVal * 0.5);
               bPlank.position.set(g.playerX, impactSinkY, g.playerZ);
               bPlank.receiveShadow = true;
+              bPlank.castShadow = true;
               scene.add(bPlank);
               g.bridgePlanks.push({
                 mesh: bPlank,
