@@ -1551,8 +1551,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         // Check Finish Line (Z >= 288)
         if (g.playerZ >= 288) {
           // Rush up bonus multiplier steps!
+          // 轮75: 台阶实体分界在 z=284+i*6(盒心290+i*6×长6.05), 原288基准整体错位一级——
+          // 站×5.5踏面上结算只报×5, 爬满×6台报×5.5; 改基准后读数=到手倍率
           const stepsClimbed = Math.min(
-            Math.floor((g.playerZ - 288) / 6),
+            Math.floor((g.playerZ - 284) / 6),
             10
           );
           const currentMult = 1 + stepsClimbed * 0.5;
