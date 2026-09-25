@@ -5,10 +5,7 @@
   "roomUrl": "http://127.0.0.1:8787",
   "cooldownMs": 120000,
   "members": {
-    "step-5": {
-      "match": ["@step-5", "@all"],
-      "cmd": "node tools/wake-worker.mjs"
-    },
+    "step-5": { "match": ["@step-5", "@all"], "cmd": "node tools/wake-opencode.mjs", "_注释": "API型唤醒: 走opencode server(桌面app自带:50087, 凭据在环境变量); 前置见docs/chat/OPENCODE-API-SETUP.md" },
     "qoder": {
       "match": ["@qoder"],
       "cmd": "node tools/wake-worker.mjs"
