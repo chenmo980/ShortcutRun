@@ -311,7 +311,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     // 竖屏适配: FOV锚定水平视野(16:9桌面下55°vFOV≈75°hFOV), 窄屏时反算vFOV保跑道±3.5m恒可见
     const FOV_ANCHOR_H = 2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(55 / 2)) * (16 / 9));
     const fovForAspect = (aspect: number) =>
-      THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(FOV_ANCHOR_H / 2) / Math.max(0.3, aspect)));
+      Math.min(75, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(FOV_ANCHOR_H / 2) / Math.max(0.3, aspect))));
     const camera = new THREE.PerspectiveCamera(fovForAspect(width / height), width / height, 0.1, 1000);
     camera.position.set(0, 8, -11);
     camera.lookAt(0, 1.5, 8);
