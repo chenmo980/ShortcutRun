@@ -206,6 +206,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     g.manualOverride = false;
     g.carriedPlanks = settingsRef.current.infinitePlanks ? 30 : 16;
     g.state = 'running';
+    // 轮48: 暂停中点"从头跑"/秒传会留下 isPaused=true 的僵尸局(整场frozen, 面板却显示奔跑中)——重开隐含恢复
+    g.isPaused = false;
+    setIsPaused(false);
     g.lastBridgeDropZ = targetZ;
     g.isOverWater = false;
     g.runCycle = 0;
