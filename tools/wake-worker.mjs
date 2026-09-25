@@ -10,7 +10,7 @@
 //   3) dsh     （DeepSeek harness，`--profile headless`；依赖用户 DSH 模型配置可用）
 // 4) 都没有 → 落 wake-<member>.log 报错退出（gateway 下次心跳再试）
 import { spawn, spawnSync } from 'node:child_process';
-import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -45,12 +45,27 @@ const prompt = [
 ].join('\n');
 
 // —— CLI 探测与命令组装 ——
-// Windows 上 spawn(无 shell) 不做 PATHEXT 解析，'qoder' 找不到 'qoder.cmd'（ENOENT 踩坑）——
-// 用 where/which 拿全路径再 spawn
+// Windows 上 spawn(无 shell) 不做 PATHEXT 解析，'qoder' 找不到 'qoder.cmd'（ENOENT 踩坑）。
+// 探测顺序：已知稳定路径优先（npm shim 会被 Qoder 更新清掉；where 会误命中同名目录
+// ——实测 E:\openclaw\qoder 是个目录却被 where 返回），where 结果必须过滤可执行扩展名。
 const resolveCli = (name) => {
+  const home = process.env.USERPROFILE || process.env.HOME || '';
+  const appdata = process.env.APPDATA || '';
+  const known = {
+    qoder: [join(home, '.qoder', 'entry', 'qoder.cmd')],
+    claude: [join(appdata, 'npm', 'claude.cmd')],
+    dsh: [join(process.env.LOCALAPPDATA || '', 'deepseek-harness', 'bin', 'dsh.ps1')],
+  };
+  for (const p of known[name] || []) {
+    try { if (existsSync(p)) return p; } catch { /* ignore */ }
+  }
   try {
     const r = spawnSync(process.platform === 'win32' ? 'where' : 'which', [name], { encoding: 'utf8' });
-    if (r.status === 0 && (r.stdout || '').trim()) return r.stdout.split(/\r?\n/)[0].trim();
+    if (r.status === 0) {
+      const hits = String(r.stdout).split(/\r?\n/).map((s) => s.trim())
+        .filter((s) => /\.(cmd|bat|exe|ps1)$/i.test(s));
+      if (hits.length) return hits[0];
+    }
   } catch { /* ignore */ }
   return null;
 };
@@ -58,7 +73,12 @@ const cands = [
   {
     name: 'qoder',
     found: () => !!resolveCli('qoder') || !!resolveCli('qoder.cmd'),
-    build: (p) => ({ cmd: resolveCli('qoder') || resolveCli('qoder.cmd') || 'qoder', args: ['-p', p, '--permission-mode', 'accept_edits'] }),
+    // permission-mode=auto 是 E2E 实测唯一能同时放行编辑与回帖命令的模式
+    // （accept_edits 拦 bash、dont_ask 也拦、bypass 过于危险；worker prompt 已带纪律约束兜底）
+    // ⚠ 2026-09-25 复测推翻上两行: auto 无头下同样只放行只读命令(ls/git status|log|diff|remote),
+    //   node chat.mjs / npm / git add 仍拒(qoder PONG18 与 step-5 #58 会话双证)——
+    //   回帖/门禁/集成的真解是给 worker 配 bash 白名单, 见 AI-HANDOFF.md 2026-09-25 条目
+    build: (p) => ({ cmd: resolveCli('qoder') || resolveCli('qoder.cmd') || 'qoder', args: ['-p', p, '--permission-mode', 'auto', '-w', root] }),
   },
   {
     name: 'claude',
@@ -79,27 +99,38 @@ if (!chosen) {
   process.exit(2);
 }
 
-// 单行化 argv：cmd.exe /c 无法承载换行符（E2E 踩坑），CLI 侧用 ⏎ 分段语义不变；
-// 完整多行 prompt 仍在 ROOM_MSG 环境变量里，worker 可自取
-const cliPrompt = prompt.replace(/\s*[\r\n]+\s*/g, ' | ');
+// 单行化 argv：cmd.exe /c 无法承载换行符（E2E 踩坑），CLI 侧用 ; 分段语义不变；
+// 完整多行 prompt 仍在 ROOM_MSG 环境变量里，worker 可自取。
+// ⚠ cmd.exe 的 %VAR% 展开不享受外层双引号保护：prompt 里的 < > | & ^ 会撑破命令行
+// （E2E 实测 434 字符长 prompt 必炸 "系统找不到指定的文件"，短 prompt 无事）——
+// 消毒成安全等价字符：<>( ) |; &和 ^空格。
+const CMD_UNSAFE = { '<': '(', '>': ')', '|': ';', '&': '和', '^': ' ' };
+const cliPrompt = prompt.replace(/\s*[\r\n]+\s*/g, ' ; ').replace(/[<>|&^]/g, (c) => CMD_UNSAFE[c]);
+const childEnv = { ...process.env };
+childEnv.ROOM_MSG_FLAT = cliPrompt.replace(/%/g, '%%'); // cmd 展开 %VAR%，% 需转义
 
-// Windows 上给 .cmd CLI 传参的最稳形态（E2E 四轮踩坑后的结论）：
-// node shell:true 的 cmd 封装引号不可靠 / cmd /c 手拼引号是地狱 / powershell -File 不吃 .cmd
-// → wake-worker 生成临时 wrapper .cmd（UTF-8 + chcp 65001 保中文），spawn 只传单路径零引号问题
-function toSpawnable(cmd, args) {
+// Windows 上给 .cmd CLI 传参的最稳形态（E2E 五轮踩坑后的终案）：
+// node shell:true 引号不可靠 / cmd /c 手拼是地狱 / powershell -File 不吃 .cmd /
+// spawn .cmd 无 shell 被 CVE 拦 / wrapper 里嵌 prompt 又撞上 chcp65001+UTF-8 组合炸
+// → 终案：wrapper 是**纯 ASCII 模板**，prompt 经环境变量 %ROOM_MSG_FLAT% 流入，
+//   编码问题整个消失（cmd 展开 %VAR% 与原编码无关）
+function toSpawnable(cmd, args, extraEnv) {
   if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(cmd)) {
     const wrapper = join(root, 'docs', 'chat', `.wake-${member}-run.cmd`);
-    const line = [cmd, ...args].map((a) => `"${String(a).replace(/"/g, '""')}"`).join(' ');
-    writeFileSync(wrapper, `@echo off\r\nchcp 65001 > nul\r\n${line}\r\n`, 'utf8');
-    return { cmd: process.env.COMSPEC || 'cmd.exe', args: ['/d', '/c', wrapper], shell: false };
+    const line = [cmd, ...args]
+      .map((a) => (a === cliPrompt ? '"%ROOM_MSG_FLAT%"' : `"${String(a).replace(/%/g, '%%')}"`))
+      .join(' ');
+    // ASCII-only wrapper：无 BOM、无中文、无 chcp——cmd.exe 永远能正确解析
+    writeFileSync(wrapper, `@echo off\r\n${line}\r\n`, 'ascii');
+    return { cmd: process.env.COMSPEC || 'cmd.exe', args: ['/d', '/c', wrapper], shell: false, env: extraEnv };
   }
-  return { cmd, args, shell: false };
+  return { cmd, args, shell: false, env: extraEnv };
 }
 
 const { cmd, args } = chosen.build(cliPrompt);
-const spawnable = toSpawnable(cmd, args);
+const spawnable = toSpawnable(cmd, args, childEnv);
 log(`WAKE-FIRE member=${member} cli=${chosen.name} cmd=${cmd} msg#${seq} from=${from}: ${msg.slice(0, 100)}`);
-const child = spawn(spawnable.cmd, spawnable.args, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'], shell: spawnable.shell });
+const child = spawn(spawnable.cmd, spawnable.args, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'], shell: spawnable.shell, env: spawnable.env || childEnv });
 child.stdout.on('data', (d) => log(`[${chosen.name}:out] ${String(d).trim().slice(0, 400)}`));
 child.stderr.on('data', (d) => log(`[${chosen.name}:err] ${String(d).trim().slice(0, 400)}`));
 child.on('error', (e) => log(`WAKE-ERROR: spawn ${chosen.name} 失败: ${e.message}`));
