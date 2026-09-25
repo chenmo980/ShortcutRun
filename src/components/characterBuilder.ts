@@ -1,5 +1,36 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { CharacterModelType, ColorPalette } from '../types';
+
+// 轮34 静态MeshBasic部件批处理: 五官/裤缝条等是头/躯干组的刚性子件(无独立动画),
+// 把各自颜色烘进顶点色后合并为1 mesh → 每角色面部 ~9-12 draw → 1。
+// 半透明件(腮红opacity)先与肤色lerp成不透明等效色, 合并后无需透明通道。
+const FACE_BATCH_MAT = new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true });
+const batchStaticBasic = (group: THREE.Group, blendBase: THREE.Color) => {
+  const parts = group.children.filter(
+    (c) => c instanceof THREE.Mesh && (c.material as THREE.Material).type === 'MeshBasicMaterial'
+  ) as THREE.Mesh[];
+  if (parts.length < 2) return;
+  const geos: THREE.BufferGeometry[] = [];
+  for (const p of parts) {
+    const m = p.material as THREE.MeshBasicMaterial;
+    const g = p.geometry.clone();
+    p.updateMatrix();
+    g.applyMatrix4(p.matrix);
+    const col = m.transparent ? blendBase.clone().lerp(m.color, m.opacity) : m.color.clone();
+    const n = g.attributes.position.count;
+    const arr = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      arr[i * 3] = col.r;
+      arr[i * 3 + 1] = col.g;
+      arr[i * 3 + 2] = col.b;
+    }
+    g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+    geos.push(g);
+    group.remove(p);
+  }
+  group.add(new THREE.Mesh(mergeGeometries(geos), FACE_BATCH_MAT));
+};
 
 export interface ArticulatedCharacter {
   root: THREE.Group;
@@ -163,6 +194,7 @@ export function buildArticulatedCharacter(
     const stripeR = new THREE.Mesh(stripeGeo, stripeMat);
     stripeR.position.set(0.32, 0.16, 0);
     torsoGroup.add(stripeR);
+    batchStaticBasic(torsoGroup, new THREE.Color(bottomHex));
   }
 
   // Athletic Chest & Jersey
@@ -608,6 +640,9 @@ export function buildArticulatedCharacter(
     smileMesh.position.set(0, -0.12, 0.29);
     smileMesh.rotation.x = -0.2;
     headGroup.add(smileMesh);
+
+    // 轮34: 以上五官(眼白/瞳/高光/腮红/眉/鼻/嘴/印记中所有MeshBasic件)合并为1 draw
+    batchStaticBasic(headGroup, new THREE.Color(skinHex));
 
     // D. Volumetric Clustered Spiky Hair
     hairGroup = new THREE.Group();
