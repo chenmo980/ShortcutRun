@@ -1074,12 +1074,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     // Particle puff helper for bridge & plank pickup
     const footDustColor = trackTopColor.clone().multiplyScalar(0.78).getStyle();
+    // 轮35: 粒子几何全场共享(原每次spawn新建+每次死亡dispose=GL缓冲churn, 步频~2Hz), 材质仍逐粒(独立opacity淡出)
+    const puffGeo = new THREE.BoxGeometry(0.25, 0.25, 0.25);
     const spawnPuff = (pos: THREE.Vector3, color: string) => {
       if (!settings.pickupVFX) return;
-      const pGeo = new THREE.BoxGeometry(0.25, 0.25, 0.25);
       const pMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(color), transparent: true });
       for (let i = 0; i < 4; i++) {
-        const pMesh = new THREE.Mesh(pGeo, pMat);
+        const pMesh = new THREE.Mesh(puffGeo, pMat);
         pMesh.position.copy(pos);
         scene.add(pMesh);
         gameRef.current.particles.push({
@@ -1545,7 +1546,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         p.vel.y -= 9.8 * delta; // Gravity
         if (p.life <= 0) {
           scene.remove(p.mesh);
-          p.mesh.geometry.dispose();
+          // 轮35: geometry为全场共享puffGeo, 不再逐粒dispose(会毁掉其他存活粒的缓冲); 材质逐粒仍释放
           (p.mesh.material as THREE.Material).dispose();
           g.particles.splice(i, 1);
         } else {
