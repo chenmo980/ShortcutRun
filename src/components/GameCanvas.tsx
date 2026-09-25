@@ -325,6 +325,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     dirLight.shadow.camera.top = d;
     dirLight.shadow.camera.bottom = -d;
     scene.add(dirLight);
+    // 阴影相机是平行光局部的固定视锥(±30m, 原点附近)——不跟随跑者则 30m 外
+    // 全部出框, 拾取板/角色投影整程消失(截图实锤"贴纸感"), 故每帧随 playerZ 平移
+    dirLight.target.position.set(0, 0, 0);
+    scene.add(dirLight.target);
 
     // Materials dictionary
     // 轮10 赛道色带协调: 顶面不再直取 palette 原色——
@@ -900,6 +904,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       const g = gameRef.current;
       if (!g.playerChar || !g.scene) return;
       const curSettings = settingsRef.current;
+
+      // Keep the shadow frustum riding along with the runner
+      dirLight.position.set(g.playerX + 15, 30, g.playerZ - 10);
+      dirLight.target.position.set(g.playerX, 0, g.playerZ);
 
       // 触发拾取动画预览测试 (Preview Pickup Action on Demand)
       if (
