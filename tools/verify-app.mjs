@@ -164,7 +164,19 @@ if (toolbarOk) {
   check('toolbar-interactive', false, '镜头按钮缺失');
 }
 
-// 4) 全流程无页面错误
+// 4) 海缺口铺板守卫（原版核心机制回归）：自动巡航推进到 Z>140，穿过 Seg3 两个 6m 海缺口
+//    （Z99-105/Z116-122，2026-09-24 用户报障“过红海区不铺板”的修复验证）——
+//    能连续推进不溺水=缺口内铺板机制生效（溺水会 auto-loop 回 0，进度必跌）
+await page.waitForFunction(() => {
+  const m = document.body.innerText.match(/(\d+(?:\.\d+)?)\s*m\s*\/\s*350m/);
+  return m && parseFloat(m[1]) > 140;
+}, null, { timeout: 45000 }).catch(() => {});
+const zSea = progressOf(await page.evaluate(() => document.body.innerText));
+const drownedText = /溺水|drowned|掉落/.test(await page.evaluate(() => document.body.innerText));
+check('sea-gap-bridged', zSea !== null && zSea > 140 && !drownedText,
+  `推进到 ${zSea}m（穿过 Z99-105/Z116-122 两个海缺口，未溺水=铺板机制在缺口生效）`);
+
+// 5) 全流程无页面错误
 check('no-page-error', errors.length === 0, errors.slice(0, 3).join(' | '));
 
 await browser.close();

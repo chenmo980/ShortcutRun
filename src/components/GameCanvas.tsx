@@ -62,9 +62,9 @@ export function getGroundHeight(x: number, z: number, isOverWater: boolean = fal
 export const SECTION_SHORTCUTS = [
   { name: '起点直道', z: 0, tag: '0m' },
   { name: '龙骨右弯', z: 65, tag: '65m' },
-  { name: '右侧海域直道', z: 105, tag: '105m' },
+  { name: '右侧海域直道', z: 110, tag: '110m' },
   { name: '碧波回转近道', z: 145, tag: '145m' },
-  { name: '终前直道', z: 220, tag: '220m' },
+  { name: '终前直道', z: 210, tag: '210m' },
   { name: '龙门冲刺阶梯', z: 285, tag: '285m' },
 ];
 
@@ -431,18 +431,23 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     // Track bounds define walkable solid ground:
     // Section 1: Z: 0 to 60, X: -3.5 to 3.5 (Straight start)
     // Section 2: Z: 60 to 80, X: -3.5 to 16.5 (Turn Right)
-    // Section 3: Z: 80 to 140, X: 11.5 to 18.5 (Right Straight)
+    // Section 3: Z: 80 to 140, X: 11.5 to 18.5 (Right Straight) — 原版"必须铺板过海"还原：
+    //   断开两个 6m 缺口（Z99-105 / Z116-122，避开 95/110/125 三处拾取堆），
+    //   缺口处只剩水：断口内 isOverWater=true 自动接管落板/耗板/溺水逻辑（见下方 Bridge building）
     // Section 4: Z: 140 to 160, X: -8.5 to 18.5 (Turn Left Across)
-    // Section 5: Z: 160 to 220, X: -8.5 to -1.5 (Left Straight)
+    // Section 5: Z: 160 to 220, X: -8.5 to -1.5 (Left Straight) — 同上断开 1 个 6m 缺口（Z199-205）
     // Section 6: Z: 220 to 240, X: -8.5 to 3.5 (Turn Center)
     // Section 7: Z: 240 to 290, X: -3.5 to 3.5 (Straight to Finish)
     // Section 8: Z: 290 to 360, X: -2.5 to 2.5 (Multiplier Staircase)
     const trackBounds = [
       { minZ: -10, maxZ: 60, minX: -3.5, maxX: 3.5 },
       { minZ: 50, maxZ: 75, minX: -3.5, maxX: 16.5 },
-      { minZ: 75, maxZ: 140, minX: 10.5, maxX: 17.5 },
+      { minZ: 75, maxZ: 99, minX: 10.5, maxX: 17.5 },
+      { minZ: 105, maxZ: 116, minX: 10.5, maxX: 17.5 },
+      { minZ: 122, maxZ: 140, minX: 10.5, maxX: 17.5 },
       { minZ: 135, maxZ: 160, minX: -8.5, maxX: 17.5 },
-      { minZ: 160, maxZ: 220, minX: -8.5, maxX: -1.5 },
+      { minZ: 160, maxZ: 199, minX: -8.5, maxX: -1.5 },
+      { minZ: 205, maxZ: 220, minX: -8.5, maxX: -1.5 },
       { minZ: 215, maxZ: 240, minX: -8.5, maxX: 3.5 },
       { minZ: 240, maxZ: 290, minX: -3.5, maxX: 3.5 },
       { minZ: 287, maxZ: 360, minX: -2.8, maxX: 2.8 },
@@ -508,9 +513,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     createTrackSegment(0, 25, 7, 70); // Seg 1
     createTrackSegment(6.5, 62.5, 20, 7); // Seg 2
-    createTrackSegment(14, 107.5, 7, 65); // Seg 3
+    // Seg 3（右侧海域直道）：拆 3 段，留 2 个 6m 海缺口（Z99-105 / Z116-122）——原版必须铺板过海
+    createTrackSegment(14, 87, 7, 24);   // Seg 3a: Z75-99
+    createTrackSegment(14, 110.5, 7, 11); // Seg 3b: Z105-116（缺口间小岛）
+    createTrackSegment(14, 131, 7, 18);   // Seg 3c: Z122-140
     createTrackSegment(4.5, 147.5, 26, 7); // Seg 4
-    createTrackSegment(-5, 190, 7, 60); // Seg 5
+    // Seg 5（左侧直道）：拆 2 段，留 1 个 6m 海缺口（Z199-205）
+    createTrackSegment(-5, 179.5, 7, 39);  // Seg 5a: Z160-199
+    createTrackSegment(-5, 212.5, 7, 15);  // Seg 5b: Z205-220
     createTrackSegment(-2.5, 227.5, 12, 7); // Seg 6
     createTrackSegment(0, 265, 7, 50); // Seg 7
 
