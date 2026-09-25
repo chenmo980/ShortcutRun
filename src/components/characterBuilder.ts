@@ -1211,9 +1211,10 @@ export function buildArticulatedCharacter(
   const rightArm = createArm(false);
 
   // 5. Plank Stack Mount Point
-  // Positioned directly IN FRONT of the chest (Z: +0.62) cradled by hands, NEVER blocking the runner's back!
+  // Positioned directly IN FRONT of the chest cradled by hands, NEVER blocking the runner's back!
+  // 轮51: z 0.62→0.45——板堆深0.55, 原后缘离胸~0.2m, 3/4侧颜帧(r50b/r51b)读作隔空托箱; 收拢后后缘~0.175贴胸廓
   const plankMount = new THREE.Group();
-  plankMount.position.set(0, 0.58, 0.62);
+  plankMount.position.set(0, 0.58, 0.45);
   torsoGroup.add(plankMount);
 
   return {
