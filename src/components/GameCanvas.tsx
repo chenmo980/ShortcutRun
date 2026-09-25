@@ -8,7 +8,9 @@ import { sound } from '../utils/audio';
 import { buildArticulatedCharacter, animateCharacter, ArticulatedCharacter } from './characterBuilder';
 import { PerformanceMonitor, PerfMetricPoint } from './PerformanceMonitor';
 
-const PICKUP_BASE_Y = 1.0;
+// 悬浮基准1.35: 板底(高0.28)离甲板面0.8留~0.4m净空(原1.0时净空仅0.06m, 波谷穿面, 读感退化成路面色块);
+// 拾取判定是纯XZ盒(1.3/1.4)不含Y, 抬高不碰手感
+const PICKUP_BASE_Y = 1.35;
 
 // Precise track centerline at distance Z (meters)
 export function getTrackCenterX(z: number): number {
