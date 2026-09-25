@@ -1913,8 +1913,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             </span>
           </div>
 
-          {/* Distance Progress Badge */}
-          <div className="flex items-center gap-2 bg-slate-900/85 backdrop-blur-md border border-slate-700/80 px-3 py-1.5 rounded-xl shadow-lg">
+          {/* Distance Progress Badge —— 轮79: r78帧实锤chip被130px可用宽挤成三行(关卡\n进度 2m /\n350m), nowrap让chip整体换行不碎行 */}
+          <div className="flex items-center gap-2 bg-slate-900/85 backdrop-blur-md border border-slate-700/80 px-3 py-1.5 rounded-xl shadow-lg whitespace-nowrap">
             <span className="text-[11px] text-slate-400 font-medium">关卡进度</span>
             <span className="text-[12px] font-bold font-mono text-cyan-300">
               {progressZ}m / 350m
