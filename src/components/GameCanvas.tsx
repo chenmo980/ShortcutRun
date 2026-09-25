@@ -560,7 +560,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               c.z <= ch.maxZ + 0.8
           )
       );
-      const apronMesh = new THREE.InstancedMesh(apGeo, materials.plank, apFinal.length);
+      // 轮100: 栈台不吃玩家板皮(bamboo_raft默认#22C55E把整片海面染成绿草坪, 用户"不要绿色的部分")
+      // 环境木栈台恒用主题经典板色(木纹琥珀), 与手持/拾取资源色解耦
+      const apronMat = new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        color: new THREE.Color(palette.plankColor),
+        roughness: 0.6,
+      });
+      const apronMesh = new THREE.InstancedMesh(apGeo, apronMat, apFinal.length);
       const apPos = new THREE.Vector3();
       const apQuat = new THREE.Quaternion();
       const apOne = new THREE.Vector3(1, 1, 1);
