@@ -573,6 +573,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       scene.add(segMesh);
       trackMeshes.push(segMesh);
 
+      // 轮17 缘石: 甲板顶缘加两条深色收边条, 勾出板道轮廓+纵向速度线
+      // (骑在边缘线上, 玩家夹取在 ±w/2 内只会贴边不会穿模)
+      const curbGeo = new THREE.BoxGeometry(0.16, 0.16, l);
+      const curbL = new THREE.Mesh(curbGeo, materials.trackBorder);
+      curbL.position.set(x - w / 2 + 0.02, 0.87, z);
+      scene.add(curbL);
+      const curbR = new THREE.Mesh(curbGeo, materials.trackBorder);
+      curbR.position.set(x + w / 2 - 0.02, 0.87, z);
+      scene.add(curbR);
+
       // 轮16: 桥柱外移至甲板缘外——原内缩0.3m使泡沫环/水线带整年藏在板底(轮7不可见根因)
       const pillarGeo = new THREE.CylinderGeometry(0.35, 0.35, 3.5, 6);
       const pillar1 = new THREE.Mesh(pillarGeo, materials.trackBorder);

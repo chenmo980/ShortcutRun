@@ -19,7 +19,7 @@ export default function App() {
     waterFoam: true,
     planarShadows: true,
     pickupVFX: true,
-    soundEnabled: true,
+    soundEnabled: false, // 用户令 2026-09-24：默认关闭声音
     cameraTilt: 55,
     showOpponent: false,
     autoPilot: true,

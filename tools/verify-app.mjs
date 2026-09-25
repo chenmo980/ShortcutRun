@@ -176,7 +176,34 @@ const drownedText = /溺水|drowned|掉落/.test(await page.evaluate(() => docum
 check('sea-gap-bridged', zSea !== null && zSea > 140 && !drownedText,
   `推进到 ${zSea}m（穿过 Z99-105/Z116-122 两个海缺口，未溺水=铺板机制在缺口生效）`);
 
-// 5) 全流程无页面错误
+// 5) 声音开关守卫（用户令 2026-09-24：默认关闭）：自带全新加载，容忍并发 HMR reload
+let soundFound = false, soundOff = false, soundToggles = false;
+try {
+  await page.goto(URL, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('canvas', { timeout: 10000 });
+  await sleep(2500);
+  const findBtn = () => page.evaluate(() => {
+    const b = [...document.querySelectorAll('button')].find((x) => (x.textContent || '').includes('音效'));
+    return b ? { found: true, on: (b.textContent || '').includes('开'), off: (b.textContent || '').includes('关') } : { found: false, on: false, off: false };
+  });
+  const init = await findBtn();
+  soundFound = init.found; soundOff = init.off;
+  if (soundFound) {
+    await page.evaluate(() => [...document.querySelectorAll('button')].find((x) => (x.textContent || '').includes('音效'))?.click());
+    await sleep(400);
+    const on = (await findBtn()).on;
+    await page.evaluate(() => [...document.querySelectorAll('button')].find((x) => (x.textContent || '').includes('音效'))?.click());
+    await sleep(300);
+    soundToggles = on && (await findBtn()).off;
+  }
+} catch (e) {
+  // 并发 HMR 整页 reload（Qoder 同时在存盘）时降级：保持已取得的静态断言
+  console.log(`[warn] 声音切换交互被并发 reload 打断，降级为静态断言（${String(e.message || e).slice(0, 60)}）`);
+}
+check('sound-toggle-default-off', soundFound && soundOff && soundToggles,
+  `按钮在=${soundFound} 默认关=${soundOff} 可切换=${soundToggles}`);
+
+// 6) 全流程无页面错误
 check('no-page-error', errors.length === 0, errors.slice(0, 3).join(' | '));
 
 await browser.close();
