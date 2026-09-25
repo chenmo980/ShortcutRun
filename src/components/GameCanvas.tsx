@@ -1401,40 +1401,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             updatePlankStackVisual(30);
           }
 
-          // Check if distance since last plank placed >= 1.2 units
-          if (g.playerZ - g.lastBridgeDropZ >= 1.3) {
-            if (g.carriedPlanks > 0 || curSettings.infinitePlanks) {
-              if (!curSettings.infinitePlanks) {
-                g.carriedPlanks -= 1;
-              }
-              g.lastBridgeDropZ = g.playerZ;
-              setPlankCount(g.carriedPlanks);
-              updatePlankStackVisual(g.carriedPlanks);
-
-              sound.playBridgePlace();
-
-              // 轮19: 桥板共享几何+顶点色分面(原每板 new BoxGeometry + 六材数组 6 DC)
-              const bPlank = new THREE.Mesh(bPlankGeo, materials.plank);
-              const dampingVal = curSettings.waterDamping ?? 0.75;
-              const impactSinkY = 0.45 - 0.12 * (1.2 - dampingVal * 0.5);
-              bPlank.position.set(g.playerX, impactSinkY, g.playerZ);
-              bPlank.receiveShadow = true;
-              bPlank.castShadow = true;
-              scene.add(bPlank);
-              g.bridgePlanks.push({
-                mesh: bPlank,
-                velY: -0.65 * (1.15 - dampingVal * 0.5),
-                initialWavePhase: Math.random() * Math.PI * 2,
-                spawnTime: time,
-              });
-
-              spawnPuff(bPlank.position, palette.plankColor);
-
-              if (g.state !== 'bridging') {
-                g.state = 'bridging';
-                setGameState('bridging');
-              }
-            } else {
+          // 轮47: 等步距补板。原"每帧最多落1块"在低帧率下间距=单帧位移(~2m)>板长1.4m,
+          // 桥板断成踏石; 改为把已走过区间按 STEP=1.25(板长1.4留0.15搭接)逐块补齐, 帧率无关
+          const BRIDGE_STEP = 1.25;
+          // lastBridgeDropZ 只在落板时前进; 入水/传送后可能落后几十米, 钳到脚下防止回溯铺满整段陆地
+          if (g.lastBridgeDropZ < g.playerZ - BRIDGE_STEP * 2) {
+            g.lastBridgeDropZ = g.playerZ - BRIDGE_STEP;
+          }
+          let dropGuard = 0;
+          while (g.playerZ - g.lastBridgeDropZ >= BRIDGE_STEP && dropGuard++ < 6) {
+            if (g.carriedPlanks <= 0 && !curSettings.infinitePlanks) {
               // Out of planks over water! DROWN!
               g.state = 'drowned';
               setGameState('drowned');
@@ -1451,6 +1427,37 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                   resetGame(0);
                 }, 1800);
               }
+              break;
+            }
+            if (!curSettings.infinitePlanks) {
+              g.carriedPlanks -= 1;
+            }
+            g.lastBridgeDropZ += BRIDGE_STEP;
+            setPlankCount(g.carriedPlanks);
+            updatePlankStackVisual(g.carriedPlanks);
+
+            sound.playBridgePlace();
+
+            // 轮19: 桥板共享几何+顶点色分面(原每板 new BoxGeometry + 六材数组 6 DC)
+            const bPlank = new THREE.Mesh(bPlankGeo, materials.plank);
+            const dampingVal = curSettings.waterDamping ?? 0.75;
+            const impactSinkY = 0.45 - 0.12 * (1.2 - dampingVal * 0.5);
+            bPlank.position.set(g.playerX, impactSinkY, g.lastBridgeDropZ);
+            bPlank.receiveShadow = true;
+            bPlank.castShadow = true;
+            scene.add(bPlank);
+            g.bridgePlanks.push({
+              mesh: bPlank,
+              velY: -0.65 * (1.15 - dampingVal * 0.5),
+              initialWavePhase: Math.random() * Math.PI * 2,
+              spawnTime: time,
+            });
+
+            spawnPuff(bPlank.position, palette.plankColor);
+
+            if (g.state !== 'bridging') {
+              g.state = 'bridging';
+              setGameState('bridging');
             }
           }
         } else {
