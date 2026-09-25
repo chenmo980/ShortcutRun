@@ -680,22 +680,29 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     // Finish Arch at Z: 288
     const archMat = materials.finish;
     // 龙门: 糖果条纹柱+顶梁+白横幅(原为三块同色板, 远景识别度差)
+    // 轮26: 柱带/顶梁顶点色分面(与轮25阶梯同法), 复用podiumMat=finish克隆, 不动archMat本体
     const archWhite = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
+    const archWhiteShaded = archWhite.clone();
+    archWhiteShaded.vertexColors = true;
     {
       const bands = 4;
       const bandH = 6 / bands;
+      const bandGeo = shadeBoxGeo(new THREE.BoxGeometry(0.85, bandH, 0.85), 0.82, 0.5, 0.95);
       for (let side = -1; side <= 1; side += 2) {
         for (let b = 0; b < bands; b++) {
           const band = new THREE.Mesh(
-            new THREE.BoxGeometry(0.85, bandH, 0.85),
-            b % 2 === 0 ? archMat : archWhite
+            bandGeo,
+            b % 2 === 0 ? podiumMat : archWhiteShaded
           );
           band.position.set(side * 3.5, bandH / 2 + b * bandH, 288);
           band.castShadow = true;
           scene.add(band);
         }
       }
-      const archTop = new THREE.Mesh(new THREE.BoxGeometry(8, 1.4, 1), archMat);
+      const archTop = new THREE.Mesh(
+        shadeBoxGeo(new THREE.BoxGeometry(8, 1.4, 1), 0.82, 0.5, 0.95),
+        podiumMat
+      );
       archTop.position.set(0, 6.7, 288);
       archTop.castShadow = true;
       scene.add(archTop);
