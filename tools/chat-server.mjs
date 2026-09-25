@@ -41,7 +41,9 @@ try {
   console.error(`[room] ROOM_TOKENS 读取失败: ${e.message}（公网模式必须有 tokens.json）`);
   process.exit(1);
 }
-const IDS = tokens ? [...new Set(Object.values(tokens))] : [];
+// 成员表：token 模式取 tokens.json 值集；降级模式用内置表解析 @提及（与 docs/chat/members.md 对齐）
+const MEMBERS = ['step-5', 'qoder', 'human', 'system', 'cloud-ai'];
+const IDS = tokens ? [...new Set(Object.values(tokens))] : MEMBERS; // 降级模式用内置成员表解析 @提及（修复 anon 室 @qoder 打不中的 bug）
 const ANON = !tokens;
 
 const SECRET_RE = /(ghp_|github_pat_|AKIA[0-9A-Z]{10,}|-----BEGIN|password\s*[=:]|Bearer\s+[A-Za-z0-9._-]{20,})/i;
@@ -171,8 +173,8 @@ createServer((req, res) => {
       } catch { return json(res, 400, { error: 'bad json' }); }
       if (!text || text.length > 2000) return json(res, 400, { error: 'text required, <=2000' });
       if (SECRET_RE.test(text)) return json(res, 400, { error: '疑似密钥/凭据被拦截: 聊天内容会进 git 与云端, 密钥严禁入聊' });
-      // ③/⑥：身份服务端签发（token 模式覆写 body.from）；@寻址服务端解析
-      const msg = { seq: ++seq, id: randomUUID().slice(0, 8), ts: Date.now(), from: from || 'anon', to: tokens ? parseMentions(text) : ['@all'], text };
+      // ③/⑥：身份服务端签发（token 模式覆写 body.from）；@寻址服务端解析（anon 模式用内置成员表）
+      const msg = { seq: ++seq, id: randomUUID().slice(0, 8), ts: Date.now(), from: from || 'anon', to: parseMentions(text), text };
       appendFileSync(LOG, JSON.stringify(msg) + '\n');
       msgs.push(msg);
       json(res, 200, msg);

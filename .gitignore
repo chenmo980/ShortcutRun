@@ -11,3 +11,6 @@ tokens.json
 
 # 聊天室 gateway 本机成员表(含各AI headless命令, 勿入git)
 tools/members.json
+
+# gateway唤醒临时wrapper(自动生成)
+docs/chat/.wake-*-run.cmd

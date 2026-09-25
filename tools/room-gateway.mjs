@@ -23,6 +23,7 @@ const cfg = JSON.parse(readFileSync(cfgPath, 'utf8'));
 const POLL = cfg.pollMs || 5000;
 const COOLDOWN = cfg.cooldownMs || 120_000;
 let lastSeq = Number(cfg.startSeq || 0);
+let firstSync = !cfg.startSeq; // 无显式起点时，首轮只同步游标到最新——不重放历史（否则老 @all 会烧掉冷却/误唤醒）
 const lastFire = new Map(); // member -> ts
 
 async function pull() {
@@ -46,18 +47,27 @@ function fire(member, msg) {
     return;
   }
   console.log(`[gateway] wake ${member} <- msg#${msg.seq || msg.ts}（${msg.text.slice(0, 60)}…）`);
-  spawn(cmd, { shell: true, stdio: 'inherit', env: { ...process.env, ROOM_MSG: msg.text } });
+  spawn(cmd, { shell: true, stdio: 'inherit', env: { ...process.env, ROOM_MSG: msg.text, ROOM_MEMBER: member, ROOM_MSG_FROM: msg.from, ROOM_MSG_SEQ: String(msg.seq || msg.ts) } });
 }
 
 (async () => {
   console.log(`[gateway] watching ${cfg.roomUrl} members=${Object.keys(cfg.members).join(',')}${DRY ? ' (dry-run)' : LIVE ? ' (LIVE)' : ' (SAFE 默认: 只告警不唤醒, --live 真唤醒)'}`);
   for (;;) {
     try {
-      for (const m of await pull()) {
+      const batch = await pull();
+      if (firstSync) {
+        firstSync = false; // 首轮只把游标推到最新，历史消息不触发唤醒
+        console.log(`[gateway] 首轮同步游标 -> ${lastSeq}（不重放历史）`);
+        await new Promise((r) => setTimeout(r, POLL));
+        continue;
+      }
+      for (const m of batch) {
         for (const [name, mc] of Object.entries(cfg.members)) {
           if (m.from === name) continue; // 闸③
-          const to = m.to || []; // 首选服务端解析的 @ID 寻址（v2 协议），旧室降级文本匹配
-          const hit = to.length ? to.some((t) => mc.match.includes(t)) : mc.match.some((k) => m.text.includes(k));
+          const to = m.to || []; // 首选服务端解析的 @ID 寻址（v2 协议）
+          const broadcastOnly = to.length > 0 && to.every((t) => t === '@all');
+          const hit = to.some((t) => mc.match.includes(t))
+            || (broadcastOnly && mc.match.some((k) => m.text.includes(k))); // 纯广播消息退回文本匹配（anon 室/旧室兼容）
           if (hit) fire(name, m); // 闸①
         }
       }
