@@ -127,12 +127,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     waterMesh: THREE.Mesh | null;
     trackMeshes: THREE.Mesh[];
     pickupItems: { mesh: THREE.InstancedMesh; idx: number; collected: boolean; z: number; x: number; y: number; phase: number }[];
+    // 轮97: 桥板改单 InstancedMesh 数据项（mesh 引用会随行×全宽把 DC 乘爆）
     bridgePlanks: {
-      mesh: THREE.Mesh;
+      idx: number;
+      x: number;
+      z: number;
+      y: number;
       velY: number;
-      initialWavePhase: number;
-      spawnTime: number;
+      phase: number;
+      tilt: number;
     }[];
+    bridgeMesh: THREE.InstancedMesh | null;
+    rebuildBridgeInstances?: () => void;
     particles: { mesh: THREE.Mesh; vel: THREE.Vector3; life: number }[];
     speed: number;
     playerX: number;
@@ -168,6 +174,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     trackMeshes: [],
     pickupItems: [],
     bridgePlanks: [],
+    bridgeMesh: null,
     particles: [],
     speed: 18,
     playerX: 0,
@@ -251,20 +258,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     });
 
     // Remove existing bridge planks ahead of targetZ
-    const keptPlanks: {
-      mesh: THREE.Mesh;
-      velY: number;
-      initialWavePhase: number;
-      spawnTime: number;
-    }[] = [];
-    g.bridgePlanks.forEach((plank) => {
-      if (targetZ === 0 || plank.mesh.position.z >= targetZ - 2) {
-        g.scene?.remove(plank.mesh);
-      } else {
-        keptPlanks.push(plank);
+    // 轮97: 实例化后原地过滤(保持数组引用恒等, init闭包共享)+重排idx重建矩阵
+    for (let i = g.bridgePlanks.length - 1; i >= 0; i--) {
+      if (targetZ === 0 || g.bridgePlanks[i].z >= targetZ - 2) {
+        g.bridgePlanks.splice(i, 1);
       }
+    }
+    g.bridgePlanks.forEach((p, i) => {
+      p.idx = i;
     });
-    g.bridgePlanks = keptPlanks;
+    g.rebuildBridgeInstances?.();
 
     // Remove existing particles
     g.particles.forEach((p) => g.scene?.remove(p.mesh));
@@ -970,6 +973,52 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     });
     pickupMesh.instanceMatrix.needsUpdate = true;
 
+    // 轮97: 桥板单实例化网格——拐弯缺口全宽3列×每圈~40步若逐mesh将+~120 DC,
+    // InstancedMesh 恒 1 DC(同轮37拾板方案)。容量溢出时裁最旧行(远在镜头身后)
+    const BRIDGE_MAX = 224;
+    const bridgePlanks: {
+      idx: number;
+      x: number;
+      z: number;
+      y: number;
+      velY: number;
+      phase: number;
+      tilt: number;
+    }[] = [];
+    const bridgeMesh = new THREE.InstancedMesh(bPlankGeo, materials.plank, BRIDGE_MAX);
+    bridgeMesh.castShadow = true;
+    bridgeMesh.receiveShadow = true;
+    bridgeMesh.frustumCulled = false;
+    bridgeMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    bridgeMesh.count = 0;
+    scene.add(bridgeMesh);
+    const bridgeEuler = new THREE.Euler(0, 0, 0);
+    const bridgeQuat = new THREE.Quaternion();
+    const bridgePos = new THREE.Vector3();
+    const bridgeScaleOne = new THREE.Vector3(1, 1, 1);
+    const bridgeMat4 = new THREE.Matrix4();
+    const writeBridgeInstance = (i: number) => {
+      const bp = bridgePlanks[i];
+      bridgePos.set(bp.x, bp.y, bp.z);
+      bridgeEuler.z = bp.tilt;
+      bridgeQuat.setFromEuler(bridgeEuler);
+      bridgeMat4.compose(bridgePos, bridgeQuat, bridgeScaleOne);
+      bridgeMesh.setMatrixAt(i, bridgeMat4);
+    };
+    const rebuildBridgeInstances = () => {
+      bridgeMesh.count = bridgePlanks.length;
+      for (let i = 0; i < bridgePlanks.length; i++) writeBridgeInstance(i);
+      bridgeMesh.instanceMatrix.needsUpdate = true;
+    };
+    const compactBridgeIfNeeded = () => {
+      if (bridgePlanks.length + 3 <= BRIDGE_MAX) return;
+      bridgePlanks.splice(0, Math.min(12, bridgePlanks.length));
+      bridgePlanks.forEach((p, i) => {
+        p.idx = i;
+      });
+      rebuildBridgeInstances();
+    };
+
     // 4. Build Player Character (Lively articulated low-poly runner)
     const playerChar = buildArticulatedCharacter(settings.characterType || 'runner_boy', palette, false);
     playerChar.root.position.set(0, 0.85, 0);
@@ -997,7 +1046,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       waterMesh,
       trackMeshes,
       pickupItems,
-      bridgePlanks: [],
+      bridgePlanks,
+      bridgeMesh,
+      rebuildBridgeInstances,
       particles: [],
       speed: 16,
       playerX: 0,
@@ -1503,21 +1554,32 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             sound.playBridgePlace();
 
             // 轮19: 桥板共享几何+顶点色分面(原每板 new BoxGeometry + 六材数组 6 DC)
-            const bPlank = new THREE.Mesh(bPlankGeo, materials.plank);
+            // 轮97: 拐弯缺口铺满整宽——每个Z步沿X横排3列盖住可见海面(原只脚下1.4m单列, 两侧露海);
+            // 行板写入同一 InstancedMesh, 全宽不加 DC(消费仍1板/步, 经济不变)
             const dampingVal = curSettings.waterDamping ?? 0.75;
             const impactSinkY = 0.45 - 0.12 * (1.2 - dampingVal * 0.5);
-            bPlank.position.set(g.playerX, impactSinkY, g.lastBridgeDropZ);
-            bPlank.receiveShadow = true;
-            bPlank.castShadow = true;
-            scene.add(bPlank);
-            g.bridgePlanks.push({
-              mesh: bPlank,
-              velY: -0.65 * (1.15 - dampingVal * 0.5),
-              initialWavePhase: Math.random() * Math.PI * 2,
-              spawnTime: time,
-            });
+            const rowVelY = -0.65 * (1.15 - dampingVal * 0.5);
+            const rowPhase = Math.random() * Math.PI * 2;
+            // bPlankGeo X宽2.6; 3列@±2.4间距→总跨7.4m≈直道甲板宽, 邻列0.2m搭接无缝
+            const colOffsets = [-2.4, 0, 2.4];
+            compactBridgeIfNeeded();
+            for (const dx of colOffsets) {
+              const bp = {
+                idx: bridgePlanks.length,
+                x: g.playerX + dx,
+                z: g.lastBridgeDropZ,
+                y: impactSinkY,
+                velY: rowVelY,
+                phase: rowPhase,
+                tilt: 0,
+              };
+              bridgePlanks.push(bp);
+              writeBridgeInstance(bp.idx);
+            }
+            bridgeMesh.count = bridgePlanks.length;
+            bridgeMesh.instanceMatrix.needsUpdate = true;
 
-            spawnPuff(bPlank.position, palette.plankColor);
+            spawnPuff(new THREE.Vector3(g.playerX, impactSinkY, g.lastBridgeDropZ), palette.plankColor);
 
             if (g.state !== 'bridging') {
               g.state = 'bridging';
@@ -1725,6 +1787,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       const springK = (curSettings.buoyancySpring ?? 1.20) * 38;
       const dampingCoeff = waterDamp * 16 + 3.8;
 
+      let bridgeAnyAnimated = false;
       for (let i = 0; !frozen && i < g.bridgePlanks.length; i++) {
         const bp = g.bridgePlanks[i];
         // 轮24核查结论: 0.45静止高度与getGroundHeight水上0.56(板顶=跑者站高)联动,
@@ -1732,23 +1795,26 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         let surfaceLevel = 0.45;
         if (curSettings.waterWaves) {
           const wave =
-            Math.sin(bp.mesh.position.x * 0.12 + time * 1.8 + bp.initialWavePhase) *
-            0.07 *
-            (1.0 - waterDamp * 0.45);
+            Math.sin(bp.x * 0.12 + time * 1.8 + bp.phase) * 0.07 * (1.0 - waterDamp * 0.45);
           surfaceLevel += wave;
         }
-        const displacement = surfaceLevel - bp.mesh.position.y;
+        const displacement = surfaceLevel - bp.y;
         const springForce = displacement * springK;
         const dragForce = -bp.velY * dampingCoeff;
         bp.velY += (springForce + dragForce) * delta;
-        bp.mesh.position.y += bp.velY * delta;
+        bp.y += bp.velY * delta;
 
         // 水面波浪轻微俯仰颠簸 (微动)
         if (curSettings.waterWaves) {
-          bp.mesh.rotation.z =
-            Math.sin(time * 2.2 + bp.initialWavePhase) * 0.02 * (1.0 - waterDamp * 0.65);
+          bp.tilt = Math.sin(time * 2.2 + bp.phase) * 0.02 * (1.0 - waterDamp * 0.65);
+        }
+        // 轮97: 数据即真相, 每帧回写实例矩阵(原为直改 mesh.position)
+        if (g.bridgeMesh && g.bridgeMesh.count > i) {
+          writeBridgeInstance(i);
+          bridgeAnyAnimated = true;
         }
       }
+      if (bridgeAnyAnimated && g.bridgeMesh) g.bridgeMesh.instanceMatrix.needsUpdate = true;
 
       // Smooth Camera follow: elevated perspective with curve anticipation & multi-angle inspection
       if (camera && g.playerChar) {
