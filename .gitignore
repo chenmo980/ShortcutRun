@@ -14,3 +14,9 @@ tools/members.json
 
 # gateway唤醒临时wrapper(自动生成)
 docs/chat/.wake-*-run.cmd
+
+# Cocos Creator 编辑器残留(2026-09-21~24 在仓根再生, 遗产垃圾, 删否由人定) + 微信spike构建产物
+/build/
+/library/
+/temp/
+/profiles/

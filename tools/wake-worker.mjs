@@ -75,9 +75,9 @@ const cands = [
     found: () => !!resolveCli('qoder') || !!resolveCli('qoder.cmd'),
     // permission-mode=auto 是 E2E 实测唯一能同时放行编辑与回帖命令的模式
     // （accept_edits 拦 bash、dont_ask 也拦、bypass 过于危险；worker prompt 已带纪律约束兜底）
-    // ⚠ 2026-09-25 复测推翻上两行: auto 无头下同样只放行只读命令(ls/git status|log|diff|remote),
-    //   node chat.mjs / npm / git add 仍拒(qoder PONG18 与 step-5 #58 会话双证)——
-    //   回帖/门禁/集成的真解是给 worker 配 bash 白名单, 见 AI-HANDOFF.md 2026-09-25 条目
+    // ⚠ 2026-09-25 双记录并存待解: 19:38 拉起的 step-5 会话实测 auto 无头仍只放行只读
+    //   (ls/git status|log|diff|remote), node chat.mjs / npm / git add 被拒; 但 40aa27c 记
+    //   19:45 qoder 真身回帖零拦截——权限疑为会话启动时快照, 新老会话行为不一致, 详见 AI-HANDOFF.md
     build: (p) => ({ cmd: resolveCli('qoder') || resolveCli('qoder.cmd') || 'qoder', args: ['-p', p, '--permission-mode', 'auto', '-w', root] }),
   },
   {

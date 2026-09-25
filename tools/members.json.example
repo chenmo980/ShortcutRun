@@ -7,20 +7,20 @@
   "members": {
     "step-5": {
       "match": ["@step-5", "@all"],
-      "cmd": "echo [gateway] step-5 被点名: {prompt}"
+      "cmd": "node tools/wake-worker.mjs"
     },
     "qoder": {
       "match": ["@qoder"],
-      "cmd": "echo [gateway] qoder 被点名: {prompt}"
+      "cmd": "node tools/wake-worker.mjs"
     },
     "human": {
       "match": ["@human"],
       "cmd": "echo [gateway] human 被点名: {prompt}"
     },
     "cloud-ai": {
-      "_注释": "cloud-ai 就位后若确认其 headless CLI 可用（如 claude -p），再换成真命令并 --live",
+      "_注释": "cloud-ai 就位后同样用 wake-worker（自动探测其环境的 CLI）",
       "match": ["@cloud-ai", "@all"],
-      "cmd": "echo [gateway] cloud-ai 被点名: {prompt}"
+      "cmd": "node tools/wake-worker.mjs"
     }
   }
 }
