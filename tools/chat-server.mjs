@@ -88,19 +88,42 @@ function json(res, code, obj) {
   res.end(JSON.stringify(obj));
 }
 
-const PAGE = `<!doctype html><meta charset="utf-8"><title>agent-room · Shortcut Run</title>
-<style>body{background:#0f172a;color:#e2e8f0;font:14px/1.5 Consolas,monospace;margin:0;display:flex;flex-direction:column;height:100vh}
-header{padding:10px 16px;background:#1e293b;font-weight:bold}#list{flex:1;overflow-y:auto;padding:12px 16px}
-.msg{margin:4px 0;padding:6px 10px;background:#1e293b;border-radius:8px;max-width:80%}.msg.me{background:#134e4a;margin-left:auto}
-.who{color:#7dd3fc;font-size:12px;margin-right:8px}form{display:flex;gap:8px;padding:10px 16px;background:#1e293b}
-input{flex:1;background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:6px;padding:8px}
-button{background:#0284c7;color:#fff;border:0;border-radius:6px;padding:8px 16px;cursor:pointer}</style>
-<header>agent-room v2 <span style="color:#64748b;font-weight:normal" id="who"></span></header>
-<div id="list"></div><form id="f"><input id="text" placeholder="说点什么…（@qoder / @step-5 / @all 寻址）" autocomplete="off"><button>发送</button></form>
+const PAGE = `<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shortcut Run 协作室</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#ededed;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;height:100vh;display:flex;flex-direction:column;color:#191919}
+header{background:#ededed;border-bottom:1px solid #d6d6d6;padding:10px 14px;display:flex;align-items:center;justify-content:space-between}
+header .title{font-size:16px;font-weight:600}
+header .me{font-size:12px;color:#07c160;cursor:pointer;border:1px solid #07c160;border-radius:4px;padding:2px 8px;user-select:none}
+#list{flex:1;overflow-y:auto;padding:12px}
+.row{display:flex;margin-bottom:14px}
+.row.me{flex-direction:row-reverse}
+.avatar{width:38px;height:38px;border-radius:6px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;font-weight:600;background:#4b8bf5}
+.row.me .avatar{background:#07c160}
+.bubble-wrap{max-width:70%;margin:0 10px}
+.who{font-size:11px;color:#9a9a9a;margin-bottom:3px}
+.row.me .who{text-align:right}
+.bubble{background:#fff;border-radius:6px;padding:9px 12px;font-size:14px;line-height:1.5;word-break:break-word;white-space:pre-wrap;box-shadow:0 1px 1px rgba(0,0,0,.04)}
+.row.me .bubble{background:#95ec69}
+.row.tome .bubble{background:#fff8e1;border:1px solid #ffe082}
+form{display:flex;gap:8px;padding:10px 12px;background:#f7f7f7;border-top:1px solid #dcdcdc}
+input{flex:1;border:1px solid #dcdcdc;border-radius:6px;padding:9px 10px;font-size:14px;background:#fff;outline:none}
+button{background:#07c160;color:#fff;border:0;border-radius:6px;padding:0 16px;font-size:14px;cursor:pointer}
+button:active{background:#06ad56}
+</style></head><body>
+<header><div class="title">Shortcut Run 协作室</div><div class="me" id="me" title="本机降级模式点我切换身份；token 模式身份由服务端签发"></div></header>
+<div id="list"></div>
+<form id="f"><input id="text" placeholder="说点什么…（@qoder / @step-5 / @all 寻址）" autocomplete="off"><button>发送</button></form>
 <script>
 let tok = localStorage.getItem('room_token') || '';
-if (!tok) tok = prompt('粘贴你的 room token（本机降级模式可留空直接回车）') || '';
+if (!tok) tok = prompt('粘贴 room token（本机降级模式可留空直接回车）') || '';
 localStorage.setItem('room_token', tok);
+let me = localStorage.getItem('room_me') || 'human';
+const meEl = document.getElementById('me');
+function renderMe(label) { meEl.textContent = label; }
+renderMe('登录中…');
 let after = 0;
 const H = tok ? { authorization: 'Bearer ' + tok } : {};
 async function poll() {
@@ -109,30 +132,53 @@ async function poll() {
     if (r.status === 401) { localStorage.removeItem('room_token'); location.reload(); return; }
     const j = await r.json();
     const list = Array.isArray(j) ? { messages: j, me: null } : j;
-    document.getElementById('who').textContent = list.me ? '· 登录为 ' + list.me : '· 本机降级模式（匿名）';
+    const who = list.me || me;
+    renderMe(list.me ? list.me : '本机·' + me + '（点切换）');
     for (const m of list.messages) {
       after = Math.max(after, m.seq || 0);
-      const d = document.createElement('div');
-      d.className = 'msg' + (list.me && m.from === list.me ? ' me' : '');
-      const s = document.createElement('span'); s.className = 'who';
-      s.textContent = new Date(m.ts).toTimeString().slice(0, 8) + ' · ' + m.from + (m.to && m.to.length && m.to[0] !== '@all' ? ' → ' + m.to.join(' ') : '');
-      d.appendChild(s); d.appendChild(document.createTextNode(m.text)); // 全程 textContent，无 innerHTML
-      document.getElementById('list').appendChild(d);
+      const mine = m.from === who;
+      const tome = !mine && (m.to || []).includes('@' + who);
+      const row = document.createElement('div');
+      row.className = 'row' + (mine ? ' me' : '') + (tome ? ' tome' : '');
+      const av = document.createElement('div');
+      av.className = 'avatar';
+      av.textContent = (m.from || '?').slice(0, 1).toUpperCase();
+      const wrap = document.createElement('div');
+      wrap.className = 'bubble-wrap';
+      const who2 = document.createElement('div');
+      who2.className = 'who';
+      who2.textContent = new Date(m.ts).toTimeString().slice(0, 8) + ' · ' + m.from + (m.to && m.to.length && m.to[0] !== '@all' ? ' → ' + m.to.join(' ') : '');
+      const b = document.createElement('div');
+      b.className = 'bubble';
+      b.textContent = m.text; // 全程 textContent，无 innerHTML（XSS 纪律）
+      wrap.appendChild(who2); wrap.appendChild(b);
+      row.appendChild(av); row.appendChild(wrap);
+      document.getElementById('list').appendChild(row);
     }
     document.getElementById('list').scrollTop = 1e9;
   } catch (e) { /* 断线静默重试 */ }
   setTimeout(poll, 2000);
 }
+meEl.onclick = () => {
+  if (tok) return; // token 模式身份由服务端签发
+  const names = ['human', 'step-5', 'qoder'];
+  me = names[(names.indexOf(me) + 1) % names.length];
+  localStorage.setItem('room_me', me);
+  renderMe('本机·' + me + '（点切换）');
+};
 document.getElementById('f').onsubmit = async (e) => {
   e.preventDefault();
-  const t = document.getElementById('text'); const text = t.value.trim(); if (!text) return;
+  const t = document.getElementById('text');
+  const text = t.value.trim();
+  if (!text) return;
   t.value = '';
-  await fetch('/api/messages', { method: 'POST', headers: { ...H, 'content-type': 'application/json' }, body: JSON.stringify({ text }) });
+  const body = { text };
+  if (!tok) body.from = me; // 降级模式才允许自报身份（token 模式服务端覆写）
+  await fetch('/api/messages', { method: 'POST', headers: { ...H, 'content-type': 'application/json' }, body: JSON.stringify(body) });
   poll();
 };
 poll();
-</script>`;
-
+</script></body></html>`;
 createServer((req, res) => {
   const u = new URL(req.url, 'http://x');
   if (req.method === 'OPTIONS') { res.writeHead(204, { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type, authorization' }); res.end(); return; }
