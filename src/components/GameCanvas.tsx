@@ -1591,8 +1591,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         if (g.aiChar) {
           const aiZ = g.playerZ * 0.94 + 5;
           const aiTrackX = getTrackCenterX(aiZ);
-          const aiGroundY = getGroundHeight(aiTrackX + 1.2, aiZ, false);
-          const aiForwardGroundY = getGroundHeight(aiTrackX + 1.2, aiZ + 0.5, false);
+          // 轮53: AI过海缺口原按0.8甲板高"贴空滑行"(比桥面0.56浮0.24m), 改与玩家同口径——trackBounds外=水上走桥面标高
+          const aiX = aiTrackX + 1.2;
+          const aiSolidAt = (z: number) =>
+            g.trackBounds.some((b) => z >= b.minZ && z <= b.maxZ && aiX >= b.minX && aiX <= b.maxX);
+          const aiGroundY = getGroundHeight(aiX, aiZ, !aiSolidAt(aiZ));
+          const aiForwardGroundY = getGroundHeight(aiX, aiZ + 0.5, !aiSolidAt(aiZ + 0.5));
           const aiTargetY = Math.max(aiGroundY, aiForwardGroundY) + 0.05;
           g.aiY = THREE.MathUtils.lerp(g.aiY, aiTargetY, Math.min(1.0, delta * 24));
           g.aiY = Math.max(aiGroundY + 0.05, g.aiY);
