@@ -1190,6 +1190,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     window.addEventListener('keyup', onKeyUp);
     window.addEventListener('blur', onWindowBlur);
 
+    // 轮76: dev-only探针钩子——SwiftShader低帧率+HUD 5Hz节流下截图判读不可靠, 无头取证需直读playerX/steerOffset; 生产构建不含(import.meta.env.DEV)
+    if (import.meta.env.DEV) {
+      (window as unknown as Record<string, unknown>).__shortcutRun = gameRef;
+    }
+
     // Resize observer
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
