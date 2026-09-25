@@ -1480,7 +1480,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               item.collected = true;
               writePickupInstance(item, PICKUP_BASE_Y, 0, true);
               pickupMesh.instanceMatrix.needsUpdate = true;
-              g.carriedPlanks += 2;
+              // 轮49: 携板上限30(=无限模式补满值)。42拾取点×2=84板/圈只耗~15, 不设帽则读数涨到87,
+              // 资源经济与8层手持堆封顶读数双双失效(实测三圈单调递增16→86)
+              g.carriedPlanks = Math.min(30, g.carriedPlanks + 2);
               g.pickupPulse = 1.0;
               g.score += 20;
               setScore(g.score);
