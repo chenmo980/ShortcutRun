@@ -588,11 +588,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       // (骑在边缘线上, 玩家夹取在 ±w/2 内只会贴边不会穿模)
       const curbGeo = new THREE.BoxGeometry(0.16, 0.16, l);
       const curbL = new THREE.Mesh(curbGeo, materials.trackBorder);
-      curbL.position.set(x - w / 2 + 0.02, 0.87, z);
+      curbL.position.set(x - w / 2 + 0.02, 0.88, z);
       scene.add(curbL);
       const curbR = new THREE.Mesh(curbGeo, materials.trackBorder);
-      curbR.position.set(x + w / 2 - 0.02, 0.87, z);
+      curbR.position.set(x + w / 2 - 0.02, 0.88, z);
       scene.add(curbR);
+      // 轮20 横缘石: 宽转弯段(w>l)长边此前裸 slab; 全段±Z加横梁后板道成完整围框,
+      // 接缝处读作栈道横梁。抬高2cm骑在顶面上方, 避免与相邻段顶面共面闪烁
+      const crossGeo = new THREE.BoxGeometry(w, 0.16, 0.16);
+      const curbN = new THREE.Mesh(crossGeo, materials.trackBorder);
+      curbN.position.set(x, 0.88, z - l / 2 + 0.02);
+      scene.add(curbN);
+      const curbS = new THREE.Mesh(crossGeo, materials.trackBorder);
+      curbS.position.set(x, 0.88, z + l / 2 - 0.02);
+      scene.add(curbS);
 
       // 轮16: 桥柱外移至甲板缘外——原内缩0.3m使泡沫环/水线带整年藏在板底(轮7不可见根因)
       const pillarGeo = new THREE.CylinderGeometry(0.35, 0.35, 3.5, 6);
