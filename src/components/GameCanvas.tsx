@@ -535,9 +535,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     };
     // 轮15 侧壁铺装感: 侧面纯平色 slab 无速度参照 → CanvasTexture 每1.5m一道竖接缝+顶沿高亮带
     // (与轮13 顶面手法成对; +X/-X 面 UV.u 沿段长, +Z/-Z 面沿宽度, 故按对应边长各取一材)
+    // 轮27 foam: 水上段吃水线盐渍泡沫带(底35%泛白+波状上缘, 1.5m瓦片周期内正弦闭合), 零新增mesh
     const trackSideMatByLen = new Map<number, THREE.MeshStandardMaterial>();
-    const getTrackSideMat = (len: number) => {
-      const key = Math.round(len * 10) / 10;
+    const getTrackSideMat = (len: number, foam = false) => {
+      const key = Math.round(len * 10) / 10 + (foam ? 1000 : 0);
       let m = trackSideMatByLen.get(key);
       if (!m) {
         const cv = document.createElement('canvas');
@@ -554,6 +555,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.fillRect(0, 0, 32, 4);
         ctx.fillStyle = trackSideColor.clone().multiplyScalar(0.74).getStyle();
         ctx.fillRect(29, 4, 3, 12);
+        if (foam) {
+          const foamCol = trackSideColor.clone().lerp(new THREE.Color(0xffffff), 0.5).getStyle();
+          const foamEdge = trackSideColor.clone().lerp(new THREE.Color(0xffffff), 0.82).getStyle();
+          for (let px = 0; px < 32; px++) {
+            const h = 5.5 + Math.sin((px / 32) * Math.PI * 4) * 1.5;
+            ctx.fillStyle = foamCol;
+            ctx.fillRect(px, 16 - h, 1, h);
+            ctx.fillStyle = foamEdge;
+            ctx.fillRect(px, 16 - h, 1, 1.5);
+          }
+        }
         const tex = new THREE.CanvasTexture(cv);
         tex.colorSpace = THREE.SRGBColorSpace;
         tex.wrapS = THREE.RepeatWrapping;
@@ -565,11 +577,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       }
       return m;
     };
-    const createTrackSegment = (x: number, z: number, w: number, l: number) => {
+    const createTrackSegment = (x: number, z: number, w: number, l: number, overWater = false) => {
       const segGeo = new THREE.BoxGeometry(w, 0.8, l);
       // 六面分材: 顶面原色, 侧面压暗, 底面最暗——桥体立刻有厚度感
-      const sideL = getTrackSideMat(l);
-      const sideW = getTrackSideMat(w);
+      const sideL = getTrackSideMat(l, overWater);
+      const sideW = getTrackSideMat(w, overWater);
       const segMesh = new THREE.Mesh(segGeo, [
         sideL,
         sideL,
@@ -630,13 +642,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     createTrackSegment(0, 25, 7, 70); // Seg 1
     createTrackSegment(6.5, 62.5, 20, 7); // Seg 2
     // Seg 3（右侧海域直道）：拆 3 段，留 2 个 6m 海缺口（Z99-105 / Z116-122）——原版必须铺板过海
-    createTrackSegment(14, 87, 7, 24);   // Seg 3a: Z75-99
-    createTrackSegment(14, 110.5, 7, 11); // Seg 3b: Z105-116（缺口间小岛）
-    createTrackSegment(14, 131, 7, 18);   // Seg 3c: Z122-140
+    createTrackSegment(14, 87, 7, 24, true);   // Seg 3a: Z75-99
+    createTrackSegment(14, 110.5, 7, 11, true); // Seg 3b: Z105-116（缺口间小岛）
+    createTrackSegment(14, 131, 7, 18, true);   // Seg 3c: Z122-140
     createTrackSegment(4.5, 147.5, 26, 7); // Seg 4
     // Seg 5（左侧直道）：拆 2 段，留 1 个 6m 海缺口（Z199-205）
-    createTrackSegment(-5, 179.5, 7, 39);  // Seg 5a: Z160-199
-    createTrackSegment(-5, 212.5, 7, 15);  // Seg 5b: Z205-220
+    createTrackSegment(-5, 179.5, 7, 39, true);  // Seg 5a: Z160-199
+    createTrackSegment(-5, 212.5, 7, 15, true);  // Seg 5b: Z205-220
     createTrackSegment(-2.5, 227.5, 12, 7); // Seg 6
     createTrackSegment(0, 265, 7, 50); // Seg 7
 
