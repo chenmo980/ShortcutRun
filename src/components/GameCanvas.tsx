@@ -122,7 +122,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     aiChar: ArticulatedCharacter | null;
     waterMesh: THREE.Mesh | null;
     trackMeshes: THREE.Mesh[];
-    pickupItems: { mesh: THREE.Mesh; collected: boolean; z: number; x: number; phase: number }[];
+    pickupItems: { mesh: THREE.InstancedMesh; idx: number; collected: boolean; z: number; x: number; y: number; phase: number }[];
     bridgePlanks: {
       mesh: THREE.Mesh;
       velY: number;
@@ -232,7 +232,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     g.pickupItems.forEach((item) => {
       if (item.z >= targetZ) {
         item.collected = false;
-        item.mesh.visible = true;
+        // 轮37: 隐藏=零尺度实例矩阵（原逐mesh visible 开关）
+        if (item.mesh) {
+          const m = item.mesh.instanceMatrix.array as Float32Array;
+          const o = item.idx * 16;
+          m.fill(0, o, o + 16);
+          m[o + 15] = 1;
+          item.mesh.instanceMatrix.needsUpdate = true;
+        }
       }
     });
 
@@ -811,30 +818,32 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     }
 
     // 3. Scatter collectible wooden planks along the track
-    const pickupItems: { mesh: THREE.Mesh; collected: boolean; z: number; x: number; phase: number }[] = [];
+    // 轮37: 42块拾取板合并为单 InstancedMesh（原逐件mesh=可见集内每板1 DC；
+    // 实例包围球只按几何体算不含逐实例偏移，须关视锥剔除）
+    type PickupItem = {
+      mesh: THREE.InstancedMesh;
+      idx: number;
+      collected: boolean;
+      z: number;
+      x: number;
+      y: number;
+      phase: number;
+    };
+    const pickupItems: PickupItem[] = [];
     // 轮19: 拾取板/手持堆/桥板三种几何共享+顶点色分面(原轮14/18六面材质数组每板6 DC)
     const plankGeo = shadeBoxGeo(new THREE.BoxGeometry(2.4, 0.28, 0.85));
     const stackPlankGeo = shadeBoxGeo(new THREE.BoxGeometry(1.45, 0.15, 0.55));
     const bPlankGeo = shadeBoxGeo(new THREE.BoxGeometry(2.6, 0.22, 1.4));
 
+    const plankSpawns: { z: number; x: number; phase: number }[] = [];
     const spawnPlankCluster = (centerZ: number, centerX: number, count: number = 3) => {
       for (let i = 0; i < count; i++) {
         const offsetZ = (i - (count - 1) / 2) * 1.6;
         // 确定性斜向扇形排布(原随机±1.1常致两板同位叠死, 远景糊成一块绿斑读不出"3块可拾")
         const offsetX = (i - (count - 1) / 2) * 0.8;
-        const pMesh = new THREE.Mesh(plankGeo, materials.plank);
         const pz = centerZ + offsetZ;
         const px = centerX + offsetX;
-        pMesh.position.set(px, PICKUP_BASE_Y, pz);
-        pMesh.castShadow = true;
-        scene.add(pMesh);
-        pickupItems.push({
-          mesh: pMesh,
-          collected: false,
-          z: pz,
-          x: px,
-          phase: (pz * 0.9 + px * 2.3) % (Math.PI * 2),
-        });
+        plankSpawns.push({ z: pz, x: px, phase: (pz * 0.9 + px * 2.3) % (Math.PI * 2) });
       }
     };
 
@@ -845,6 +854,48 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       else if (z >= 160 && z <= 215) trackX = -5;
       spawnPlankCluster(z, trackX, 3);
     });
+
+    const pickupMesh = new THREE.InstancedMesh(plankGeo, materials.plank, plankSpawns.length);
+    pickupMesh.castShadow = true;
+    pickupMesh.frustumCulled = false;
+    pickupMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    scene.add(pickupMesh);
+    const pickupEuler = new THREE.Euler(0, 0, 0);
+    const pickupQuat = new THREE.Quaternion();
+    const pickupScale = new THREE.Vector3(1, 1, 1);
+    const pickupPos = new THREE.Vector3();
+    const pickupMat = new THREE.Matrix4();
+    // 写实例矩阵：collected → 零尺度（隐藏）；否则挂起 y、可选摆角 yaw
+    const writePickupInstance = (
+      item: PickupItem,
+      y: number,
+      yaw: number,
+      collected: boolean
+    ) => {
+      if (collected) {
+        pickupMat.makeScale(0, 0, 0);
+      } else {
+        pickupPos.set(item.x, y, item.z);
+        pickupEuler.y = yaw;
+        pickupQuat.setFromEuler(pickupEuler);
+        pickupMat.compose(pickupPos, pickupQuat, pickupScale);
+      }
+      pickupMesh.setMatrixAt(item.idx, pickupMat);
+    };
+    plankSpawns.forEach((s, idx) => {
+      const item: PickupItem = {
+        mesh: pickupMesh,
+        idx,
+        collected: false,
+        z: s.z,
+        x: s.x,
+        y: PICKUP_BASE_Y,
+        phase: s.phase,
+      };
+      pickupItems.push(item);
+      writePickupInstance(item, PICKUP_BASE_Y, 0, false);
+    });
+    pickupMesh.instanceMatrix.needsUpdate = true;
 
     // 4. Build Player Character (Lively articulated low-poly runner)
     const playerChar = buildArticulatedCharacter(settings.characterType || 'runner_boy', palette, false);
@@ -1175,12 +1226,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       // Animate collectible planks: hover bob + gentle sway (only near the runner)
       // 轻摆而非整圈旋转: 板子长轴保持横跨跑道, 读作"可拾的路径"而非乱飞碎片
+      // 轮37: 经 writePickupInstance 写实例矩阵，距离窗外实例静止在 init 位姿
+      let bobUpdated = false;
       for (const item of g.pickupItems) {
         if (item.collected || Math.abs(item.z - g.playerZ) > 80) continue;
-        item.mesh.position.y =
-          PICKUP_BASE_Y + Math.sin(time * 2.4 + item.phase) * 0.16;
-        item.mesh.rotation.y = Math.sin(time * 1.6 + item.phase) * 0.14;
+        item.y = PICKUP_BASE_Y + Math.sin(time * 2.4 + item.phase) * 0.16;
+        writePickupInstance(
+          item,
+          item.y,
+          Math.sin(time * 1.6 + item.phase) * 0.14,
+          false
+        );
+        bobUpdated = true;
       }
+      if (bobUpdated) pickupMesh.instanceMatrix.needsUpdate = true;
 
       // Game state machine
       if (g.state === 'running' || g.state === 'bridging') {
@@ -1390,7 +1449,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             const distX = Math.abs(g.playerX - item.x);
             if (distZ < 1.3 && distX < 1.4) {
               item.collected = true;
-              item.mesh.visible = false;
+              writePickupInstance(item, PICKUP_BASE_Y, 0, true);
+              pickupMesh.instanceMatrix.needsUpdate = true;
               g.carriedPlanks += 2;
               g.pickupPulse = 1.0;
               g.score += 20;
@@ -1398,7 +1458,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               setPlankCount(g.carriedPlanks);
               updatePlankStackVisual(g.carriedPlanks);
               sound.playPlankPickup(g.carriedPlanks);
-              spawnPuff(item.mesh.position, palette.plankColor);
+              spawnPuff(new THREE.Vector3(item.x, item.y, item.z), palette.plankColor);
             }
           }
         }
