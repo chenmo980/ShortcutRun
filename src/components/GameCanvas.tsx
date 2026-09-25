@@ -2071,7 +2071,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       {/* Bottom Section Quick Jump Bar (竖屏窄屏换行而非横滚: 秒传按钮须始终可见可点; 轮77: 窄屏默认折叠成徽标防遮挡画面; 轮89: 中挂底部会压住md带wrap后的顶带第3行(896x414实锤开关/镜头COVERED), 且桌面右上徽标是轮85默认常驻→底部整条让给秒传, 改挂左下) */}
       {jumpBarOpen ? (
-      <div className="absolute bottom-3 left-3 flex flex-wrap justify-start items-center gap-1.5 bg-slate-950/85 backdrop-blur-md border border-slate-700/80 px-3 py-1.5 rounded-2xl shadow-2xl z-10 max-w-[95vw]">
+      <div className="absolute bottom-3 left-3 max-sm:max-w-[calc(100%-9.5rem)] flex flex-wrap justify-start items-center gap-1.5 bg-slate-950/85 backdrop-blur-md border border-slate-700/80 px-3 py-1.5 rounded-2xl shadow-2xl z-10">
         <button
           onClick={() => setJumpBarOpen(false)}
           className="text-[11px] font-bold text-slate-400 hover:text-amber-300 shrink-0 mr-1 flex items-center gap-1 cursor-pointer"
