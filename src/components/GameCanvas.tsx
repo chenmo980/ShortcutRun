@@ -896,16 +896,38 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     setGameState('running');
 
     // Update stack visual helper (Held proudly in front of runner, supported by arms)
+    // 轮32: 手持堆8板→1个合并mesh(按displayCount缓存几何, 计数变化只换geometry引用)。
+    // 拾板高频触发本函数, 原每次重建8 mesh(渲染+阴影16 DC), 现稳态 2 DC。
+    const stackGeoByCount = new Map<number, THREE.BufferGeometry>();
+    let stackMesh: THREE.Mesh | null = null;
     const updatePlankStackVisual = (count: number) => {
-      playerChar.plankMount.clear();
       // 视觉封顶 8 块：再多只加高绿塔遮脸（真实数量看 HUD 木板计数）；交错叠放模拟手托柴捆
       const displayCount = Math.min(count, 8);
-      for (let i = 0; i < displayCount; i++) {
-        const p = new THREE.Mesh(stackPlankGeo, materials.plank);
-        p.position.set((i % 2 === 0 ? 0.05 : -0.05), i * 0.155, (i % 3 === 1 ? 0.04 : 0));
-        p.rotation.y = (i % 2 === 0 ? 0.04 : -0.04);
-        p.castShadow = true;
-        playerChar.plankMount.add(p);
+      if (displayCount <= 0) {
+        if (stackMesh) {
+          playerChar.plankMount.remove(stackMesh);
+          stackMesh = null;
+        }
+        return;
+      }
+      let geo = stackGeoByCount.get(displayCount);
+      if (!geo) {
+        const parts: THREE.BufferGeometry[] = [];
+        for (let i = 0; i < displayCount; i++) {
+          const g = stackPlankGeo.clone();
+          g.rotateY(i % 2 === 0 ? 0.04 : -0.04);
+          g.translate((i % 2 === 0 ? 0.05 : -0.05), i * 0.155, (i % 3 === 1 ? 0.04 : 0));
+          parts.push(g);
+        }
+        geo = mergeGeometries(parts);
+        stackGeoByCount.set(displayCount, geo);
+      }
+      if (!stackMesh) {
+        stackMesh = new THREE.Mesh(geo, materials.plank);
+        stackMesh.castShadow = true;
+        playerChar.plankMount.add(stackMesh);
+      } else if (stackMesh.geometry !== geo) {
+        stackMesh.geometry = geo;
       }
     };
     gameRef.current.updatePlankStackVisual = updatePlankStackVisual;
