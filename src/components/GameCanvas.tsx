@@ -974,10 +974,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         for (let i = 0; i < displayCount; i++) {
           const g = stackPlankGeo.clone();
           g.rotateY(i % 2 === 0 ? 0.04 : -0.04);
-          // 轮39: 绕托点居中(原从托点单向向上, 8层顶=1.09m高出下巴遮脸)
+          // 轮42: 层距0.155→0.10(板厚0.15本就互叠)+绕托点真居中——8层塔高1.24→0.80m,
+          // 跨胸线(1.06~1.86 vs 下巴2.12)不遮脸, 堆形也不再高瘦
           g.translate(
             (i % 2 === 0 ? 0.05 : -0.05),
-            i * 0.155 - (displayCount - 1) * 0.155 * 0.6,
+            i * 0.10 - (displayCount - 1) * 0.10 * 0.5,
             (i % 3 === 1 ? 0.04 : 0)
           );
           parts.push(g);
