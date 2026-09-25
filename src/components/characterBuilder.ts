@@ -184,9 +184,10 @@ export function buildArticulatedCharacter(
   pelvisMesh.castShadow = true;
   torsoGroup.add(pelvisMesh);
 
-  // Shorts Athletic Side Stripes
+  // Shorts Athletic Side Stripes —— 轮92: 纯白运动侧条原无差别发给国风戏装角色, 悟空玄黑武裤两侧悬两块死白方斑(r92d侧颜帧实锤, 与金甲戏装语汇冲突); 戏装四角改吃各自 accentHex 色(金/朱砂), 运动型保留经典白
   if (type !== 'stickman') {
-    const stripeMat = new THREE.MeshBasicMaterial({ color: '#FFFFFF' });
+    const costumeType = type === 'wukong' || type === 'nezha' || type === 'guofeng_hero' || type === 'panda_hero';
+    const stripeMat = new THREE.MeshBasicMaterial({ color: costumeType ? accentHex : '#FFFFFF' });
     const stripeGeo = new THREE.BoxGeometry(0.04, 0.24, 0.32);
     const stripeL = new THREE.Mesh(stripeGeo, stripeMat);
     stripeL.position.set(-0.32, 0.16, 0);
