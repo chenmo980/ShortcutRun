@@ -417,7 +417,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     };
     // 轮19 厚度感回退修复: 轮14/18 六面分材使每块板 6 draw calls(DC 275→558), 小游戏预算不可接受
     // → 改 BoxGeometry 顶点色(顶1.0/侧0.68/底0.42 乘材质色), 单材质单 DC, 观感等价
-    const shadeBoxGeo = (geo: THREE.BoxGeometry, side = 0.68, bottom = 0.42) => {
+    const shadeBoxGeo = (geo: THREE.BoxGeometry, side = 0.68, bottom = 0.42, front = side) => {
       const c = new Float32Array(24 * 3);
       const put = (i0: number, v: number) => {
         for (let i = i0; i < i0 + 4; i++) {
@@ -426,7 +426,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           c[i * 3 + 2] = v;
         }
       };
-      put(0, side); put(4, side); put(8, 1); put(12, bottom); put(16, side); put(20, side);
+      put(0, side); put(4, side); put(8, 1); put(12, bottom); put(16, front); put(20, front);
       geo.setAttribute('color', new THREE.BufferAttribute(c, 3));
       return geo;
     };
@@ -643,22 +643,32 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     // Multiplier finish stairway: 无缝阶梯坡道与胜利领奖台
     // 轮10: 金阶底色从"跑道顶面同系淡金"逐级渐变到纯金#FFD166——
     // 最下一级贴近跑道色(过渡带), 逐级加金, 顶面→阶梯色带连续无断层(全主题通用)
+    // 轮25: 阶梯顶点色分面(侧0.88/底0.5/立面0.72)——甲板有围框接缝语言后, 整块同色阶梯显平
+    // 注意: materials.finish 与龙门 archMat 共用, 不能直接开 vertexColors(龙门几何无色属性会渲黑), 用克隆
     const stepCount = 10;
     const goldColor = new THREE.Color('#FFD166');
+    const podiumMat = materials.finish.clone();
+    podiumMat.vertexColors = true;
     for (let i = 0; i < stepCount; i++) {
       const stepZ = 290 + i * 6;
       const stepH = 0.8 + i * 0.4;
       const isTop = i === stepCount - 1;
       const stepLength = isTop ? 14 : 6.05;
-      const stepGeo = new THREE.BoxGeometry(5.2, stepH, stepLength);
+      const stepGeo = shadeBoxGeo(
+        new THREE.BoxGeometry(5.2, stepH, stepLength),
+        0.88,
+        0.5,
+        0.72
+      );
       const stepMat = isTop
-        ? materials.finish
+        ? podiumMat
         : new THREE.MeshStandardMaterial({
             color: trackTopColor
               .clone()
               .lerp(goldColor, 0.2 + 0.8 * (i / (stepCount - 2))),
             metalness: 0.4,
             roughness: 0.2,
+            vertexColors: true,
           });
       const step = new THREE.Mesh(stepGeo, stepMat);
       step.position.set(0, stepH / 2, isTop ? stepZ + 3.5 : stepZ);
