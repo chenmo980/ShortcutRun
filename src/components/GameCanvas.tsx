@@ -2114,9 +2114,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         </button>
       )}
 
-      {/* Non-intrusive Toast Banner when Auto-Loop is Active —— 轮84: 原top-16落在HUD顶带内(r84实测顶带canvas-rel 12~166, toast在64~104被chips/开关行压住), 改挂画布垂直中心(top-1/2), 与autoLoop关时的结算弹窗同锚, 且不受顶带wrap行数影响 */}
+      {/* Non-intrusive Toast Banner when Auto-Loop is Active —— 轮84: 原top-16落在HUD顶带内, 改挂画布垂直中心; 轮96: 横屏896x414顶带wrap两行(镜头组第二行y195~214), top-1/2 toast{197~248}压住后视/正前特写(probe-r96 vsToast=true×2)→下移至间隙带top-[58%](横屏240~291避开214/330, 竖屏420高下244~295仍避开顶带222与右下徽标378) */}
       {settings.autoLoop && (gameState === 'drowned' || gameState === 'finished') && (
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-slate-900/90 border border-slate-700/90 text-slate-100 text-xs px-4 py-2 rounded-xl shadow-2xl flex items-center gap-3 z-30 animate-bounce">
+        <div className="absolute top-[58%] left-1/2 -translate-x-1/2 -translate-y-1/2 bg-slate-900/90 border border-slate-700/90 text-slate-100 text-xs px-4 py-2 rounded-xl shadow-2xl flex items-center gap-3 z-30 animate-bounce">
           <span>{gameState === 'finished' ? '🎉 冲线登顶！正在准备下一轮全景测试...' : '🌊 踩空落水！正在准备重新出发...'}</span>
           <button
             onClick={() => resetGame(0)}
