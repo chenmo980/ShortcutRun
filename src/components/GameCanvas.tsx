@@ -907,12 +907,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         colAttr.needsUpdate = true;
       }
 
-      // Animate collectible planks: hover bob + slow spin (only near the runner)
+      // Animate collectible planks: hover bob + gentle sway (only near the runner)
+      // 轻摆而非整圈旋转: 板子长轴保持横跨跑道, 读作"可拾的路径"而非乱飞碎片
       for (const item of g.pickupItems) {
         if (item.collected || Math.abs(item.z - g.playerZ) > 80) continue;
         item.mesh.position.y =
           PICKUP_BASE_Y + Math.sin(time * 2.4 + item.phase) * 0.16;
-        item.mesh.rotation.y = time * 1.1 + item.phase;
+        item.mesh.rotation.y = Math.sin(time * 1.6 + item.phase) * 0.14;
       }
 
       // Game state machine
