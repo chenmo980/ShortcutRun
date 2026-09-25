@@ -450,12 +450,19 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     const trackMeshes: THREE.Mesh[] = [];
 
-    // 桥柱水线: 吃水线处的湿润深色带（比桥体底色更暗）
+    // 桥柱水线: 吃水线处的湿润深色带（比桥体底色更暗）+ 水面泡沫环
     const waterlineMat = new THREE.MeshStandardMaterial({
       color: new THREE.Color(palette.trackColor).multiplyScalar(0.35),
       roughness: 0.85,
     });
     const waterlineGeo = new THREE.CylinderGeometry(0.46, 0.46, 0.6, 6);
+    const foamMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.5,
+      depthWrite: false,
+    });
+    const foamGeo = new THREE.RingGeometry(0.42, 0.85, 12);
 
     // Helper to build a track segment with raised edges/curbs
     const createTrackSegment = (x: number, z: number, w: number, l: number) => {
@@ -489,6 +496,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       const ring2 = new THREE.Mesh(waterlineGeo, waterlineMat);
       ring2.position.y = 0.95;
       pillar2.add(ring2);
+      const foam1 = new THREE.Mesh(foamGeo, foamMat);
+      foam1.rotation.x = -Math.PI / 2;
+      foam1.position.y = 1.04;
+      pillar1.add(foam1);
+      const foam2 = new THREE.Mesh(foamGeo, foamMat);
+      foam2.rotation.x = -Math.PI / 2;
+      foam2.position.y = 1.04;
+      pillar2.add(foam2);
     };
 
     createTrackSegment(0, 25, 7, 70); // Seg 1
