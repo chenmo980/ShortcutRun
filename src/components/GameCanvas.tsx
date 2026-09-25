@@ -763,6 +763,45 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     podiumMesh.receiveShadow = true;
     scene.add(podiumMesh);
 
+    // 轮54: 台阶立面倍率数字(x1.5→x6, 与结算公式 1+stepsClimbed*0.5 同口径)——
+    // 原阶梯素面无读数, 玩家不知道"多爬一级=结算倍率+0.5"; 10格图集+10面片合并1 mesh(1 DC)
+    {
+      const multCanvas = document.createElement('canvas');
+      multCanvas.width = 2048;
+      multCanvas.height = 128;
+      const mctx = multCanvas.getContext('2d')!;
+      mctx.font = 'bold 92px "Arial Black", sans-serif';
+      mctx.textAlign = 'center';
+      mctx.textBaseline = 'middle';
+      const multLabels = ['×1.5', '×2', '×2.5', '×3', '×3.5', '×4', '×4.5', '×5', '×5.5', '×6'];
+      multLabels.forEach((lb, i) => {
+        const cx = (i + 0.5) * (2048 / 10); // 格204.8×128≈1.6:1, 与面片3.6×1.8同比例免拉扁
+        mctx.lineWidth = 14;
+        mctx.strokeStyle = 'rgba(74,40,4,0.9)';
+        mctx.strokeText(lb, cx, 70);
+        mctx.fillStyle = '#FFF3C4';
+        mctx.fillText(lb, cx, 70);
+      });
+      const multTex = new THREE.CanvasTexture(multCanvas);
+      multTex.colorSpace = THREE.SRGBColorSpace;
+      multTex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+      const multMat = new THREE.MeshBasicMaterial({ map: multTex, transparent: true });
+      const labelGeos: THREE.BufferGeometry[] = [];
+      for (let i = 0; i < 10; i++) {
+        const isTop = i === 9;
+        const stepH = 0.8 + i * 0.4;
+        const lg = new THREE.PlaneGeometry(3.6, 1.8);
+        const uv = lg.getAttribute('uv') as THREE.BufferAttribute;
+        // 追拍屏右=世界-x(相机绕y转180°), u须随x递减取镜像格; v按flipY实测校准(r54b/c两版对照)
+        for (let v = 0; v < uv.count; v++) uv.setXY(v, (i + 1 - uv.getX(v)) / 10, 1 - uv.getY(v));
+        lg.rotateX(-Math.PI / 2);
+        lg.translate(0, stepH + 0.02, isTop ? 345 : 290 + i * 6);
+        labelGeos.push(lg);
+      }
+      const multMesh = new THREE.Mesh(mergeGeometries(labelGeos), multMat);
+      scene.add(multMesh);
+    }
+
     // Finish Arch at Z: 288
     const archMat = materials.finish;
     // 龙门: 糖果条纹柱+顶梁+白横幅(原为三块同色板, 远景识别度差)
