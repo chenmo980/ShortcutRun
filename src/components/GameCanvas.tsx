@@ -1875,8 +1875,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       {/* Top Floating HUD: Telemetry & Testing Quick Toggles */}
       <div className="absolute top-3 left-3 right-3 flex flex-wrap items-center justify-between gap-2 pointer-events-none z-10">
-        {/* Left Side: Planks, State, Progress */}
-        <div className="flex flex-wrap items-center gap-2 pointer-events-auto">
+        {/* Left Side: Planks, State, Progress —— 轮78: 竖屏下右缘预留遥测徽标带(~10rem), 否则奔跑中chip被top-4 right-4徽标压住(r77帧实锤) */}
+        <div className="flex flex-wrap items-center gap-2 pointer-events-auto pr-[17rem] md:pr-0">
           {/* Carried Planks Badge */}
           <div className="flex items-center gap-2 bg-slate-900/85 backdrop-blur-md border border-slate-700/80 px-3 py-1.5 rounded-xl shadow-lg">
             <div
