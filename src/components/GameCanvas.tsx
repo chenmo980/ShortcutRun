@@ -1873,8 +1873,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     <div className="relative w-full h-full overflow-hidden select-none bg-slate-900">
       <div ref={mountRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
 
-      {/* Top Floating HUD: Telemetry & Testing Quick Toggles —— 轮80: 徽标让位带从左侧chip组上移到本容器pr(轮78 pr挂child上, 轮79 nowrap把min-content撑到481致永不换行=回归复发根因) */}
-      <div className="absolute top-3 left-3 right-3 pr-[17rem] md:pr-3 flex flex-wrap items-center justify-between gap-2 pointer-events-none z-10">
+      {/* Top Floating HUD: Telemetry & Testing Quick Toggles —— 轮81: 徽标改挂右下后撤pr-[17rem]让位带(登记窗口内与PerformanceMonitor同批落地) */}
+      <div className="absolute top-3 left-3 right-3 flex flex-wrap items-center justify-between gap-2 pointer-events-none z-10">
         {/* Left Side: Planks, State, Progress —— min-w-0: flex默认min-width:auto会被nowrap进度chip(209px)撑住不随父pr收缩, 必须显式放开 */}
         <div className="flex min-w-0 flex-wrap items-center gap-2 pointer-events-auto">
           {/* Carried Planks Badge */}
@@ -1934,7 +1934,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           <button
             onClick={() => onUpdateSettings?.({ autoPilot: !settings.autoPilot })}
             title="开启/关闭全关卡自动寻路巡航，解决过弯落水重复卡死问题"
-            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 whitespace-nowrap transition-all cursor-pointer ${
               settings.autoPilot
                 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
@@ -1951,7 +1951,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           <button
             onClick={() => onUpdateSettings?.({ infinitePlanks: !settings.infinitePlanks })}
             title="无限木板开发不死模式，水面任意自由跨海测试"
-            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 whitespace-nowrap transition-all cursor-pointer ${
               settings.infinitePlanks
                 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
@@ -1968,7 +1968,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           <button
             onClick={() => onUpdateSettings?.({ autoLoop: !settings.autoLoop })}
             title="冲线或重试时自动开启下一轮，实现全天候无阻断巡跑"
-            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 whitespace-nowrap transition-all cursor-pointer ${
               settings.autoLoop
                 ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
@@ -1982,7 +1982,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           <button
             onClick={() => onUpdateSettings?.({ soundEnabled: !settings.soundEnabled })}
             title="游戏音效开关（默认关闭）"
-            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 whitespace-nowrap transition-all cursor-pointer ${
               settings.soundEnabled
                 ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
@@ -2004,7 +2004,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               });
             }}
             title="暂停/继续（按空格键），方便停格细致观察模型与姿态"
-            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1 transition-all cursor-pointer ${
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1 whitespace-nowrap transition-all cursor-pointer ${
               isPaused
                 ? 'bg-purple-500/30 text-purple-200 border border-purple-500/50'
                 : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
@@ -2021,7 +2021,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 gameRef.current.cameraViewMode = 'chase';
               }}
               title="默认跑酷后置跟踪视角"
-              className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+              className={`px-2 py-0.5 rounded text-[10px] font-bold whitespace-nowrap transition-all cursor-pointer ${
                 cameraViewMode === 'chase'
                   ? 'bg-cyan-500 text-slate-950 shadow-sm'
                   : 'text-slate-400 hover:text-slate-200'
@@ -2035,7 +2035,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 gameRef.current.cameraViewMode = 'front';
               }}
               title="正前特写走查视角：细看五官、浓眉大眼双高光、如意卷云紧箍儿与交领战袍"
-              className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+              className={`px-2 py-0.5 rounded text-[10px] font-bold whitespace-nowrap transition-all cursor-pointer ${
                 cameraViewMode === 'front'
                   ? 'bg-amber-400 text-slate-950 shadow-sm'
                   : 'text-slate-400 hover:text-slate-200'
@@ -2049,7 +2049,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 gameRef.current.cameraViewMode = 'side';
               }}
               title="45° 黄金侧视走查：查看虎纹战裙、护腕双金箍、斜插如意金箍棒与飞扬大红披巾飘带"
-              className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+              className={`px-2 py-0.5 rounded text-[10px] font-bold whitespace-nowrap transition-all cursor-pointer ${
                 cameraViewMode === 'side'
                   ? 'bg-orange-400 text-slate-950 shadow-sm'
                   : 'text-slate-400 hover:text-slate-200'

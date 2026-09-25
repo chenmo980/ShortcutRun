@@ -48,9 +48,10 @@ const PerformanceMonitorInner: React.FC<PerformanceMonitorProps> = ({
   const fpsStatus = currentFps >= 55 ? 'excellent' : currentFps >= 35 ? 'good' : 'warning';
   const fpsColor = fpsStatus === 'excellent' ? '#10B981' : fpsStatus === 'good' ? '#F59E0B' : '#EF4444';
 
+  // 轮81: 窄屏折叠徽标改挂右下(避开HUD顶带), 桌面top-4 right-4不变
   if (isMinimized) {
     return (
-      <div className="absolute top-4 right-4 z-30">
+      <div className="absolute bottom-16 right-3 md:top-4 md:bottom-auto md:right-4 z-30">
         <button
           onClick={() => setIsMinimized(false)}
           className="flex items-center gap-2.5 bg-slate-900/90 hover:bg-slate-850 backdrop-blur-md border border-slate-700/80 hover:border-cyan-500/50 px-3.5 py-2 rounded-xl shadow-xl transition-all group cursor-pointer text-left"
