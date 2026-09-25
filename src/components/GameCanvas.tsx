@@ -306,6 +306,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = settings.planarShadows;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // 轮36 阴影图20Hz: 光轴随跑者平滑移动, 60fps逐帧重刷阴影pass(全castShadow再画一遍)无感知增益,
+    // 改每3帧needsUpdate重烘一次; 首帧先烘, 避免开场1帧无影
+    renderer.shadowMap.autoUpdate = false;
+    renderer.shadowMap.needsUpdate = true;
     container.innerHTML = '';
     container.appendChild(renderer.domElement);
 
@@ -1102,6 +1106,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     let lastFpsTime = performance.now();
     let currentFps = 60;
 
+    let shadowTick = 0;
     const animate = () => {
       frameId = requestAnimationFrame(animate);
       const delta = Math.min(clock.getDelta(), 0.05);
@@ -1634,6 +1639,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       }
 
       // Render
+      // 轮36: 阴影图每3帧重烘一次(20Hz), 其余帧复用上一张shadow map纹理
+      if ((shadowTick++ % 3) === 0) renderer.shadowMap.needsUpdate = true;
       const t0 = performance.now();
       renderer.render(scene, camera);
       const renderMs = Math.max(0.1, Number((performance.now() - t0).toFixed(2)));
