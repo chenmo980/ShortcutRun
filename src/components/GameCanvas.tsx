@@ -1447,6 +1447,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       for (let i = 0; i < g.bridgePlanks.length; i++) {
         const bp = g.bridgePlanks[i];
+        // 轮24核查结论: 0.45静止高度与getGroundHeight水上0.56(板顶=跑者站高)联动,
+        // 改贴水会脚悬空+上下桥0.58m台阶, 悬浮踏石为自洽设计, 维持原值
         let surfaceLevel = 0.45;
         if (curSettings.waterWaves) {
           const wave =
