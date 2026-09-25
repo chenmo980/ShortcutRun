@@ -796,11 +796,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       bannerTex.colorSpace = THREE.SRGBColorSpace;
       const bannerFace = new THREE.MeshStandardMaterial({ map: bannerTex, roughness: 0.5 });
       const bannerPlain = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
-      const banner = new THREE.Mesh(new THREE.BoxGeometry(6.4, 0.9, 0.2), [
-        bannerPlain, bannerPlain, bannerPlain, bannerPlain, bannerPlain, bannerFace,
-      ]);
-      banner.position.set(0, 6.7, 287.39);
-      scene.add(banner);
+      // 轮33: 横幅原六面材质数组=6 draw, 改单材盒体+文字面片挂nz侧(u轴映射与原盒nz面一致, 不镜像)
+      const bannerBody = new THREE.Mesh(new THREE.BoxGeometry(6.4, 0.9, 0.2), bannerPlain);
+      bannerBody.position.set(0, 6.7, 287.39);
+      scene.add(bannerBody);
+      const bannerFaceMesh = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 0.9), bannerFace);
+      bannerFaceMesh.rotation.y = Math.PI;
+      bannerFaceMesh.position.set(0, 6.7, 287.39 - 0.101);
+      scene.add(bannerFaceMesh);
     }
 
     // 3. Scatter collectible wooden planks along the track
