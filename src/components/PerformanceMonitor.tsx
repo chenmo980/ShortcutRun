@@ -76,7 +76,7 @@ const PerformanceMonitorInner: React.FC<PerformanceMonitorProps> = ({
   }
 
   return (
-    <div className="absolute top-4 right-4 z-30 w-84 sm:w-96 bg-slate-900/92 backdrop-blur-md border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden transition-all text-slate-100 select-none">
+    <div className="absolute top-4 right-4 z-30 w-84 sm:w-96 max-w-[calc(100vw-2rem)] bg-slate-900/92 backdrop-blur-md border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden transition-all text-slate-100 select-none">
       {/* Header */}
       <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-slate-800/80 bg-slate-950/40">
         <div className="flex items-center gap-2">
