@@ -110,6 +110,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const [liveDrawCalls, setLiveDrawCalls] = useState<number>(38);
   const [liveRenderMs, setLiveRenderMs] = useState<number>(1.2);
   const [cameraViewMode, setCameraViewMode] = useState<'chase' | 'front' | 'side'>('chase');
+  // 轮77: 秒传条在竖屏414px下flex-wrap成8行(~240px高)盖掉半个canvas(r72/r76帧实锤), 窄屏默认收成一颗📍徽标, 点击展开; 桌面(≥768px)默认展开零回归
+  const [jumpBarOpen, setJumpBarOpen] = useState<boolean>(() => (typeof window === 'undefined' ? true : window.innerWidth >= 768));
   const lastPerfSampleRef = useRef<{ time: number }>({ time: 0 });
   const lastProgressPushRef = useRef<number>(0);
   const lastMetricsPushRef = useRef<number>(0);
@@ -2067,12 +2069,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         currentRenderMs={liveRenderMs}
       />
 
-      {/* Bottom Section Quick Jump Bar (竖屏窄屏换行而非横滚: 秒传按钮须始终可见可点) */}
+      {/* Bottom Section Quick Jump Bar (竖屏窄屏换行而非横滚: 秒传按钮须始终可见可点; 轮77: 窄屏默认折叠成徽标防遮挡画面) */}
+      {jumpBarOpen ? (
       <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex flex-wrap justify-center items-center gap-1.5 bg-slate-950/85 backdrop-blur-md border border-slate-700/80 px-3 py-1.5 rounded-2xl shadow-2xl z-10 max-w-[95vw]">
-        <span className="text-[11px] font-bold text-slate-400 shrink-0 mr-1 flex items-center gap-1">
+        <button
+          onClick={() => setJumpBarOpen(false)}
+          className="text-[11px] font-bold text-slate-400 hover:text-amber-300 shrink-0 mr-1 flex items-center gap-1 cursor-pointer"
+          title="折叠秒传条"
+        >
           <span>📍</span>
           <span>路段秒传:</span>
-        </span>
+          <span className="text-[10px] text-slate-500">▾</span>
+        </button>
         {SECTION_SHORTCUTS.map((sec, idx) => (
           <button
             key={sec.z}
@@ -2093,6 +2101,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           🔄 从头跑 (R)
         </button>
       </div>
+      ) : (
+        <button
+          onClick={() => setJumpBarOpen(true)}
+          className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-slate-950/85 backdrop-blur-md border border-slate-700/80 px-3 py-1.5 rounded-2xl shadow-2xl z-10 text-[11px] font-bold text-slate-300 hover:text-amber-300 cursor-pointer"
+          title="展开路段秒传条"
+        >
+          <span>📍</span>
+          <span>秒传</span>
+          <span className="text-[10px] text-slate-500">▴</span>
+        </button>
+      )}
 
       {/* Non-intrusive Toast Banner when Auto-Loop is Active */}
       {settings.autoLoop && (gameState === 'drowned' || gameState === 'finished') && (
