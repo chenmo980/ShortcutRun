@@ -540,22 +540,37 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.wrapS = THREE.RepeatWrapping;
       tex.wrapT = THREE.RepeatWrapping;
-      tex.anisotropy = 4;
+      tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
       // DoubleSide: 合并后甲板各面为独立平面(非闭合盒), 保证双向投影不丢桥影
       return new THREE.MeshStandardMaterial({ color: 0xffffff, map: tex, roughness, side: THREE.DoubleSide });
     };
     const deckTopMat = deckTexMat((ctx) => {
+      // 轮43: 板纹走向纠正——木板沿赛道纵向铺(原32x128整格横差+斜视摩尔纹, 读作同心弧"马桶圈")
       const base = trackTopColor.clone();
-      ctx.fillStyle = base.getStyle();
-      ctx.fillRect(0, 0, 32, 128);
-      // 交替板面: 半格提亮 3%, 制造同色系微差
       const hsl = { h: 0, s: 0, l: 0 };
       base.getHSL(hsl, THREE.SRGBColorSpace);
-      ctx.fillStyle = new THREE.Color().setHSL(hsl.h, hsl.s, Math.min(1, hsl.l + 0.03), THREE.SRGBColorSpace).getStyle();
-      ctx.fillRect(0, 0, 32, 60);
-      // 接缝: 压暗 12% 的细线
+      const shade = (dl: number, a = 1) =>
+        new THREE.Color().setHSL(hsl.h, hsl.s, Math.max(0, Math.min(1, hsl.l + dl)), THREE.SRGBColorSpace);
+      ctx.fillStyle = base.getStyle();
+      ctx.fillRect(0, 0, 32, 128);
+      // 4条纵向板(每块~0.9m宽): 微差提亮/压暗 + 板缝暗线
+      const boards = [0, 8, 16, 24];
+      const deltas = [0.02, -0.015, 0.03, 0];
+      boards.forEach((bx, i) => {
+        ctx.fillStyle = shade(deltas[i]).getStyle();
+        ctx.fillRect(bx, 0, 7, 128);
+        ctx.fillStyle = base.clone().multiplyScalar(0.9).getStyle();
+        ctx.fillRect(bx + 7, 0, 1, 128);
+      });
+      // 顺纹短条(每板2道, 打断纯色)
+      ctx.fillStyle = base.clone().multiplyScalar(0.95).getStyle();
+      boards.forEach((bx, i) => {
+        ctx.fillRect(bx + 2, (i * 37) % 100, 1, 22);
+        ctx.fillRect(bx + 5, (i * 53 + 19) % 100, 1, 16);
+      });
+      // 横向接缝: 每瓦片(=4m)一道压暗线
       ctx.fillStyle = base.clone().multiplyScalar(0.88).getStyle();
-      ctx.fillRect(0, 60, 32, 5);
+      ctx.fillRect(0, 125, 32, 3);
     }, 32, 128, 0.4);
     const buildSideMat = (foam: boolean) =>
       deckTexMat((ctx) => {
