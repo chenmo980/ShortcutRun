@@ -1766,11 +1766,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
         if (g.cameraViewMode === 'front') {
           // 正前方特写走查：近距离观察齐天小圣的面部、浓眉大眼双高光、如意卷云紧箍儿、黄色战袍交领与金靴
+          // 轮91: 原机位y+1.15与胸前板堆(顶~2.4)齐平, 视线被板堆整幅挡死(r91 before/afterA帧实锤面部0可见); 抬高越过堆顶俯角看脸
           targetCamX = g.playerX;
-          targetCamY = g.playerY + 1.15;
-          targetCamZ = g.playerZ + 4.6;
+          targetCamY = g.playerY + 3.4;
+          targetCamZ = g.playerZ + 5.2;
           lookAtX = g.playerX;
-          lookAtY = g.playerY + 0.8;
+          lookAtY = g.playerY + 1.55;
           lookAtZ = g.playerZ;
         } else if (g.cameraViewMode === 'side') {
           // 45° 黄金侧视走查：观察护腕双金箍、腰间虎皮战裙斑纹、背后斜插如意金箍棒与飞扬大红披巾飘带
