@@ -796,13 +796,21 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       for (let i = 0; i < 10; i++) {
         const isTop = i === 9;
         const stepH = 0.8 + i * 0.4;
+        const lz = isTop ? 345 : 290 + i * 6;
+        // 朝 -z 面 (追拍来向): 屏右=世界-x, u须随x递减取镜像格; v按flipY实测校准(r54b/c两版对照)
         const lg = new THREE.PlaneGeometry(3.6, 1.8);
         const uv = lg.getAttribute('uv') as THREE.BufferAttribute;
-        // 追拍屏右=世界-x(相机绕y转180°), u须随x递减取镜像格; v按flipY实测校准(r54b/c两版对照)
         for (let v = 0; v < uv.count; v++) uv.setXY(v, (i + 1 - uv.getX(v)) / 10, 1 - uv.getY(v));
         lg.rotateX(-Math.PI / 2);
-        lg.translate(0, stepH + 0.02, isTop ? 345 : 290 + i * 6);
+        lg.translate(0, stepH + 0.02, lz);
         labelGeos.push(lg);
+        // 朝 +z 面 (r73侧颜帧实锤: 正前/3/4侧颜从台阶上方回看只剩镜像字): 原始u+flipY, 法线+z
+        const lg2 = new THREE.PlaneGeometry(3.6, 1.8);
+        const uv2 = lg2.getAttribute('uv') as THREE.BufferAttribute;
+        for (let v = 0; v < uv2.count; v++) uv2.setX(v, (i + uv2.getX(v)) / 10);
+        lg2.rotateX(Math.PI / 2);
+        lg2.translate(0, stepH + 0.02, lz);
+        labelGeos.push(lg2);
       }
       const multMesh = new THREE.Mesh(mergeGeometries(labelGeos), multMat);
       scene.add(multMesh);
