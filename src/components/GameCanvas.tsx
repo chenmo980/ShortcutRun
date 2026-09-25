@@ -503,51 +503,51 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const foamGeos: THREE.BufferGeometry[] = [];
 
     // Helper to build a track segment with raised edges/curbs
-    // 轮13 铺板拼缝: 顶面不再整段纯色——CanvasTexture 每4m一道低对比接缝+交替微色差板,
-    // 给出"板道铺装感"和纵向速度参照。BoxGeometry顶面UV为0..1, 故 repeat.y=段长/4 按段缓存材质。
-    const trackTopMatByLen = new Map<number, THREE.MeshStandardMaterial>();
-    const getTrackTopMat = (len: number) => {
-      const key = Math.round(len * 10) / 10;
-      let m = trackTopMatByLen.get(key);
-      if (!m) {
-        const cv = document.createElement('canvas');
-        cv.width = 32;
-        cv.height = 128;
-        const ctx = cv.getContext('2d')!;
-        const base = trackTopColor.clone();
-        ctx.fillStyle = base.getStyle();
-        ctx.fillRect(0, 0, 32, 128);
-        // 交替板面: 半格提亮 3%, 制造同色系微差
-        const hsl = { h: 0, s: 0, l: 0 };
-        base.getHSL(hsl, THREE.SRGBColorSpace);
-        ctx.fillStyle = new THREE.Color().setHSL(hsl.h, hsl.s, Math.min(1, hsl.l + 0.03), THREE.SRGBColorSpace).getStyle();
-        ctx.fillRect(0, 0, 32, 60);
-        // 接缝: 压暗 12% 的细线
-        ctx.fillStyle = base.clone().multiplyScalar(0.88).getStyle();
-        ctx.fillRect(0, 60, 32, 5);
-        const tex = new THREE.CanvasTexture(cv);
-        tex.colorSpace = THREE.SRGBColorSpace;
-        tex.wrapS = THREE.RepeatWrapping;
-        tex.wrapT = THREE.RepeatWrapping;
-        tex.repeat.set(1, key / 4);
-        tex.anisotropy = 4;
-        m = new THREE.MeshStandardMaterial({ color: 0xffffff, map: tex, roughness: 0.4 });
-        trackTopMatByLen.set(key, m);
-      }
-      return m;
+    // 轮31 甲板批处理: 原10段×六面分材=60材质组(阴影再60), 是桥段DC最大残块。
+    // 轮13顶面每4m接缝/轮15侧壁每1.5m竖缝+顶沿高亮/轮27吃水泡沫带的画法不变,
+    // 但把 repeat 瓦片烘进各面几何UV(scaleUV), 全赛道顶/侧/泡沫侧各共用1材 → 面片收集后整段合并。
+    const deckTopGeos: THREE.BufferGeometry[] = [];
+    const deckSideGeos: THREE.BufferGeometry[] = [];
+    const deckSideFoamGeos: THREE.BufferGeometry[] = [];
+    const deckBottomGeos: THREE.BufferGeometry[] = [];
+    const scaleUV = (g: THREE.BufferGeometry, su: number, sv = 1) => {
+      const uv = g.attributes.uv;
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * su, uv.getY(i) * sv);
+      return g;
     };
-    // 轮15 侧壁铺装感: 侧面纯平色 slab 无速度参照 → CanvasTexture 每1.5m一道竖接缝+顶沿高亮带
-    // (与轮13 顶面手法成对; +X/-X 面 UV.u 沿段长, +Z/-Z 面沿宽度, 故按对应边长各取一材)
-    // 轮27 foam: 水上段吃水线盐渍泡沫带(底35%泛白+波状上缘, 1.5m瓦片周期内正弦闭合), 零新增mesh
-    const trackSideMatByLen = new Map<number, THREE.MeshStandardMaterial>();
-    const getTrackSideMat = (len: number, foam = false) => {
-      const key = Math.round(len * 10) / 10 + (foam ? 1000 : 0);
-      let m = trackSideMatByLen.get(key);
-      if (!m) {
-        const cv = document.createElement('canvas');
-        cv.width = 32;
-        cv.height = 16;
-        const ctx = cv.getContext('2d')!;
+    const deckTexMat = (
+      paint: (ctx: CanvasRenderingContext2D) => void,
+      w: number,
+      h: number,
+      roughness: number
+    ) => {
+      const cv = document.createElement('canvas');
+      cv.width = w;
+      cv.height = h;
+      paint(cv.getContext('2d')!);
+      const tex = new THREE.CanvasTexture(cv);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.anisotropy = 4;
+      // DoubleSide: 合并后甲板各面为独立平面(非闭合盒), 保证双向投影不丢桥影
+      return new THREE.MeshStandardMaterial({ color: 0xffffff, map: tex, roughness, side: THREE.DoubleSide });
+    };
+    const deckTopMat = deckTexMat((ctx) => {
+      const base = trackTopColor.clone();
+      ctx.fillStyle = base.getStyle();
+      ctx.fillRect(0, 0, 32, 128);
+      // 交替板面: 半格提亮 3%, 制造同色系微差
+      const hsl = { h: 0, s: 0, l: 0 };
+      base.getHSL(hsl, THREE.SRGBColorSpace);
+      ctx.fillStyle = new THREE.Color().setHSL(hsl.h, hsl.s, Math.min(1, hsl.l + 0.03), THREE.SRGBColorSpace).getStyle();
+      ctx.fillRect(0, 0, 32, 60);
+      // 接缝: 压暗 12% 的细线
+      ctx.fillStyle = base.clone().multiplyScalar(0.88).getStyle();
+      ctx.fillRect(0, 60, 32, 5);
+    }, 32, 128, 0.4);
+    const buildSideMat = (foam: boolean) =>
+      deckTexMat((ctx) => {
         ctx.fillStyle = trackSideColor.getStyle();
         ctx.fillRect(0, 0, 32, 16);
         const hsl = { h: 0, s: 0, l: 0 };
@@ -569,35 +569,34 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             ctx.fillRect(px, 16 - h, 1, 1.5);
           }
         }
-        const tex = new THREE.CanvasTexture(cv);
-        tex.colorSpace = THREE.SRGBColorSpace;
-        tex.wrapS = THREE.RepeatWrapping;
-        tex.wrapT = THREE.RepeatWrapping;
-        tex.repeat.set(key / 1.5, 1);
-        tex.anisotropy = 4;
-        m = new THREE.MeshStandardMaterial({ color: 0xffffff, map: tex, roughness: 0.55 });
-        trackSideMatByLen.set(key, m);
-      }
-      return m;
-    };
+      }, 32, 16, 0.55);
+    const deckSideMat = buildSideMat(false);
+    const deckSideFoamMat = buildSideMat(true);
     const createTrackSegment = (x: number, z: number, w: number, l: number, overWater = false) => {
-      const segGeo = new THREE.BoxGeometry(w, 0.8, l);
-      // 六面分材: 顶面原色, 侧面压暗, 底面最暗——桥体立刻有厚度感
-      const sideL = getTrackSideMat(l, overWater);
-      const sideW = getTrackSideMat(w, overWater);
-      const segMesh = new THREE.Mesh(segGeo, [
-        sideL,
-        sideL,
-        getTrackTopMat(l),
-        materials.trackBottom,
-        sideW,
-        sideW,
-      ]);
-      segMesh.position.set(x, 0.4, z);
-      segMesh.receiveShadow = true;
-      segMesh.castShadow = true;
-      scene.add(segMesh);
-      trackMeshes.push(segMesh);
+      const sideSink = overWater ? deckSideFoamGeos : deckSideGeos;
+      const top = new THREE.PlaneGeometry(w, l);
+      scaleUV(top, 1, l / 4);
+      top.rotateX(-Math.PI / 2);
+      top.translate(x, 0.8, z);
+      deckTopGeos.push(top);
+      const bottom = new THREE.PlaneGeometry(w, l);
+      bottom.rotateX(Math.PI / 2);
+      bottom.translate(x, 0, z);
+      deckBottomGeos.push(bottom);
+      for (const s of [-1, 1]) {
+        const g = new THREE.PlaneGeometry(l, 0.8);
+        scaleUV(g, l / 1.5);
+        g.rotateY((s * Math.PI) / 2);
+        g.translate(x + (s * w) / 2, 0.4, z);
+        sideSink.push(g);
+      }
+      for (const s of [-1, 1]) {
+        const g = new THREE.PlaneGeometry(w, 0.8);
+        scaleUV(g, w / 1.5);
+        if (s < 0) g.rotateY(Math.PI);
+        g.translate(x, 0.4, z + (s * l) / 2);
+        sideSink.push(g);
+      }
 
       // 轮17/20 缘石围框 + 轮16 桥柱外移(甲板缘外0.35m)
       // 轮30 静态批处理: 原每段8小mesh×10段=80 draw call, 改收集平移后几何, 全段合并为3个静态mesh
@@ -658,6 +657,22 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       const foamMesh = new THREE.Mesh(mergeGeometries(foamGeos), foamMat);
       foamMesh.renderOrder = 2;
       scene.add(foamMesh);
+      // 轮31 甲板主体落网: 10段盒×6材质组=60 draw → 顶/侧/泡沫侧/底 4个合并mesh(阴影pass同步 60→3)
+      const deckTopMesh = new THREE.Mesh(mergeGeometries(deckTopGeos), deckTopMat);
+      deckTopMesh.receiveShadow = true;
+      deckTopMesh.castShadow = true;
+      scene.add(deckTopMesh);
+      const deckSideMesh = new THREE.Mesh(mergeGeometries(deckSideGeos), deckSideMat);
+      deckSideMesh.receiveShadow = true;
+      deckSideMesh.castShadow = true;
+      scene.add(deckSideMesh);
+      const deckFoamMesh = new THREE.Mesh(mergeGeometries(deckSideFoamGeos), deckSideFoamMat);
+      deckFoamMesh.receiveShadow = true;
+      deckFoamMesh.castShadow = true;
+      scene.add(deckFoamMesh);
+      const deckBottomMesh = new THREE.Mesh(mergeGeometries(deckBottomGeos), materials.trackBottom);
+      scene.add(deckBottomMesh);
+      trackMeshes.push(deckTopMesh, deckSideMesh, deckFoamMesh, deckBottomMesh);
     }
 
     // Multiplier finish stairway: 无缝阶梯坡道与胜利领奖台
