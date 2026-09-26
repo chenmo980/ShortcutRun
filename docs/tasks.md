@@ -26,6 +26,9 @@
 - [x] 门禁：tsc 0 错 / build 17s / verify-app 11/11
 - [x] 输入探针：拖右 playerX+8.9（同 r76 口径）、KeyD/KeyA ±14、Space 暂停、秒传 3 落点正确、0 pageerror
 - [x] 分支合流 main（a1f2e43），信箱登记 + 室帖通告
+- [x] 竖屏 414×896 终验（c5ef714 后补测）：FPS 60→60、进度 85→131m、画布中心 200×200 零 HUD 遮挡、0 pageerror
+- [x] node 导入自验（无 DOM 环境 require core）：getTrackCenterX/getGroundHeight/SECTION_SHORTCUTS/createGame 断言全过
+- [x] 微信包体预算核验：core-only bundle 实测 0.52MB（< 4MB 预算，含 three.js）
 
 ## step-5 待办（出自我方通告）
 
