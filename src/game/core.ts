@@ -16,21 +16,24 @@ import {
 export const PICKUP_BASE_Y = 1.35;
 
 // Precise track centerline at distance Z (meters)
+// 轮107: 三处转弯用 smoothstep 缓入缓出(原线性→拐角处横向速度从0突跳到恒定值=机械化顿挫)。
+// 端点值不变(仍 0↔14-5↔0), 只改过渡曲线: 入弯/出弯横向速度渐近0, 弯心平滑过弯。
+const ease = (t: number) => t * t * (3 - 2 * t);
 export function getTrackCenterX(z: number): number {
   if (z <= 59) return 0;
   if (z < 75) {
     const t = (z - 59) / (75 - 59);
-    return t * 14;
+    return ease(t) * 14;
   }
   if (z <= 140) return 14;
   if (z < 160) {
     const t = (z - 140) / (160 - 140);
-    return 14 + t * (-5 - 14); // 14 -> -5
+    return 14 + ease(t) * (-5 - 14); // 14 -> -5
   }
   if (z <= 220) return -5;
   if (z < 240) {
     const t = (z - 220) / (240 - 220);
-    return -5 + t * 5; // -5 -> 0
+    return -5 + ease(t) * 5; // -5 -> 0
   }
   return 0;
 }
@@ -990,9 +993,16 @@ export function createGame(options: CreateGameOptions): GameHandle {
   // 拾板高频触发本函数, 原每次重建8 mesh(渲染+阴影16 DC), 现稳态 2 DC。
   const stackGeoByCount = new Map<number, THREE.BufferGeometry>();
   let stackMesh: THREE.Mesh | null = null;
-  const updatePlankStackVisual = (count: number) => {
-    // 视觉封顶 8 块：再多只加高绿塔遮脸（真实数量看 HUD 木板计数）；交错叠放模拟手托柴捆
-    const displayCount = Math.min(count, 8);
+  // 轮107: 手持堆按真实携带量比例显数(0~30 → 0~12层), 捡板/铺桥时肉眼可见增减;
+  // stackVisual 每帧向 carriedPlanks 缓动(见主循环)→过渡丝滑非瞬变; stackPop=接板弹一下。
+  let stackVisual = 12;
+  let stackPop = 0;
+  const STACK_MAX_LAYERS = 12;
+  const updatePlankStackVisual = (rawCount: number) => {
+    const displayCount = Math.max(
+      0,
+      Math.min(STACK_MAX_LAYERS, Math.round((rawCount / 30) * STACK_MAX_LAYERS))
+    );
     if (displayCount <= 0) {
       if (stackMesh) {
         playerChar.plankMount.remove(stackMesh);
@@ -1002,15 +1012,14 @@ export function createGame(options: CreateGameOptions): GameHandle {
     }
     let geo = stackGeoByCount.get(displayCount);
     if (!geo) {
+      const gap = Math.min(0.1, 0.85 / displayCount); // 层距自适应, 12层仍≤0.85m 不遮脸
       const parts: THREE.BufferGeometry[] = [];
       for (let i = 0; i < displayCount; i++) {
         const part = stackPlankGeo.clone();
         part.rotateY(i % 2 === 0 ? 0.04 : -0.04);
-        // 轮42: 层距0.155→0.10(板厚0.15本就互叠)+绕托点真居中——8层塔高1.24→0.80m,
-        // 跨胸线(1.06~1.86 vs 下巴2.12)不遮脸, 堆形也不再高瘦
         part.translate(
           (i % 2 === 0 ? 0.05 : -0.05),
-          i * 0.10 - (displayCount - 1) * 0.10 * 0.5,
+          i * gap - (displayCount - 1) * gap * 0.5,
           (i % 3 === 1 ? 0.04 : 0)
         );
         parts.push(part);
@@ -1025,6 +1034,8 @@ export function createGame(options: CreateGameOptions): GameHandle {
     } else if (stackMesh.geometry !== geo) {
       stackMesh.geometry = geo;
     }
+    // 接板弹跳: 短暂纵向放大后回落, 与手臂下探捞拾(pickupPulse)同步成"丝滑接板"
+    stackMesh.scale.set(1, 1 + stackPop * 0.16, 1);
   };
   g.updatePlankStackVisual = updatePlankStackVisual;
   updatePlankStackVisual(12);
@@ -1043,6 +1054,7 @@ export function createGame(options: CreateGameOptions): GameHandle {
     g.steerVelocityX = 0;
     g.manualOverride = false;
     g.carriedPlanks = liveSettings.infinitePlanks ? 30 : 16;
+    stackVisual = g.carriedPlanks; // 轮107: 重开/秒传即时对齐手持堆, 不从上一局缓动
     g.state = 'running';
     // 轮48: 暂停中点"从头跑"/秒传会留下 isPaused=true 的僵尸局(整场frozen, 面板却显示奔跑中)——重开隐含恢复
     g.isPaused = false;
@@ -1448,7 +1460,7 @@ export function createGame(options: CreateGameOptions): GameHandle {
 
       // VOODOO 核心物理手感：跑道抓地摩擦力与侧滑惯性模拟 (Lateral Friction & Drift Inertia)
       const friction = g.isOverWater
-        ? (curSettings.trackFriction ?? 0.85) * 0.62 // 水面铺桥更具滑行推背感
+        ? (curSettings.trackFriction ?? 0.85) * 0.8 // 轮107: 0.62→0.80, 桥面抓地更接近陆地, 过弯不再飘
         : (curSettings.trackFriction ?? 0.85);
       const drift = curSettings.lateralDrift ?? 0.20;
 
@@ -1459,8 +1471,9 @@ export function createGame(options: CreateGameOptions): GameHandle {
       g.playerVelX += (targetVelX - g.playerVelX) * Math.min(1.0, blendRate * delta);
       g.playerX += g.playerVelX * delta;
 
-      // 奔跑前向速度与跨水滑行摩擦加成
-      const targetSpeed = (curSettings.runSpeed ?? 18) * (g.isOverWater ? 1.08 : 1.0);
+      // 奔跑前向速度 — 轮107: 去掉跨水 +8% 提速(轮106后转弯也走水面, 该加成使"转弯比直线快"且更飘)。
+      // 统一直线/转弯/铺桥同速, 手感一致。
+      const targetSpeed = curSettings.runSpeed ?? 18;
       g.speed += (targetSpeed - g.speed) * Math.min(1.0, delta * 6 * friction);
       g.playerZ += g.speed * delta;
 
@@ -1510,7 +1523,6 @@ export function createGame(options: CreateGameOptions): GameHandle {
         if (curSettings.infinitePlanks && g.carriedPlanks < 15) {
           g.carriedPlanks = 30;
           emit({ planks: 30 });
-          updatePlankStackVisual(30);
         }
 
         // 轮47: 等步距补板。原"每帧最多落1块"在低帧率下间距=单帧位移(~2m)>板长1.4m,
@@ -1546,7 +1558,6 @@ export function createGame(options: CreateGameOptions): GameHandle {
           }
           g.lastBridgeDropZ += BRIDGE_STEP;
           emit({ planks: g.carriedPlanks });
-          updatePlankStackVisual(g.carriedPlanks);
 
           sound.playBridgePlace();
 
@@ -1618,7 +1629,7 @@ export function createGame(options: CreateGameOptions): GameHandle {
             g.pickupPulse = 1.0;
             g.score += 20;
             emit({ score: g.score, planks: g.carriedPlanks });
-            updatePlankStackVisual(g.carriedPlanks);
+            stackPop = 1; // 轮107: 触发手持堆接板弹跳(增长由每帧 stackVisual 缓动完成)
             sound.playPlankPickup(g.carriedPlanks);
             spawnPuff(new THREE.Vector3(item.x, item.y, item.z), palette.plankColor);
           }
@@ -1659,6 +1670,11 @@ export function createGame(options: CreateGameOptions): GameHandle {
       g.runCycle += delta * 15;
       const pickupDurationSec = Math.max(0.15, curSettings.pickupDuration ?? 0.45);
       g.pickupPulse = Math.max(0, g.pickupPulse - delta * (1.0 / pickupDurationSec));
+
+      // 轮107: 手持堆缓动跟随真实携带量(捡板渐长/铺桥渐短, 丝滑不瞬变) + 接板弹跳衰减
+      stackVisual = THREE.MathUtils.lerp(stackVisual, g.carriedPlanks, Math.min(1.0, delta * 9));
+      stackPop = Math.max(0, stackPop - delta * 3.4);
+      updatePlankStackVisual(stackVisual);
 
       // Dynamic terrain elevation & slope climbing (防陷地与上下坡物理自适应)
       const currentGroundY = getGroundHeight(g.playerX, g.playerZ, g.isOverWater);
