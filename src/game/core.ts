@@ -372,62 +372,6 @@ export function createGame(options: CreateGameOptions): GameHandle {
     }
   }
 
-  // 轮102: 用户实帧指认"甲板旁的海面(红框)也必须铺木板"——恢复轮99栈台覆盖, 但板色改吃甲板同色
-  // trackTopColor(灰木纹, 与甲板一致), 既非竹筏绿亦非琥珀黄(用户两次否决的颜色)。
-  // 距任一甲板矩形AP_REACH内的水面按连续板阵铺满(单InstancedMesh恒1DC);
-  // 动态铺板水道(转弯/地面间断口)挖空保留"必须铺板过海"玩法(轮97/98落板覆盖)。
-  {
-    const apGeo = shadeBoxGeo(new THREE.BoxGeometry(2.6, 0.18, 1.5));
-    const AP_PITCH_X = 2.45;
-    const AP_PITCH_Z = 1.5;
-    const AP_REACH = 4.2;
-    const AP_Y = 0.5;
-    const apList: { x: number; z: number }[] = [];
-    for (let cz = -16; cz <= 300; cz += AP_PITCH_Z) {
-      for (let cx = -25; cx <= 35; cx += AP_PITCH_X) {
-        let near = false;
-        for (const r of trackBounds) {
-          const dx = Math.max(r.minX - cx, 0, cx - r.maxX);
-          const dz = Math.max(r.minZ - cz, 0, cz - r.maxZ);
-          if (Math.hypot(dx, dz) < AP_REACH) {
-            near = true;
-            break;
-          }
-        }
-        if (near) apList.push({ x: cx, z: cz });
-      }
-    }
-    const apFinal = apList.filter(
-      (c) =>
-        !waterChannels.some(
-          (ch) =>
-            c.x >= ch.minX - 1.4 &&
-            c.x <= ch.maxX + 1.4 &&
-            c.z >= ch.minZ - 0.8 &&
-            c.z <= ch.maxZ + 0.8
-        )
-    );
-    const apronMat = new THREE.MeshStandardMaterial({
-      vertexColors: true,
-      color: trackTopColor.clone(),
-      roughness: 0.7,
-    });
-    const apronMesh = new THREE.InstancedMesh(apGeo, apronMat, apFinal.length);
-    const apPos = new THREE.Vector3();
-    const apQuat = new THREE.Quaternion();
-    const apOne = new THREE.Vector3(1, 1, 1);
-    const apM = new THREE.Matrix4();
-    apFinal.forEach((c, i) => {
-      apPos.set(c.x, AP_Y, c.z);
-      apM.compose(apPos, apQuat, apOne);
-      apronMesh.setMatrixAt(i, apM);
-    });
-    apronMesh.instanceMatrix.needsUpdate = true;
-    apronMesh.receiveShadow = true;
-    apronMesh.frustumCulled = false;
-    scene.add(apronMesh);
-  }
-
   const trackMeshes: THREE.Mesh[] = [];
 
   // 桥柱水线: 吃水线处的湿润深色带（比桥体底色更暗）+ 水面泡沫环
@@ -503,6 +447,62 @@ export function createGame(options: CreateGameOptions): GameHandle {
     ctx.fillStyle = base.clone().multiplyScalar(0.88).getStyle();
     ctx.fillRect(0, 125, 32, 3);
   }, 32, 128, 0.4);
+
+  // 轮103: 用户实帧斥责"我让你铺木板, 你非要用别的颜色覆盖"——轮102栈台是纯色平涂盒(无板纹)=读作色块不是木板。
+  // 正解=海面栈台复用甲板同款木纹贴图(deckTopMat.map: 4道纵板+板缝+顺纹+横向接缝), 让覆盖物真正"看起来是木板"。
+  // 距任一甲板矩形4.2m内水面铺满(单InstancedMesh恒1DC); 动态水道仍挖空保过海玩法(轮97/98落板)。
+  {
+    const apGeo = shadeBoxGeo(new THREE.BoxGeometry(2.6, 0.18, 1.5));
+    const AP_PITCH_X = 2.45;
+    const AP_PITCH_Z = 1.5;
+    const AP_REACH = 4.2;
+    const AP_Y = 0.5;
+    const apList: { x: number; z: number }[] = [];
+    for (let cz = -16; cz <= 300; cz += AP_PITCH_Z) {
+      for (let cx = -25; cx <= 35; cx += AP_PITCH_X) {
+        let near = false;
+        for (const r of trackBounds) {
+          const dx = Math.max(r.minX - cx, 0, cx - r.maxX);
+          const dz = Math.max(r.minZ - cz, 0, cz - r.maxZ);
+          if (Math.hypot(dx, dz) < AP_REACH) {
+            near = true;
+            break;
+          }
+        }
+        if (near) apList.push({ x: cx, z: cz });
+      }
+    }
+    const apFinal = apList.filter(
+      (c) =>
+        !waterChannels.some(
+          (ch) =>
+            c.x >= ch.minX - 1.4 &&
+            c.x <= ch.maxX + 1.4 &&
+            c.z >= ch.minZ - 0.8 &&
+            c.z <= ch.maxZ + 0.8
+        )
+    );
+    const apronMat = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      map: deckTopMat.map ?? null,
+      roughness: 0.7,
+    });
+    const apronMesh = new THREE.InstancedMesh(apGeo, apronMat, apFinal.length);
+    const apPos = new THREE.Vector3();
+    const apQuat = new THREE.Quaternion();
+    const apOne = new THREE.Vector3(1, 1, 1);
+    const apM = new THREE.Matrix4();
+    apFinal.forEach((c, i) => {
+      apPos.set(c.x, AP_Y, c.z);
+      apM.compose(apPos, apQuat, apOne);
+      apronMesh.setMatrixAt(i, apM);
+    });
+    apronMesh.instanceMatrix.needsUpdate = true;
+    apronMesh.receiveShadow = true;
+    apronMesh.frustumCulled = false;
+    scene.add(apronMesh);
+  }
+
   const buildSideMat = (foam: boolean) =>
     deckTexMat((ctx) => {
       ctx.fillStyle = trackSideColor.getStyle();
