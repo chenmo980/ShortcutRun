@@ -1,94 +1,89 @@
 # 项目进度报告
 
-> 更新时间：2026-09-23 · 版本：v0.3 进行中 · 仓库：chenmo980/ShortcutRun（main）
+> 更新时间：2026-09-26 · 架构：Three.js + React 19 + Vite 8（Web 工作台）→ 微信小游戏 · 仓库：chenmo980/ShortcutRun（main）
 
 ## 一句话
 
-复刻 VOODOO《Shortcut Run》（铺路过断崖跑酷）→ 微信小游戏 → IAA 广告变现。多 AI 协作开发，玩法闭环、角色、弯道、关卡进阶、道具、遥测、发行规格已就位。
+复刻 VOODOO《Shortcut Run》（铺路过断崖跑酷）：3D 可玩工作台已闭环，**游戏运行时已抽成零 React 的 `src/game/core.ts`**，微信导出链路 spike 通过，下一步真机预览 → G1 真人试玩 → IAA 变现。
 
-## 现在就能玩（2 分钟）
+## 现在就能玩（1 分钟）
 
-| 方式 | 操作 |
-|---|---|
-| **浏览器版（推荐先试）** | 双击仓库里 `web-preview/index.html`，零安装 |
-| Cocos 版 | Cocos Creator 3.8 打开仓库 → 双击 `assets/scenes/game.scene` → 按 ▶ |
+```bash
+cd E:\WorkSpaces\WxSoftWare\shortcut-run
+npm install --legacy-peer-deps   # 首次
+npm run dev                     #  http://localhost:3000
+```
 
-操作：点击开始 → 鼠标拖动 / `A` `D` 转向 → 吃砖块 → 断崖处砖够自动拍桥、砖不够掉落 → 终点门验砖 → **赢了进下一关，输了同关重试**。
+操作：自动巡航默认开；`A`/`D` 或拖动转向 → 拾木板 → 断崖自动铺板过海 → 登顶倍率阶梯结算；`空格`暂停、`R`重开、`1`-`6`秒传路段；右侧 Art Studio 切主题/角色/板皮/物理手感参数。
 
-## 已完成（全部有自动化测试证据）
+## 当前架构（2026-09-26 core 抽取后）
+
+| 层 | 文件 | 职责 |
+|---|---|---|
+| 游戏运行时 | `src/game/core.ts`（2060 行） | 纯 Three.js：场景/赛道/角色/桥板/拾取/阶梯/龙门、仿真、输入总线、音频、遥测。**零 React、零 JSX，唯一 DOM 触碰=可注入的 make2D 工厂** |
+| Web 薄壳 | `src/components/GameCanvas.tsx`（407 行） | HUD/工具条/秒传条/结算弹层；订阅 core `onEvent` 帧末 flush 事件 |
+| 角色 | `src/components/characterBuilder.ts`（1452 行） | 程序化 articulated 角色（9 预设）+ IK 抱持动画 |
+| 工作台 | `src/components/ArtStudioPanel.tsx` | 主题/板皮/物理/IK 调参（含 Cocos 导出模态） |
+| 遥测 | `src/components/PerformanceMonitor.tsx` + `src/utils/metricsStore.ts` | Recharts 波形（1Hz）+ 外部 store（useSyncExternalStore） |
+| 小游戏导出 | `tools/wechat-export.mjs`（step-5） | `--dry-run` 报告 / `--core` 将 core 壳换成 `wx.createCanvas` |
+
+core 入口（小游戏与 Web 同接口）：
+
+```ts
+const game = createGame({ canvas | parent, width, height, palette, settings, devicePixelRatio, create2DCanvas });
+game.start(); // wx.onTouch 写 game.input{left,right,dragging}
+```
+
+## 已完成（含自动化证据）
 
 | 模块 | 状态 | 验证 |
 |---|---|---|
-| 玩法闭环（前进/吃砖/铺桥/掉落/终点门） | ✅ | 浏览器端到端 13 项断言全绿 |
-| 关卡生成器 V3（母本对齐） | ✅ | 与规则母本 30 种子位级一致（parity）；Qoder 侧 1000 种子×L1-L10 机验全绿 |
-| 关卡公平性 | ✅ | 2000 种子：0 全局缺砖 / 0 前缀死局 / 末段恒 ≥8m / 拾取间距 ≥4m |
-| L1-L10 难度曲线 + L11+ 饱和加深 | ✅ | 曲线漂移锁 L1-L60 逐值对母本；L28+ 死亡墙已消除 |
-| 关卡推进系统（进度存档/星级/最佳成绩/同关换图） | ✅ | progression 单元断言 + 脏数据自愈 |
-| 程序化角色（零素材，跑步/掉落/举手动画） | ✅ | 像素级渲染检测通过 |
-| 主题换肤系统（白天原版/城市/糖果，T 键切换） | ✅ | 全部色板过 Q5 可读性规范（色盲安全/对比度机验）+ 换肤断言 |
-| 道具系统（+N 门 / ×2 门 / 加速鞋，L3 起分带解锁） | ✅ | 双端 parity 位级一致 + 道具不改供需（纯增益数学锁）+ 端到端断言 |
-| UI 流程（开始界面/结算面板/星级/进度条） | ✅ | 浏览器版面板上线；Cocos 版文本 HUD |
-| 音效（浏览器版 WebAudio 合成：吃砖/铺桥/胜/负，M 静音） | ✅ | 无页面错误 + 事件钩子全覆盖 |
-| G1 遥测采集（胜/败事件落 sr_telemetry_v1，Q6 schema） | ✅ | 双端挂点；dumpTelemetry 一键导出；汇总对照表 Qoder 侧 telemetry-report.mjs |
-| 怀里搬木板 + 俯视相机 | ✅ | AI Studio 方案移植，四门回归全绿 |
-| 弯道系统（表现层 S 弯，LevelGen 零改动） | ✅ | 纯表现层审计通过；curveFor 母本 + sim §22 双端锁 L1-L60 |
-| 发行规格包（广告位/包体预算/真机矩阵） | ✅ | K2 投递 docs/k2/ 已收货（K4-K8 待 K2 补实存） |
-| Cocos 零装配（内置场景+程序化灰盒） | ✅ | 双击场景即玩，无需任何手动装配 |
-| 关卡进度 HUD（砖数/进度%/关卡号/最佳成绩/星级） | ✅ | 双版本上线 |
-| 多 AI 协作机制（邮箱+门禁+母本制+漂移锁） | ✅ | 见 `docs/AI-HANDOFF.md` |
-| 铺路烟雾拖尾（原版标志性反馈，双端 60 粒子池） | ✅ | tsc 0 / smoke / sim 38 / verify-web 15/15 |
-| 对手铺板=持久地面（原版“蹭路”策略 M5） | ✅ | layPlank 统一记 trail；verify opponent-plank-ground 断言 |
-| 奖励区回头机制（M10：S 键回头捡气垛再冲） | ✅ | 双端；verify bonus-back-pickup/boost（20气×3→×10） |
-| Cocos 端奖励区补齐（此前到终点直接 win，BonusRun.ts 只被平衡工具用） | ✅ | GameApp enterBonus/stepBonusRun/winFromBonus 全接线 |
-| 完全复刻差距清单（机制/镜头/UI/juice 五维） | ✅ | `docs/replica-gap.md`，**G1 前 P0 全部清零** |
-| P1 批：M6 板刷新 / M8 扒边攀爬 / M13 堆到天高 | ✅ | 双端；verify pickup-respawn/edge-grab 断言 |
-| juice 批：J2 撞人音效(web) / J3 水花 / J4 彩带 / C2 冲线慢动作推近 / U2 飘分 | ✅ | 双端（J2 限 web，M4 对手整套仅 web 已标注） |
-| Cocos AI 对手补齐（M4 双端闭环：3 对手/铺板经济/撞飞抢板） | ✅ | TrackBuilder.buildOpponents + GameApp.updateOpponents，与 web 逐行同构 |
-| M11 倍率 14 档 ×2~×15 + M12 名次计分(100/60/30/10) + C3 铺路机头微扬 | ✅ | verify 22/22；balance 曲线 3→×2/8→×3/20→×6/50→×15 |
+| 玩法闭环（前进/拾板/铺桥/落水/倍率登顶） | ✅ | verify-app 11/11：进度 48→105m、双海缺口铺板 141m 未溺水 |
+| 弯道 + 缺口铺板物理（摩擦力/侧滑/浮力弹簧可调） | ✅ | 轮97-100a 提交链；缺口行板按水道实宽铺满 |
+| 程序化角色 9 预设 + 抱板 IK | ✅ | 角色切换断言 + 三镜头走查可交互 |
+| 主题换肤全套色板 | ✅ | 栈台与玩家板皮解耦（轮100a） |
+| 性能（DC 111 / FPS60 稳态） | ✅ | 阴影 20Hz、实例化拾板/桥板/栈台、遥测节流 |
+| core 抽取（刀1/2/3） | ✅ | tsc 0 错 / build 17s / 门禁 11/11；输入探针数值实证 |
+| 微信导出 spike | ✅ | 2.69MB < 4MB 预算；core-only bundle 实测 0.52MB |
 
 ## 质量数据（QA 口径）
 
-- **贪心 bot**（零失误）：L1-L10 全部 60/60 通关
-- **人形 bot**（漏 25% 砖 + 180ms 反应 + 瞄准偏差）：L1 89% → L10 47%，L11+ 饱和平台 83%→53%，全部落在设计目标带（新手关 ≥80%、中期 ≥70%、后期 ≥40%）
-- 单局时长：L1 ≈16s → L10 ≈22s（休闲游戏黄金区间）
-- 双 AI 交叉验证：Qoder 侧 sim.mjs 21 项断言（含对我方 TS 移植的 1000 种子 parity 永久锁），我方 smoke 断言生成器/曲线/progression 三层
+- 门禁三件套：`npm run lint`（tsc 0 错）→ `npm run build` → `node tools/verify-app.mjs`（无头 :3000，11 项断言）
+- 稳态 55-60 FPS；draw calls 91~112（语义见性能基线 QODER.md）
+- 输入手感参数（拖拽 0.042/px、KeyD 攻击曲线 0.18s）由 76/输入探针两轮实证锁定
 
-## 分工（详见 `docs/AI-HANDOFF.md`）
+## 分工（详见 `AI-HANDOFF.md`）
 
-| 成员 | 地盘 | 本轮任务 |
+| 成员 | 地盘 | 当前任务 |
 |---|---|---|
-| **step-5（opencode）** | Cocos/微信侧全部代码、集成、构建、上架、git main | 弯道/怀里搬/遥测 → K2 规格落地（AdMgr/构建）→ V5 微信构建 |
-| **Qoder agent** | cc-free 规则母本 + 数值 + headless 验证（投递 `docs/qoder/`） | curveFor 母本化 + telemetry-report 去重/qa 剔除已交付 |
-| **K2（DeepSeek）** | 发行链路规格 `docs/k2/` | K1 广告规格 / K2 包体预算 / K3 真机矩阵已交付 |
-| 工具线（非 AI 同事） | Meshy/Tripo、淘宝素材、Suno、微信开发者工具 | 按需调用，全部经 step-5 之手进包 |
-| 人类（项目负责人） | 手感裁决、门禁签批、合规决策、审美 | G1 试玩反馈；Mixamo/素材采购决策 |
+| Qoder | GameCanvas / characterBuilder / data/* / src/game/* | core 抽取（已完）→ 合流 main → 视觉/手感打磨 |
+| step-5 | tools/* / vite.config / index.html / 集成 / main 推送 | `wechat-export.mjs --core` 对接 → 包体 dry-run → 集成推送 |
+| 人类 | 手感裁决 / 审美 / 合规 / G1 试玩 | 微信开发者工具真机预览（人工） |
 
-## 下一步（两周成“能看的 Demo” → 能上架）
+## 下一步
 
-1. **V5 微信小游戏构建** + 真机预览（按 wechat-build.md；出包后 K2 跑 check-bundle + k3 矩阵）
-2. **广告 SDK 接入**（按 docs/k2/ad-spec.md → assets/scripts/AdMgr.ts）
-3. 音效素材采购（audio-assets.md 清单）
-4. G1 真人遥测 → telemetry-report.mjs 对照 g1-tuning §5 基准带调参
-5. 并行（周期长越早越好）：软著申请、企业主体（见 `docs/compliance.md`）
+1. core 合流 main 并保持门禁绿（进行中）
+2. `wechat-export.mjs --core` dry-run：包体预算核对 + 开发者工具真机预览四件事（WebGL渲染/触控/帧循环/包体）
+3. G1 真人试玩门禁：真人"还想再来一把" → 不过则调手感不进发行
+4. IAA 广告接入（规格见 docs/k2/）→ 软著/版号并行推进
 
 ## 风险与阻塞
 
 | 风险 | 状态 | 对策 |
 |---|---|---|
-| 版号 3-6 个月 | 最大外部依赖 | 开发版先做数据，资质并行推进 |
-| Mixamo 被墙（角色动画原方案） | 已解除 | 改程序化动画，升级路径=淘宝/爱给网 fbx（¥10 内） |
-| 玩法红海（国内同类多） | 关注中 | G1 后加差异化微创新再上量 |
+| 版号 3-6 个月 | 最大外部依赖 | 开发版先做数据留存，资质并行 |
+| 微信真机触控手感（屏宽缩放） | 待裁决 | 真机预览后按 G1 反馈调 input 总线参数 |
+| 玩法红海 | 关注中 | G1 后加差异化微创新再上量 |
 
 ## 给新成员（3 分钟上手）
 
 ```bash
-# 跑全部测试（Node ≥ 22.6，零依赖；tsc 用本地 devDependencies）
-node tools/smoke.ts          # 关卡生成器：parity + 不变量 + bot 通关率
-node tools/verify-web.mjs    # 浏览器版端到端 13 项
-node docs/qoder/sim.mjs      # 规则母本验收套件（Qoder 维护，现 38 项）
-node node_modules/typescript/bin/tsc -p tools/tsconfig.check.json --noEmit
+npm run lint                    # tsc --noEmit（门禁一）
+npm run build                   # 门禁二
+node tools/verify-app.mjs       # 门禁三（无头 11 断言；APP_URL 可换端口）
+node tools/chat.mjs tail 10     # 查 AI 协作室
 ```
 
-- 代码/文档唯一源：本仓库 main 分支，所有改动走 git
-- 协作规则（AI 间怎么配合）：`docs/AI-HANDOFF.md`
-- 手感/数值调参：`assets/scripts/config.ts` + `assets/scripts/LevelCurve.ts`
+- 协作规则/属地/端口：`AI-HANDOFF.md`（仓根唯一信箱）+ `AGENTS.md`（开机规程）
+- 手感/数值调参：Art Studio 右侧物理面板 → `src/data/physicsPresets.ts`
+- core 接口：`src/game/core.ts` 顶部 `CreateGameOptions` / `GameHandle`
