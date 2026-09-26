@@ -448,8 +448,9 @@ export function createGame(options: CreateGameOptions): GameHandle {
     ctx.fillRect(0, 125, 32, 3);
   }, 32, 128, 0.4);
 
-  // 轮103: 用户实帧斥责"我让你铺木板, 你非要用别的颜色覆盖"——轮102栈台是纯色平涂盒(无板纹)=读作色块不是木板。
-  // 正解=海面栈台复用甲板同款木纹贴图(deckTopMat.map: 4道纵板+板缝+顺纹+横向接缝), 让覆盖物真正"看起来是木板"。
+  // 轮104: 用户实帧指认"白色遮盖去掉, 这里应该需要铺木板"——甲板贴图基于trackTopColor(近白浅灰),
+  // 轮103复用deckTopMat.map后栈台仍读作"白色色块"非木板。正解=栈台用真正的棕色木纹贴图
+  // (棕底+纵板+板缝+顺纹), 覆盖物呈现经典棕色木板而非甲板浅灰。
   // 距任一甲板矩形4.2m内水面铺满(单InstancedMesh恒1DC); 动态水道仍挖空保过海玩法(轮97/98落板)。
   {
     const apGeo = shadeBoxGeo(new THREE.BoxGeometry(2.6, 0.18, 1.5));
@@ -482,10 +483,37 @@ export function createGame(options: CreateGameOptions): GameHandle {
             c.z <= ch.maxZ + 0.8
         )
     );
+    const apronWoodMat = deckTexMat((ctx) => {
+      // 经典棕色木板: 棕底 + 5道纵板(每道微差棕) + 板缝暗线 + 顺纹短条 + 横向板头缝
+      const base = new THREE.Color('#8A5A34');
+      const hsl = { h: 0, s: 0, l: 0 };
+      base.getHSL(hsl, THREE.SRGBColorSpace);
+      const shade = (dl: number) =>
+        new THREE.Color().setHSL(hsl.h, hsl.s, Math.max(0, Math.min(1, hsl.l + dl)), THREE.SRGBColorSpace);
+      ctx.fillStyle = base.getStyle();
+      ctx.fillRect(0, 0, 64, 64);
+      const boards = [0, 13, 26, 39, 52];
+      const deltas = [0.035, -0.02, 0.05, -0.01, 0.025];
+      boards.forEach((bx, i) => {
+        ctx.fillStyle = shade(deltas[i]).getStyle();
+        ctx.fillRect(bx, 0, 12, 64);
+        ctx.fillStyle = shade(-0.14).getStyle();
+        ctx.fillRect(bx + 12, 0, 1, 64);
+      });
+      ctx.fillStyle = shade(-0.07).getStyle();
+      boards.forEach((bx, i) => {
+        ctx.fillRect(bx + 3, (i * 17) % 40, 1, 26);
+        ctx.fillRect(bx + 7, (i * 23 + 9) % 40, 1, 18);
+        ctx.fillRect(bx + 9, (i * 31 + 5) % 40, 1, 12);
+      });
+      ctx.fillStyle = shade(-0.16).getStyle();
+      ctx.fillRect(0, 0, 64, 2);
+      ctx.fillRect(0, 61, 64, 3);
+    }, 64, 64, 0.72);
     const apronMat = new THREE.MeshStandardMaterial({
       vertexColors: true,
-      map: deckTopMat.map ?? null,
-      roughness: 0.7,
+      map: apronWoodMat.map ?? null,
+      roughness: 0.72,
     });
     const apronMesh = new THREE.InstancedMesh(apGeo, apronMat, apFinal.length);
     const apPos = new THREE.Vector3();
