@@ -997,35 +997,40 @@ export function createGame(options: CreateGameOptions): GameHandle {
   // stackVisual 每帧向 carriedPlanks 缓动(见主循环)→过渡丝滑非瞬变; stackPop=接板弹一下。
   let stackVisual = 12;
   let stackPop = 0;
-  const STACK_MAX_LAYERS = 12;
+  // 轮108: 手持木板 1:1 对应真实携带量(捡几块摞几块, 铺几块少几块), 不再压缩封顶。
+  // 30 块竖叠会顶到脸, 故用"双手抱一捆"的 3 列×N 行网格 + 缩小单块板, 总高封顶≤0.62m 不遮脸。
+  const STACK_COLS = 3;
+  const STACK_MAX = 30;
   const updatePlankStackVisual = (rawCount: number) => {
-    const displayCount = Math.max(
-      0,
-      Math.min(STACK_MAX_LAYERS, Math.round((rawCount / 30) * STACK_MAX_LAYERS))
-    );
-    if (displayCount <= 0) {
+    const total = Math.max(0, Math.min(STACK_MAX, Math.round(rawCount)));
+    if (total <= 0) {
       if (stackMesh) {
         playerChar.plankMount.remove(stackMesh);
         stackMesh = null;
       }
       return;
     }
-    let geo = stackGeoByCount.get(displayCount);
+    let geo = stackGeoByCount.get(total);
     if (!geo) {
-      const gap = Math.min(0.1, 0.85 / displayCount); // 层距自适应, 12层仍≤0.85m 不遮脸
+      const rows = Math.ceil(total / STACK_COLS);
+      const gap = Math.min(0.075, 0.62 / rows); // 纵向层距自适应, 10 行仍≤0.62m
+      const colSp = 0.36; // 横向列距
       const parts: THREE.BufferGeometry[] = [];
-      for (let i = 0; i < displayCount; i++) {
+      for (let i = 0; i < total; i++) {
+        const col = i % STACK_COLS;
+        const row = Math.floor(i / STACK_COLS);
         const part = stackPlankGeo.clone();
-        part.rotateY(i % 2 === 0 ? 0.04 : -0.04);
+        part.scale(0.235, 0.4, 0.62); // 1.45→0.34 宽, 0.15→0.06 厚, 0.55→0.34 深(抱持小板)
+        part.rotateY(col % 2 === 0 ? 0.05 : -0.05);
         part.translate(
-          (i % 2 === 0 ? 0.05 : -0.05),
-          i * gap - (displayCount - 1) * gap * 0.5,
-          (i % 3 === 1 ? 0.04 : 0)
+          (col - (STACK_COLS - 1) / 2) * colSp,
+          row * gap - (rows - 1) * gap * 0.5,
+          row % 2 === 0 ? 0.02 : -0.02
         );
         parts.push(part);
       }
       geo = mergeGeometries(parts);
-      stackGeoByCount.set(displayCount, geo);
+      stackGeoByCount.set(total, geo);
     }
     if (!stackMesh) {
       stackMesh = new THREE.Mesh(geo, materials.plank);
