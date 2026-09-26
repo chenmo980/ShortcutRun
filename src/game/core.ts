@@ -331,29 +331,27 @@ export function createGame(options: CreateGameOptions): GameHandle {
   waterGeo.setAttribute('color', new THREE.BufferAttribute(waterColAttr, 3));
 
   // 2. Track Generation: An S-shaped floating boardwalk layout
-  // Track bounds define walkable solid ground:
-  // Section 1: Z: 0 to 60, X: -3.5 to 3.5 (Straight start)
-  // Section 2: Z: 60 to 80, X: -3.5 to 16.5 (Turn Right)
-  // Section 3: Z: 80 to 140, X: 11.5 to 18.5 (Right Straight) — 原版"必须铺板过海"还原：
-  //   断开两个 6m 缺口（Z99-105 / Z116-122，避开 95/110/125 三处拾取堆），
-  //   缺口处只剩水：断口内 isOverWater=true 自动接管落板/耗板/溺水逻辑（见下方 Bridge building）
-  // Section 4: Z: 140 to 160, X: -8.5 to 18.5 (Turn Left Across)
-  // Section 5: Z: 160 to 220, X: -8.5 to -1.5 (Left Straight) — 同上断开 1 个 6m 缺口（Z199-205）
-  // Section 6: Z: 220 to 240, X: -8.5 to 3.5 (Turn Center)
-  // Section 7: Z: 240 to 290, X: -3.5 to 3.5 (Straight to Finish)
-  // Section 8: Z: 290 to 360, X: -2.5 to 2.5 (Multiplier Staircase)
+  // Track bounds define walkable solid ground (每块 rect = 对应 createTrackSegment 甲板真实 footprint):
+  //   直道缺口(Z99~105 / Z116~122 / Z199~205)与三处转弯衔接板之间的海面, 全部是真水道(waterChannels),
+  //   断口内 isOverWater=true → 手里捧的木板按既有桥接机制自动铺满整幅水道(见下方 Bridge building)。
+  //   转弯处(Seg2/4/6 衔接板前后)漏出的海面同样落此规则: 玩家用手里木板现场铺桥过海, 非静态遮盖假象。
+  // 轮106: trackBounds 必须与 createTrackSegment 实际甲板占位严格一致。
+  // 原三处转弯衔接板(Seg2/4/6 甲板 Z 向仅 7m)被误标成 20~25m 的陆地矩形,
+  // 导致转弯处真实海面(如 Z66~75)落在 trackBounds 内→onSolidGround=true→玩家"贴空"走过露出的海面却不落板。
+  // 正解: 每块 rect = 对应甲板真实 footprint, 让转弯漏出的海面变成真水道(waterChannels),
+  // 由手里捧的木板按既有桥接机制自动铺满(游戏机制, 非静态遮盖假象)。
   const trackBounds = [
-    { minZ: -10, maxZ: 60, minX: -3.5, maxX: 3.5 },
-    { minZ: 50, maxZ: 75, minX: -3.5, maxX: 16.5 },
-    { minZ: 75, maxZ: 99, minX: 10.5, maxX: 17.5 },
-    { minZ: 105, maxZ: 116, minX: 10.5, maxX: 17.5 },
-    { minZ: 122, maxZ: 140, minX: 10.5, maxX: 17.5 },
-    { minZ: 135, maxZ: 160, minX: -8.5, maxX: 17.5 },
-    { minZ: 160, maxZ: 199, minX: -8.5, maxX: -1.5 },
-    { minZ: 205, maxZ: 220, minX: -8.5, maxX: -1.5 },
-    { minZ: 215, maxZ: 240, minX: -8.5, maxX: 3.5 },
-    { minZ: 240, maxZ: 290, minX: -3.5, maxX: 3.5 },
-    { minZ: 287, maxZ: 360, minX: -2.8, maxX: 2.8 },
+    { minZ: -10, maxZ: 60, minX: -3.5, maxX: 3.5 }, // S1 起点直道 (Seg1)
+    { minZ: 59, maxZ: 66, minX: -3.5, maxX: 16.5 }, // S2 右弯衔接板 (Seg2) → Z66~75 转弯海面交由手里木板铺
+    { minZ: 75, maxZ: 99, minX: 10.5, maxX: 17.5 }, // S3a 右侧直道
+    { minZ: 105, maxZ: 116, minX: 10.5, maxX: 17.5 }, // S3b 中段小岛 (Z99~105 直道海缺口)
+    { minZ: 122, maxZ: 140, minX: 10.5, maxX: 17.5 }, // S3c (Z116~122 直道海缺口)
+    { minZ: 144, maxZ: 151, minX: -8.5, maxX: 17.5 }, // S4 左弯衔接板 (Seg4) → Z140~144 / Z151~160 转弯海面铺板
+    { minZ: 160, maxZ: 199, minX: -8.5, maxX: -1.5 }, // S5a 左侧直道
+    { minZ: 205, maxZ: 220, minX: -8.5, maxX: -1.5 }, // S5b (Z199~205 直道海缺口)
+    { minZ: 224, maxZ: 231, minX: -8.5, maxX: 3.5 }, // S6 回中衔接板 (Seg6) → Z220~224 / Z231~240 转弯海面铺板
+    { minZ: 240, maxZ: 290, minX: -3.5, maxX: 3.5 }, // S7 终前直道
+    { minZ: 287, maxZ: 360, minX: -2.8, maxX: 2.8 }, // S8 冲刺阶梯
   ];
 
   // 轮97b: 预计算可铺板水道=相邻甲板矩形间的Z断口, X实宽取两甲板重叠段。

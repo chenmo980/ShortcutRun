@@ -14,7 +14,7 @@ export default function App() {
   const [settings, setSettings] = useState<VisualSettings>({
     paletteId: THEME_PALETTES[0].id,
     characterType: 'wukong',
-    plankStyle: 'bamboo_raft',
+    plankStyle: 'wood_plank',
     waterWaves: true,
     waterFoam: true,
     planarShadows: true,
