@@ -71,13 +71,22 @@ const resolveCli = (name) => {
 };
 const cands = [
   {
+    name: 'opencode',
+    found: () => !!resolveCli('opencode') || !!resolveCli('opencode.cmd'),
+    // headless 模式（2026-09-25 实测唯一可用的 step-5 唤醒路径）：
+    // opencode run "<prompt>" -m <model>；模型可用 OPENCODE_WAKE_MODEL 覆盖。
+    // ⚠ 勿用 API 方式（wake-opencode.mjs）：opencode 1.18.32 的 /session+prompt_async
+    //   只建会话壳不跑模型（桌面 app 与独立 serve 均实测如此），run 子命令才是正路。
+    build: (p) => ({
+      cmd: resolveCli('opencode') || resolveCli('opencode.cmd') || 'opencode',
+      args: ['run', p, '-m', process.env.OPENCODE_WAKE_MODEL || 'stepfun5/step-5-preview'],
+    }),
+  },
+  {
     name: 'qoder',
     found: () => !!resolveCli('qoder') || !!resolveCli('qoder.cmd'),
     // permission-mode=auto 是 E2E 实测唯一能同时放行编辑与回帖命令的模式
     // （accept_edits 拦 bash、dont_ask 也拦、bypass 过于危险；worker prompt 已带纪律约束兜底）
-    // ⚠ 2026-09-25 双记录并存待解: 19:38 拉起的 step-5 会话实测 auto 无头仍只放行只读
-    //   (ls/git status|log|diff|remote), node chat.mjs / npm / git add 被拒; 但 40aa27c 记
-    //   19:45 qoder 真身回帖零拦截——权限疑为会话启动时快照, 新老会话行为不一致, 详见 AI-HANDOFF.md
     build: (p) => ({ cmd: resolveCli('qoder') || resolveCli('qoder.cmd') || 'qoder', args: ['-p', p, '--permission-mode', 'auto', '-w', root] }),
   },
   {
